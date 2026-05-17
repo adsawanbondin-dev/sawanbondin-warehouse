@@ -151,14 +151,38 @@ let showQR=true,showBC=false,showName=true,showBrand=true;
 
 function init(){
   const cats=['ทั้งหมด',...new Set(CATALOG.map(i=>i.cat))];
-  document.getElementById('catPills').innerHTML=cats.map(c=>`<div class="cat-pill${c===currentCat?' active':''}" onclick="setCat('${c.replace(/'/g,'\\\')}',this)">${c}</div>`).join('');
+  const container=document.getElementById('catPills');
+  container.innerHTML='';
+  cats.forEach(c=>{
+    const el=document.createElement('div');
+    el.className='cat-pill'+(c===currentCat?' active':'');
+    el.textContent=c;
+    el.addEventListener('click',function(){
+      currentCat=c;
+      document.querySelectorAll('.cat-pill').forEach(p=>p.classList.remove('active'));
+      this.classList.add('active');
+      filterItems();
+    });
+    container.appendChild(el);
+  });
   filterItems();
 }
 function setCat(c,el){currentCat=c;document.querySelectorAll('.cat-pill').forEach(p=>p.classList.remove('active'));el.classList.add('active');filterItems();}
 function filterItems(){
   const q=(document.getElementById('searchInput').value||'').toLowerCase();
   const items=CATALOG.filter(i=>(currentCat==='ทั้งหมด'||i.cat===currentCat)&&(!q||i.name.toLowerCase().includes(q)||i.code.toLowerCase().includes(q)));
-  document.getElementById('itemListSb').innerHTML=`<div class="item-list-sb">${items.map(it=>`<div class="item-entry${selected.has(it.code)?' sel':''}" onclick="toggleItem('${it.code}')"><div class="ie-check">${selected.has(it.code)?'✓':''}</div><div class="ie-info"><div class="ie-name">${it.name}</div><div class="ie-code">${it.code}</div></div></div>`).join('')}</div>`;
+  const container=document.getElementById('itemListSb');
+  const wrapper=document.createElement('div');
+  wrapper.className='item-list-sb';
+  items.forEach(it=>{
+    const row=document.createElement('div');
+    row.className='item-entry'+(selected.has(it.code)?' sel':'');
+    row.innerHTML=`<div class="ie-check">${selected.has(it.code)?'✓':''}</div><div class="ie-info"><div class="ie-name">${it.name}</div><div class="ie-code">${it.code}</div></div>`;
+    row.addEventListener('click',()=>toggleItem(it.code));
+    wrapper.appendChild(row);
+  });
+  container.innerHTML='';
+  container.appendChild(wrapper);
   updateSelBar();
 }
 function toggleItem(code){if(selected.has(code))selected.delete(code);else selected.add(code);filterItems();renderPreview();}
@@ -178,25 +202,57 @@ function renderPreview(){
   const items=CATALOG.filter(i=>selected.has(i.code));
   const expanded=[];items.forEach(it=>{for(let c=0;c<copies;c++)expanded.push(it);});
   cntEl.textContent=`${expanded.length} สติ๊กเกอร์`;
-  area.innerHTML=`<div class="sheet"><div class="sticker-grid cols-${cols}" id="grid"></div></div>`;
-  const grid=document.getElementById('grid');
+  // build structure first, then generate QR/barcode after DOM is ready
+  const sheet=document.createElement('div');sheet.className='sheet';
+  const grid=document.createElement('div');grid.className=`sticker-grid cols-${cols}`;
+  sheet.appendChild(grid);area.innerHTML='';area.appendChild(sheet);
   const isDark=style==='modern';
-  expanded.forEach(item=>{
+  const qrItems=[];
+  expanded.forEach((item,idx)=>{
     const div=document.createElement('div');div.className=`sticker ${style}`;
+    // QR placeholder — will render after append
     if(showQR){
-      const canvas=document.createElement('canvas');div.appendChild(canvas);
-      try{new QRCode(canvas,{text:item.code,width:qrSz,height:qrSz,colorDark:isDark?'#ffffff':'#1a1a1c',colorLight:isDark?'#1a1a1c':'#ffffff',correctLevel:QRCode.CorrectLevel.M});}catch(e){}
+      const qrWrap=document.createElement('div');
+      qrWrap.id=`qr_${idx}`;
+      qrWrap.style.cssText=`width:${qrSz}px;height:${qrSz}px;margin:0 auto`;
+      div.appendChild(qrWrap);
+      qrItems.push({id:`qr_${idx}`,code:item.code,sz:qrSz,dark:isDark?'#ffffff':'#1a1a1c',light:isDark?'#1a1a1c':'#ffffff'});
     }
     if(showBC){
       const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.id=`bc_${idx}`;
       svg.style.cssText='display:block;margin:4px auto 0;max-width:100%';
       div.appendChild(svg);
-      try{JsBarcode(svg,item.code,{format:'CODE128',width:1.2,height:30,displayValue:false,lineColor:isDark?'#fff':'#1a1a1c',background:isDark?'#1a1a1c':'#fff',margin:2});}catch(e){}
     }
     if(showName){const el=document.createElement('div');el.className='sticker-name';el.textContent=item.name;div.appendChild(el);}
     const cd=document.createElement('div');cd.className='sticker-code';cd.textContent=item.code;div.appendChild(cd);
     if(showBrand){const br=document.createElement('div');br.className='sticker-brand';br.textContent='SAWANBONDIN';div.appendChild(br);}
     grid.appendChild(div);
+  });
+  // render QR after all elements are in DOM
+  requestAnimationFrame(()=>{
+    qrItems.forEach(q=>{
+      const el=document.getElementById(q.id);
+      if(el){try{new QRCode(el,{text:q.code,width:q.sz,height:q.sz,colorDark:q.dark,colorLight:q.light,correctLevel:QRCode.CorrectLevel.M});}catch(e){console.warn('QR error',e);}}
+    });
+    if(showBC){
+      expanded.forEach((item,idx)=>{
+        const svg=document.getElementById('bc_'+idx);
+        if(svg){
+          try{
+            JsBarcode(svg,item.code,{
+              format:'CODE128',
+              width:1.5,height:36,
+              displayValue:true,
+              fontSize:9,
+              lineColor:isDark?'#ffffff':'#1a1a1c',
+              background:isDark?'#1a1a1c':'#ffffff',
+              margin:3
+            });
+          }catch(e){console.warn('BC error',e);}
+        }
+      });
+    }
   });
 }
 
