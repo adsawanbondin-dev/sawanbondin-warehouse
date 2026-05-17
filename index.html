@@ -71,15 +71,7 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .cam-confirm{padding:8px 18px;background:var(--acc);border:none;border-radius:var(--r);color:#fff;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}
 
 /* Scan strip */
-.scan-strip{background:var(--s2);border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;margin-bottom:10px}
-.scan-strip-title{font-size:10px;font-weight:600;color:var(--ink3);margin-bottom:6px;display:flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:.4px}
-.scan-strip-row{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
-.scan-strip-input{flex:1;min-width:120px;padding:7px 9px;border:1px solid var(--line2);border-radius:var(--r);font-family:inherit;font-size:13px;color:var(--ink);background:var(--surface);outline:none}
-.scan-strip-input:focus{border-color:var(--acc)}
-.scan-strip-select{padding:7px 8px;border:1px solid var(--line);border-radius:var(--r);font-family:inherit;font-size:12px;color:var(--ink);background:var(--surface);outline:none;cursor:pointer}
-.scan-strip-qty{width:62px;padding:7px 8px;border:1px solid var(--line);border-radius:var(--r);font-family:inherit;font-size:13px;color:var(--ink);background:var(--surface);outline:none}
-.scan-strip-btn{padding:7px 12px;background:var(--ink2);border:none;border-radius:var(--r);color:#fff;font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap}
-.scan-strip-btn:hover{background:var(--ink)}
+
 .scan-result{width:100%;margin-top:5px;padding:6px 9px;border-radius:var(--r);font-size:11px;display:none;line-height:1.4}
 .scan-result.ok{display:block;background:var(--grn-bg);color:var(--grn);border:1px solid #b0d4c0}
 .scan-result.err{display:block;background:var(--red-bg);color:var(--red);border:1px solid #e0b0b0}
@@ -664,7 +656,6 @@ function renderWarehousePage(pg){
       </div>
     </div>
     ${alertHtml}
-    ${scanStripHtml(pg)}
     <div class="wh-layout">
       <div class="wh-left">
         <div class="card">
@@ -723,7 +714,7 @@ function renderForm(pg){
     </div>
     <div class="fg"><label class="fl">จำนวน<span class="req">*</span></label><input class="fi" id="${pg}-qty" type="number" min="0" step="0.01" placeholder="0.00"></div>
     <div class="fg"><label class="fl">หน่วย</label>
-      <select class="fs" id="${pg}-unit"><option>กก.</option><option>กรัม</option><option>ชิ้น</option><option>ลิตร</option><option>มล.</option><option>แพ็ค</option><option>กล่อง</option><option>ถุง</option><option>ม้วน</option><option>แผ่น</option><option>ห่อ</option></select>
+      <select class="fs" id="${pg}-unit"><option>กรัม</option><option>กก.</option><option>ชิ้น</option><option>ลิตร</option><option>มล.</option><option>แพ็ค</option><option>กล่อง</option><option>ถุง</option><option>ม้วน</option><option>แผ่น</option><option>ห่อ</option></select>
     </div>
   </div>`;
   // Lot fields — เฉพาะคลังที่ต้องการ
@@ -910,7 +901,7 @@ function renderMasterPage(){
       </div>
       <div class="add-form-row5">
         <div class="fg"><label class="fl">สต็อกเริ่มต้น</label><input class="fi" id="new-stock" type="number" min="0" step="0.01" value="0"></div>
-        <div class="fg"><label class="fl">หน่วย</label><select class="fs" id="new-unit"><option>กก.</option><option>กรัม</option><option>ชิ้น</option><option>ลิตร</option><option>มล.</option><option>แพ็ค</option><option>กล่อง</option><option>ถุง</option><option>ม้วน</option><option>แผ่น</option></select></div>
+        <div class="fg"><label class="fl">หน่วย</label><select class="fs" id="new-unit"><option>กรัม</option><option>กก.</option><option>ชิ้น</option><option>ลิตร</option><option>มล.</option><option>แพ็ค</option><option>กล่อง</option><option>ถุง</option><option>ม้วน</option><option>แผ่น</option></select></div>
         <div class="fg"><label class="fl">Min</label><input class="fi" id="new-min" type="number" min="0" step="0.01" placeholder="0"></div>
         <div class="fg"><label class="fl">Max</label><input class="fi" id="new-max" type="number" min="0" step="0.01" placeholder="0"></div>
         <div class="fg"><label class="fl" style="opacity:0">-</label><button class="btn btn-primary" style="width:100%" onclick="addMasterItem()"><i class="ti ti-check" aria-hidden="true"></i> บันทึก</button></div>

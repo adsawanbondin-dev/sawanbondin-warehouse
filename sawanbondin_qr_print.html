@@ -3,413 +3,204 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sawanbondin — พิมพ์สติ๊กเกอร์ QR</title>
+<title>Sawanbondin — พิมพ์สติ๊กเกอร์ QR / Barcode</title>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
 <style>
-:root{
-  --ink:#1c1c1e;--ink2:#48484a;--ink3:#8e8e93;
-  --bg:#f0f0ee;--surface:#fff;--s2:#f7f7f5;
-  --line:#e4e4e0;--acc:#2c5282;--acc-bg:#ebf0f8;
-  --grn:#2d6a4f;--grn-bg:#edf5f0;
-  --r:7px;--rlg:11px;
-}
 *{box-sizing:border-box;margin:0;padding:0}
+:root{--ink:#1c1c1e;--ink2:#48484a;--ink3:#8e8e93;--bg:#f0f0ee;--surface:#fff;--s2:#f7f7f5;--line:#e4e4e0;--line2:#d0d0c8;--acc:#2c5282;--acc-bg:#ebf0f8;--r:7px;--rlg:11px;}
 body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
-
-/* ── TOP BAR ── */
 .topbar{background:#1a1a1c;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;position:sticky;top:0;z-index:100}
 .topbar-title{font-size:13px;font-weight:500}
 .topbar-sub{color:#6e6e73;font-size:11px;padding-left:9px;border-left:1px solid #3a3a3c;margin-left:7px}
-.print-btn-top{padding:7px 16px;background:var(--acc);border:none;border-radius:6px;color:#fff;font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .15s}
-.print-btn-top:hover{background:#1a3a6e}
-.print-btn-top i{font-size:15px}
-
-/* ── LAYOUT ── */
-.workspace{display:grid;grid-template-columns:320px 1fr;gap:0;min-height:calc(100vh - 48px)}
-
-/* ── SIDEBAR ── */
-.sidebar{background:var(--surface);border-right:1px solid var(--line);padding:16px;overflow-y:auto;height:calc(100vh - 48px);position:sticky;top:48px}
-.sidebar-section{margin-bottom:18px}
-.sidebar-label{font-size:10px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px}
-.search-input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);font-family:inherit;font-size:13px;color:var(--ink);outline:none;transition:border-color .15s}
+.print-btn{padding:7px 16px;background:var(--acc);border:none;border-radius:6px;color:#fff;font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px}
+.print-btn:hover{background:#1a3a6e}
+.workspace{display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 48px)}
+.sidebar{background:var(--surface);border-right:1px solid var(--line);padding:14px;overflow-y:auto;height:calc(100vh - 48px);position:sticky;top:48px}
+.sb-sec{margin-bottom:16px}
+.sb-label{font-size:10px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px}
+.search-input{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:var(--r);font-family:inherit;font-size:13px;outline:none}
 .search-input:focus{border-color:var(--acc)}
-
-/* Category filter */
-.cat-pills{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}
-.cat-pill{padding:4px 10px;border-radius:20px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:11px;font-weight:500;color:var(--ink3);transition:all .15s;white-space:nowrap}
+.cat-pills{display:flex;gap:4px;flex-wrap:wrap}
+.cat-pill{padding:3px 9px;border-radius:20px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:11px;font-weight:500;color:var(--ink3);transition:all .15s;white-space:nowrap}
 .cat-pill:hover{border-color:var(--acc);color:var(--acc)}
 .cat-pill.active{background:var(--ink);border-color:var(--ink);color:#fff}
-
-/* Item list in sidebar */
-.item-list{display:flex;flex-direction:column;gap:3px;max-height:340px;overflow-y:auto}
-.item-entry{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--line);border-radius:var(--r);cursor:pointer;transition:all .15s;background:var(--surface)}
-.item-entry:hover{border-color:var(--acc);background:var(--acc-bg)}
-.item-entry.selected{border-color:var(--acc);background:var(--acc-bg)}
-.item-entry-check{width:16px;height:16px;border:1.5px solid var(--line);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.item-entry.selected .item-entry-check{background:var(--acc);border-color:var(--acc)}
-.item-entry.selected .item-entry-check::after{content:'✓';font-size:10px;color:#fff;font-weight:700}
-.item-entry-info{flex:1;min-width:0}
-.item-entry-name{font-size:11px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.item-entry-code{font-size:10px;color:var(--acc);font-family:monospace}
-
-.select-actions{display:flex;gap:6px;margin-top:8px}
-.sel-btn{flex:1;padding:6px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);font-family:inherit;font-size:11px;cursor:pointer;color:var(--ink2);transition:all .15s}
-.sel-btn:hover{background:var(--s2);border-color:var(--line)}
-
-/* Sticker options */
-.option-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.option-label{font-size:12px;color:var(--ink2)}
-.option-control{display:flex;gap:5px;align-items:center}
-.opt-btn{padding:4px 9px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-family:inherit;font-size:11px;cursor:pointer;color:var(--ink2);transition:all .15s}
+.sel-bar{display:none;background:var(--acc-bg);border:1px solid var(--acc);border-radius:var(--r);padding:6px 10px;font-size:11px;color:var(--acc);justify-content:space-between;align-items:center;margin-bottom:6px}
+.sel-bar.show{display:flex}
+.sel-actions{display:flex;gap:5px;margin-bottom:7px}
+.sel-btn{flex:1;padding:5px 8px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);font-family:inherit;font-size:11px;cursor:pointer;color:var(--ink2)}
+.sel-btn:hover{background:var(--s2)}
+.item-list-sb{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow-y:auto}
+.item-entry{display:flex;align-items:center;gap:7px;padding:6px 9px;border:1px solid var(--line);border-radius:var(--r);cursor:pointer;transition:all .15s;background:var(--surface)}
+.item-entry:hover{border-color:var(--line2)}
+.item-entry.sel{border-color:var(--acc);background:var(--acc-bg)}
+.ie-check{width:15px;height:15px;border:1.5px solid var(--line);border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:transparent}
+.item-entry.sel .ie-check{background:var(--acc);border-color:var(--acc);color:#fff}
+.ie-info{flex:1;min-width:0}
+.ie-name{font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ie-code{font-size:10px;color:var(--acc);font-family:monospace}
+.opt-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.opt-label{font-size:12px;color:var(--ink2)}
+.opt-ctrl{display:flex;gap:4px}
+.opt-btn{padding:3px 8px;border:1px solid var(--line);border-radius:5px;background:var(--surface);font-family:inherit;font-size:11px;cursor:pointer;color:var(--ink2)}
 .opt-btn:hover,.opt-btn.active{background:var(--ink);border-color:var(--ink);color:#fff}
-.opt-input{width:56px;padding:5px 7px;border:1px solid var(--line);border-radius:5px;font-family:inherit;font-size:12px;text-align:center;outline:none}
-.opt-input:focus{border-color:var(--acc)}
-select.opt-sel{padding:5px 8px;border:1px solid var(--line);border-radius:5px;font-family:inherit;font-size:11px;color:var(--ink);background:var(--surface);outline:none;cursor:pointer}
-
-/* Selected count */
-.selected-bar{background:var(--grn-bg);border:1px solid #b0d4c0;border-radius:var(--r);padding:8px 11px;font-size:12px;color:var(--grn);display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-.selected-bar.empty{display:none}
-
-/* ── PREVIEW AREA ── */
-.preview-area{padding:20px;overflow-y:auto;background:var(--bg)}
-.preview-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.opt-sel{padding:4px 7px;border:1px solid var(--line);border-radius:5px;font-family:inherit;font-size:11px;color:var(--ink);background:var(--surface);outline:none;cursor:pointer}
+.opt-num{width:52px;padding:4px 7px;border:1px solid var(--line);border-radius:5px;font-family:inherit;font-size:12px;text-align:center;outline:none}
+.opt-num:focus{border-color:var(--acc)}
+.preview-area{padding:18px;overflow-y:auto;background:var(--bg)}
+.preview-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .preview-title{font-size:13px;font-weight:500;color:var(--ink2)}
 .preview-empty{text-align:center;padding:60px 20px;color:var(--ink3)}
-.preview-empty i{font-size:40px;display:block;margin-bottom:10px;opacity:.3}
+.preview-empty-icon{font-size:40px;display:block;margin-bottom:12px;opacity:.3}
 .preview-empty-text{font-size:13px}
-
-/* ── STICKER SHEET ── */
-.sticker-sheet{background:#fff;border-radius:var(--rlg);border:1px solid var(--line);padding:20px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
-.sticker-grid{display:grid;gap:10px}
-.sticker-grid.cols-2{grid-template-columns:repeat(2,1fr)}
-.sticker-grid.cols-3{grid-template-columns:repeat(3,1fr)}
-.sticker-grid.cols-4{grid-template-columns:repeat(4,1fr)}
-.sticker-grid.cols-5{grid-template-columns:repeat(5,1fr)}
-
-/* Sticker styles */
-.sticker{border-radius:6px;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;break-inside:avoid}
-.sticker.style-classic{border:1px solid #ccc;padding:8px;background:#fff}
-.sticker.style-modern{background:#1a1a1c;padding:8px}
-.sticker.style-minimal{border:1px dashed #ccc;padding:8px;background:#fff}
-.sticker.style-branded{border:2px solid #2c5282;padding:8px;background:#fff}
-
-.sticker canvas{display:block!important}
-.sticker-name{font-size:9px;font-weight:600;text-align:center;line-height:1.3;margin-top:5px;overflow-wrap:break-word;word-break:break-word;max-width:100%}
+.sheet{background:#fff;border-radius:var(--rlg);border:1px solid var(--line);padding:18px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+.sticker-grid{display:grid;gap:8px}
+.cols-2{grid-template-columns:repeat(2,1fr)}
+.cols-3{grid-template-columns:repeat(3,1fr)}
+.cols-4{grid-template-columns:repeat(4,1fr)}
+.cols-5{grid-template-columns:repeat(5,1fr)}
+.sticker{border-radius:6px;overflow:hidden;padding:8px;display:flex;flex-direction:column;align-items:center;break-inside:avoid}
+.sticker.classic{border:1px solid #ccc;background:#fff}
+.sticker.modern{background:#1a1a1c}
+.sticker.minimal{border:1px dashed #ccc;background:#fff}
+.sticker.branded{border:2px solid #2c5282;background:#fff}
+.sticker-name{font-size:9px;font-weight:600;text-align:center;line-height:1.3;margin-top:5px;overflow-wrap:break-word;word-break:break-word;width:100%}
 .sticker-code{font-size:8px;font-family:monospace;text-align:center;margin-top:2px}
-.sticker-sub{font-size:7px;text-align:center;margin-top:1px;opacity:.7}
-.sticker-brand{font-size:7px;font-weight:600;text-align:center;margin-top:3px;letter-spacing:.3px}
-
-/* Style-specific text colors */
-.sticker.style-modern .sticker-name{color:#fff}
-.sticker.style-modern .sticker-code{color:#8e9eb5}
-.sticker.style-modern .sticker-sub{color:#6e6e73}
-.sticker.style-modern .sticker-brand{color:#4a7ab5}
-.sticker.style-classic .sticker-name,.sticker.style-minimal .sticker-name,.sticker.style-branded .sticker-name{color:#1c1c1e}
-.sticker.style-classic .sticker-code,.sticker.style-minimal .sticker-code{color:#2c5282}
-.sticker.style-branded .sticker-code{color:#2c5282}
-.sticker.style-branded .sticker-brand{color:#2c5282}
-.sticker.style-classic .sticker-sub,.sticker.style-minimal .sticker-sub,.sticker.style-branded .sticker-sub{color:#8e8e93}
-
-/* ── PRINT STYLES ── */
+.sticker-brand{font-size:7px;font-weight:700;text-align:center;margin-top:3px;letter-spacing:.5px}
+.sticker.classic .sticker-name,.sticker.minimal .sticker-name,.sticker.branded .sticker-name{color:#1c1c1e}
+.sticker.classic .sticker-code,.sticker.minimal .sticker-code{color:#2c5282}
+.sticker.branded .sticker-code,.sticker.branded .sticker-brand{color:#2c5282}
+.sticker.classic .sticker-brand,.sticker.minimal .sticker-brand{color:#8e8e93}
+.sticker.modern .sticker-name{color:#fff}
+.sticker.modern .sticker-code{color:#8e9eb5}
+.sticker.modern .sticker-brand{color:#4a7ab5}
 @media print{
   .topbar,.sidebar,.preview-header{display:none!important}
   .workspace{display:block}
   .preview-area{padding:0}
-  .sticker-sheet{border:none;box-shadow:none;border-radius:0;padding:10mm}
+  .sheet{border:none;box-shadow:none;border-radius:0;padding:8mm}
   body{background:#fff}
-  .sticker-grid.cols-2{grid-template-columns:repeat(2,1fr)}
-  .sticker-grid.cols-3{grid-template-columns:repeat(3,1fr)}
-  .sticker-grid.cols-4{grid-template-columns:repeat(4,1fr)}
-  .sticker-grid.cols-5{grid-template-columns:repeat(5,1fr)}
   .sticker{page-break-inside:avoid}
 }
-
 @media(max-width:768px){
   .workspace{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   .sidebar{height:auto;position:static;border-right:none;border-bottom:1px solid var(--line)}
 }
 </style>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
 </head>
 <body>
-
 <div class="topbar">
   <div style="display:flex;align-items:center">
     <span class="topbar-title">Sawanbondin</span>
-    <span class="topbar-sub">พิมพ์สติ๊กเกอร์ QR Code</span>
+    <span class="topbar-sub">พิมพ์สติ๊กเกอร์ QR / Barcode</span>
   </div>
-  <button class="print-btn-top" onclick="printStickers()">
-    <i class="ti ti-printer" aria-hidden="true"></i> พิมพ์สติ๊กเกอร์
-  </button>
+  <button class="print-btn" onclick="doPrint()"><i class="ti ti-printer" aria-hidden="true"></i> พิมพ์สติ๊กเกอร์</button>
 </div>
-
 <div class="workspace">
-  <!-- SIDEBAR -->
   <div class="sidebar">
-    <div class="sidebar-section">
-      <div class="sidebar-label">ค้นหารายการ</div>
-      <input class="search-input" id="searchInput" placeholder="พิมพ์ชื่อหรือรหัส..." oninput="filterItems()">
+    <div class="sb-sec">
+      <div class="sb-label">ค้นหา</div>
+      <input class="search-input" id="searchInput" placeholder="ชื่อหรือรหัส..." oninput="filterItems()">
     </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-label">หมวดหมู่</div>
+    <div class="sb-sec">
+      <div class="sb-label">หมวดหมู่</div>
       <div class="cat-pills" id="catPills"></div>
     </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-label">รายการ</div>
-      <div class="selected-bar" id="selectedBar">
-        <span id="selectedCount">เลือก 0 รายการ</span>
-        <span style="font-size:11px;cursor:pointer;opacity:.8" onclick="clearAll()">ล้างทั้งหมด</span>
-      </div>
-      <div class="select-actions">
+    <div class="sb-sec">
+      <div class="sb-label">รายการ</div>
+      <div class="sel-bar" id="selBar"><span id="selCount">เลือก 0 รายการ</span><span style="cursor:pointer;font-size:11px" onclick="clearAll()">ล้างทั้งหมด</span></div>
+      <div class="sel-actions">
         <button class="sel-btn" onclick="selectAll()">เลือกทั้งหมด</button>
         <button class="sel-btn" onclick="clearAll()">ยกเลิกทั้งหมด</button>
       </div>
-      <div style="margin-top:6px" id="itemList"></div>
+      <div id="itemListSb"></div>
     </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-label">ตั้งค่าสติ๊กเกอร์</div>
-      <div class="option-row">
-        <span class="option-label">รูปแบบ</span>
-        <select class="opt-sel" id="styleOpt" onchange="renderPreview()">
-          <option value="classic">Classic (ขาว)</option>
-          <option value="modern">Modern (ดำ)</option>
-          <option value="minimal">Minimal (เส้นประ)</option>
-          <option value="branded">Branded (กรอบน้ำเงิน)</option>
-        </select>
-      </div>
-      <div class="option-row">
-        <span class="option-label">จำนวนคอลัมน์</span>
-        <div class="option-control">
-          <button class="opt-btn" id="col2btn" onclick="setCols(2)">2</button>
-          <button class="opt-btn active" id="col3btn" onclick="setCols(3)">3</button>
-          <button class="opt-btn" id="col4btn" onclick="setCols(4)">4</button>
-          <button class="opt-btn" id="col5btn" onclick="setCols(5)">5</button>
-        </div>
-      </div>
-      <div class="option-row">
-        <span class="option-label">ขนาด QR (px)</span>
-        <input class="opt-input" id="qrSizeOpt" type="number" value="80" min="48" max="160" step="8" onchange="renderPreview()">
-      </div>
-      <div class="option-row">
-        <span class="option-label">แสดงชื่อ</span>
-        <div class="option-control">
-          <button class="opt-btn active" id="showNameOn" onclick="setShowName(true)">ใช่</button>
-          <button class="opt-btn" id="showNameOff" onclick="setShowName(false)">ไม่</button>
-        </div>
-      </div>
-      <div class="option-row">
-        <span class="option-label">แสดงหน่วยงาน</span>
-        <div class="option-control">
-          <button class="opt-btn active" id="showBrandOn" onclick="setShowBrand(true)">ใช่</button>
-          <button class="opt-btn" id="showBrandOff" onclick="setShowBrand(false)">ไม่</button>
-        </div>
-      </div>
-      <div class="option-row">
-        <span class="option-label">จำนวนชุดต่อรายการ</span>
-        <input class="opt-input" id="copiesOpt" type="number" value="1" min="1" max="20" onchange="renderPreview()">
-      </div>
+    <div class="sb-sec">
+      <div class="sb-label">ตั้งค่าสติ๊กเกอร์</div>
+      <div class="opt-row"><span class="opt-label">รูปแบบ</span><select class="opt-sel" id="styleOpt" onchange="renderPreview()"><option value="classic">Classic (ขาว)</option><option value="modern">Modern (ดำ)</option><option value="minimal">Minimal</option><option value="branded">Branded</option></select></div>
+      <div class="opt-row"><span class="opt-label">QR Code</span><div class="opt-ctrl"><button class="opt-btn active" id="qrOn" onclick="toggle('showQR',true,'qrOn','qrOff')">แสดง</button><button class="opt-btn" id="qrOff" onclick="toggle('showQR',false,'qrOn','qrOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">Barcode เส้น</span><div class="opt-ctrl"><button class="opt-btn" id="bcOn" onclick="toggle('showBC',true,'bcOn','bcOff')">แสดง</button><button class="opt-btn active" id="bcOff" onclick="toggle('showBC',false,'bcOn','bcOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">ชื่อรายการ</span><div class="opt-ctrl"><button class="opt-btn active" id="nmOn" onclick="toggle('showName',true,'nmOn','nmOff')">แสดง</button><button class="opt-btn" id="nmOff" onclick="toggle('showName',false,'nmOn','nmOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">หน่วยงาน</span><div class="opt-ctrl"><button class="opt-btn active" id="brOn" onclick="toggle('showBrand',true,'brOn','brOff')">แสดง</button><button class="opt-btn" id="brOff" onclick="toggle('showBrand',false,'brOn','brOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">คอลัมน์</span><div class="opt-ctrl"><button class="opt-btn" id="c2" onclick="setCols(2)">2</button><button class="opt-btn active" id="c3" onclick="setCols(3)">3</button><button class="opt-btn" id="c4" onclick="setCols(4)">4</button><button class="opt-btn" id="c5" onclick="setCols(5)">5</button></div></div>
+      <div class="opt-row"><span class="opt-label">ขนาด QR (px)</span><input class="opt-num" id="qrSize" type="number" value="80" min="48" max="160" step="8" onchange="renderPreview()"></div>
+      <div class="opt-row"><span class="opt-label">จำนวนชุด/รายการ</span><input class="opt-num" id="copies" type="number" value="1" min="1" max="20" onchange="renderPreview()"></div>
     </div>
   </div>
-
-  <!-- PREVIEW -->
   <div class="preview-area">
-    <div class="preview-header">
-      <span class="preview-title">ตัวอย่างสติ๊กเกอร์</span>
-      <span style="font-size:11px;color:var(--ink3)" id="stickerCount"></span>
-    </div>
-    <div id="previewArea">
-      <div class="preview-empty">
-        <i class="ti ti-qrcode" aria-hidden="true"></i>
-        <div class="preview-empty-text">เลือกรายการจากแถบซ้ายเพื่อดูตัวอย่างสติ๊กเกอร์</div>
-      </div>
-    </div>
+    <div class="preview-header"><span class="preview-title">ตัวอย่างสติ๊กเกอร์</span><span style="font-size:11px;color:var(--ink3)" id="stickerCount"></span></div>
+    <div id="previewArea"><div class="preview-empty"><i class="ti ti-qrcode preview-empty-icon" aria-hidden="true"></i><div class="preview-empty-text">เลือกรายการจากแถบซ้ายเพื่อดูตัวอย่าง</div></div></div>
   </div>
 </div>
-
 <script>
-/* ══════════════════════════════
-   DATA — รายการทั้งหมด
-══════════════════════════════ */
 const PREFIX='SWBD';
-const CATALOG=[
-  // วัตถุดิบ PD
-  ...['ชานมเขียวมะลิ','ชานมปู่หมื่น','ชานมหอมนวล','ผงชากระเจี๊ยบ','ผงชาเก๊กฮวย','ผงชาเจียวกู่หลาน','ผงชาตะไคร้','ผงชามะตูม','ชาอัญชัน','ผงนมธัญพีช','ผงชาภาวนา','ผงชานมัสการ','ฝางผง','ชะเอมผง','ผงธัญพีชรสจืด','Fos','Coconut Cream','Dry Malt','Innulin','Maltodextrin','Sea Holly'].map((n,i)=>({name:n,code:`${PREFIX}-RM-PD-${String(i+1).padStart(4,'0')}`,cat:'วัตถุดิบ',sub:'PD'})),
-  // วัตถุดิบ Raw
-  ...['ฝางบดหยาบ','ฝางแท่ง','ดอกเก๊กฮวย (เชียงใหม่)','มะตูม','ตะไคร้ (เพชรบุรี)','เจียวกู่หลาน (เชียงราย)','ชะเอมแผ่น','พุทราจีน','พุดจีน','พีชฟรีสดราย','แอบเปิ้ลฟรีสดราย','Ginger','ทุเรียนฟรีสดราย','มะพร้าวฟรีสดราย','Organic hom Ubon brown Rice','Organic hom Ubon black Rice','ข้าวญี่ปุ่น ออร์แกนิค','ข้าวคั่วญี่ปุ่นออร์แกนิค','Rai Dawk Kha Rice','Cacao nibs','ผิวส้มยูสุ ญี่ปุ่น','ขิงแห้ง (หัวเฉียว)','เก๊ากี๊แห้ง (หัวเฉียว)','พุทราจีนแห้ง (หัวเฉียว)','ฉาวไปจู๋แห้ง (หัวเฉียว)','เหลียนเซี่ยว (หัวเฉียว)','ดอกคำฝอย (หัวเฉียว)','ดอกกุหลาบ (หัวเฉียว)','ชะเอมเทศ (หัวเฉียว)','ข้าวบาร์เลย์ (หัวเฉียว)','ตังกุย (หัวเฉียว)','สู่ตี้หวง (หัวเฉียว)'].map((n,i)=>({name:n,code:`${PREFIX}-RM-RW-${String(i+1).padStart(4,'0')}`,cat:'วัตถุดิบ',sub:'Raw'})),
-  // วัตถุดิบ Fw
-  ...['ดอกเก๊กฮวย (swbd)','ดอกเก๊กฮวย เมลลาร์ด','ดอกกระเจี๊ยบ (เพชรบุรี)','ดอกกระเจี๊ยบ บ่มส้ม','ดอกอัญชัน (เพชรบุรี)','อัญชัน เมลลาร์ด','อัญชัน บ่ม Peppermint oil','ดอกคาโมมายล์ (เชียงใหม่)','ดอกหอมหมื่นลี้ (เชียงใหม่)','ดอกคำฝอย','ดอกมะลิ','ดอกบัวแดง','Negkassar','Elder flower','Saffron','ลาเวนเดอร์'].map((n,i)=>({name:n,code:`${PREFIX}-RM-FW-${String(i+1).padStart(4,'0')}`,cat:'วัตถุดิบ',sub:'Fw'})),
-  // วัตถุดิบ LL
-  ...['ใบเตย (เพชรบุรี)','ใบเตย เมลลาร์ด','หญ้าหวาน (เชียงใหม่)','Mulberry leaves','Mulberry leaves Hojicha','White Mugwort','Indian Borage','ใบหม่อนโฮจิฉะ บ่มน้ำมันผิวส้ม','ชาดำอัสสัมปู่หมื่น เกรด B','ดอกลาเวนเดอร์ บ่มน้ำมันเบอร์กามอต','ชาดำ บ่มราซเบอรี่','จินเซียนโชคจำเริญ บ่มไวท์พีช','ชาดำ บ่มน้ำมะพร้าว','ทับทิมสยาม บ่มมะม่วง','ชาดำ บ่มทุเรียน','ชาดำ บ่มวนิลา (01)','สยามจัสมิน','ชาเขียวคั่วอัสสัมโชคจำเริญ','ชาดำ อัสสัม โชคจำเริญ เกรด B','อู่หลงจินเซียน เกรด B','ชาทับทิม เกรด B','ชาขาว อัสสัม โชคจำเริญ','ตงฟางหง','Hom Khao Green Tea','ชานางงาม Oriental Beauty 2025'].map((n,i)=>({name:n,code:`${PREFIX}-RM-LL-${String(i+1).padStart(4,'0')}`,cat:'วัตถุดิบ',sub:'LL'})),
-  // บรรจุภัณฑ์
-  ...['ฟอยล์เงินเล็ก 7x10 cm','ฟอยล์ขาวเล็ก 9x10 cm','ฟอยล์เงินกลาง 11x16 cm','ถุงซิปล็อค ฟอยล์เงิน 10x15 cm','ถุงซิปล็อค ฟอยล์เงิน ตั้งได้ 10x15 cm','ฟอยล์เงินใหญ่ 23.5x54.5 cm','ถุงใส่เมล็ดกาแฟ ตั้งได้ 13.5x26.5+7.5cm','ถุงใส่เมล็ดกาแฟ ตั้งได้ 15x32.5+10cm','ซองซีล 3 ด้าน สีดำ 9x13 ซม.','ถุงซิปล็อคดำใหญ่ ชาผง 100 กรัม','ห่อเล็ก 10 ซอง','ห่อใหญ่ 20 ซอง','ฟอยล์เงิน 20x30 cm','ฟอยล์เงิน 22x29 cm','สวนดอกไม้ — ซองสกรีน','ขนมไทย — ซองสกรีน 2 ด้าน','นมัสการ — ซองสกรีนด้านเดียว','นมัสการ — ซองสกรีน 2 ด้าน','เฮ้าส์ ออฟ เมจิก — ซองสกรีน','หอมข้าว — ซองสกรีนด้านเดียว','หอมข้าว — ซองสกรีนสองด้าน','อู่หลงจัสมิน — ซองสกรีนด้านเดียว','สยามจัสมิน — ซองสกรีน 2 ด้าน','สยามเอิร์ลเกรย์ — ซองสกรีน 2 ด้าน','สยามเบรคฟัส — ซองสกรีน 2 ด้าน','Black Tea & Cacao — ซองสกรีน 2 ด้าน','เอิร์ลเกรย์ — ซองสกรีนด้านเดียว','นมัสการ — กล่อง','ภาวนา — กล่อง','ขนมไทย TOP แบบ 5 ซอง — กล่อง','สวนดอกไม้ TOP แบบ 5 ซอง — กล่อง','กล่องคราฟเขียว','กล่องคราฟน้ำตาล','กระปุกชา 6 เหลี่ยม','กระปุกชา 4 เหลี่ยม','ตะกร้าสานเล็ก','ตะกร้าสานใหญ่','เยื่อไม่มีโลโก้ หน่วยละ 1,000 ชิ้น','เยื่อสวรรค์บนดิน หน่วยละ 3,000 ชิ้น','เยื่อ 10x12 cm','เยื่อคาเฟ่'].map((n,i)=>({name:n,code:`${PREFIX}-PK-${String(i+1).padStart(4,'0')}`,cat:'บรรจุภัณฑ์',sub:'PK'})),
-  // อุปกรณ์
-  ...['ซาโตรี่ ถุงมือยางทางการแพทย์ ไม่มีแป้ง S','ซาโตรี่ ถุงมือยางทางการแพทย์ ไม่มีแป้ง M','ซาโตรี่ ถุงมือยางทางการแพทย์ ไม่มีแป้ง L','หมวกคลุมผมใช้แล้วทิ้ง (50 ชิ้น / ถุง)','หมวกคลุมผมสีดำ','หมวกคลุมผมสีขาว','หน้ากากอนามัย','ถุงซิปล็อคใส 15x23 ซม.','ถุงซิปล็อคใส 25x38 ซม.','ถุงซิปล็อคใส 30x45 ซม.','ถุงร้อน 20x30 ซม.','ถุงร้อน 24x42 ซม.','ถุงขยะ 18x20 ซม.','ถุงขยะ 28x36 ซม.','กระดาษทิชชู (1 แพ็ค / 4 ห่อ)','กาวร้อน (10 อัน / กล่อง)','กาว UHU','น้ำยาลบหมึก IMARK WL-150','ตลับหมึก BROTHER TN-1000','กาวสองหน้าแบบบาง 12 มม.','กาวสองหน้าแบบบาง 6 มม.','สายพานฟันเฟือง 31.5','สายพานเทปล่อน 38.5','สายพานเทปล่อน 37.5'].map((n,i)=>({name:n,code:`${PREFIX}-EQ-${String(i+1).padStart(4,'0')}`,cat:'อุปกรณ์',sub:'EQ'})),
-];
+const CATALOG=[];
+const push=(items,pfx,cat)=>items.forEach((n,i)=>CATALOG.push({name:n,code:`${PREFIX}-${pfx}-${String(i+1).padStart(4,'0')}`,cat}));
 
-/* ══ STATE ══ */
-let selected=new Set();
-let currentCat='ทั้งหมด';
-let cols=3;
-let showName=true;
-let showBrand=true;
+push(['ชานมเขียวมะลิ','ชานมปู่หมื่น','ชานมหอมนวล','ผงชากระเจี๊ยบ','ผงชาเก๊กฮวย','ผงชาเจียวกู่หลาน','ผงชาตะไคร้','ผงชามะตูม','ชาอัญชัน','ผงนมธัญพีช','ผงชาภาวนา','ผงชานมัสการ','ฝางผง','ชะเอมผง','ผงธัญพีชรสจืด','Fos','Coconut Cream','Dry Malt','Innulin','Maltodextrin','Sea Holly'],'RM-PD','วัตถุดิบ');
+push(['ฝางบดหยาบ','ฝางแท่ง','ดอกเก๊กฮวย (เชียงใหม่)','มะตูม','ตะไคร้ (เพชรบุรี)','เจียวกู่หลาน (เชียงราย)','ชะเอมแผ่น','พุทราจีน','พุดจีน','พีชฟรีสดราย','แอบเปิ้ลฟรีสดราย','Ginger','ทุเรียนฟรีสดราย','มะพร้าวฟรีสดราย','Organic hom Ubon brown Rice','Organic hom Ubon black Rice','ข้าวญี่ปุ่น ออร์แกนิค','ข้าวคั่วญี่ปุ่นออร์แกนิค','Rai Dawk Kha Rice','Cacao nibs','ผิวส้มยูสุ ญี่ปุ่น','ขิงแห้ง (หัวเฉียว)','เก๊ากี๊แห้ง (หัวเฉียว)','พุทราจีนแห้ง (หัวเฉียว)','ฉาวไปจู๋แห้ง (หัวเฉียว)','เหลียนเซี่ยว (หัวเฉียว)','ดอกคำฝอย (หัวเฉียว)','ดอกกุหลาบ (หัวเฉียว)','ชะเอมเทศ (หัวเฉียว)','ข้าวบาร์เลย์ (หัวเฉียว)','ตังกุย (หัวเฉียว)','สู่ตี้หวง (หัวเฉียว)'],'RM-RW','วัตถุดิบ');
+push(['ดอกเก๊กฮวย (swbd)','ดอกเก๊กฮวย เมลลาร์ด','ดอกกระเจี๊ยบ (เพชรบุรี)','ดอกกระเจี๊ยบ บ่มส้ม','ดอกอัญชัน (เพชรบุรี)','อัญชัน เมลลาร์ด','อัญชัน บ่ม Peppermint oil','ดอกคาโมมายล์ (เชียงใหม่)','ดอกหอมหมื่นลี้ (เชียงใหม่)','ดอกคำฝอย','ดอกมะลิ','ดอกบัวแดง','Negkassar','Elder flower','Saffron','ลาเวนเดอร์'],'RM-FW','วัตถุดิบ');
+push(['ใบเตย (เพชรบุรี)','ใบเตย เมลลาร์ด','หญ้าหวาน (เชียงใหม่)','Mulberry leaves','Mulberry leaves Hojicha','White Mugwort','Indian Borage','ใบหม่อนโฮจิฉะ บ่มน้ำมันผิวส้ม','ชาดำอัสสัมปู่หมื่น เกรด B','ดอกลาเวนเดอร์ บ่มน้ำมันเบอร์กามอต','ชาดำ บ่มราซเบอรี่','จินเซียนโชคจำเริญ บ่มไวท์พีช','ชาดำ บ่มน้ำมะพร้าว','ทับทิมสยาม บ่มมะม่วง','ชาดำ บ่มทุเรียน','ชาดำ บ่มวนิลา (01)','สยามจัสมิน','ชาเขียวคั่วอัสสัมโชคจำเริญ','ชาดำ อัสสัม โชคจำเริญ เกรด B','อู่หลงจินเซียน เกรด B','ชาทับทิม เกรด B','ชาขาว อัสสัม โชคจำเริญ','ตงฟางหง','Hom Khao Green Tea','ชานางงาม Oriental Beauty 2025'],'RM-LL','วัตถุดิบ');
+push(['Yame Standard 110','Yame Upper 170','Uji 180','Uji Upper 250','Kagoshima','Oriental Beauty','Golden Tips','Mae ai','Hin Lad Nai','Baking Oolong','Black Tea White Peach','Siam Jasmine','Siam Earl Grey'],'MC','ชาบดผงมัตจะ');
+push(['ฟอยล์เงินเล็ก 7x10 cm','ฟอยล์ขาวเล็ก 9x10 cm','ฟอยล์เงินกลาง 11x16 cm','ถุงซิปล็อค ฟอยล์เงิน 10x15 cm','ถุงซิปล็อค ฟอยล์เงิน ตั้งได้ 10x15 cm','ฟอยล์เงินใหญ่ 23.5x54.5 cm','ถุงใส่เมล็ดกาแฟ ตั้งได้ 13.5x26.5+7.5cm','ถุงใส่เมล็ดกาแฟ ตั้งได้ 15x32.5+10cm','ซองซีล 3 ด้าน สีดำ 9x13 ซม.','ถุงซิปล็อคดำใหญ่ ชาผง 100 กรัม','ห่อเล็ก 10 ซอง','ห่อใหญ่ 20 ซอง','ฟอยล์เงิน 20x30 cm','ฟอยล์เงิน 22x29 cm','สวนดอกไม้ — ซองสกรีน','ขนมไทย — ซองสกรีน 2 ด้าน','นมัสการ — ซองสกรีนด้านเดียว','นมัสการ — ซองสกรีน 2 ด้าน','เฮ้าส์ ออฟ เมจิก — ซองสกรีน','หอมข้าว — ซองสกรีนด้านเดียว','หอมข้าว — ซองสกรีนสองด้าน','อู่หลงจัสมิน — ซองสกรีนด้านเดียว','สยามจัสมิน — ซองสกรีน 2 ด้าน','สยามเอิร์ลเกรย์ — ซองสกรีน 2 ด้าน','สยามเบรคฟัส — ซองสกรีน 2 ด้าน','Black Tea & Cacao — ซองสกรีน 2 ด้าน','เอิร์ลเกรย์ — ซองสกรีนด้านเดียว','นมัสการ — กล่อง','ภาวนา — กล่อง','ขนมไทย TOP แบบ 5 ซอง — กล่อง','สวนดอกไม้ TOP แบบ 5 ซอง — กล่อง','กล่องคราฟเขียว','กล่องคราฟน้ำตาล','กระปุกชา 6 เหลี่ยม','กระปุกชา 4 เหลี่ยม','ตะกร้าสานเล็ก','ตะกร้าสานใหญ่','เยื่อไม่มีโลโก้ หน่วยละ 1,000 ชิ้น','เยื่อสวรรค์บนดิน หน่วยละ 3,000 ชิ้น','เยื่อ 10x12 cm','เยื่อคาเฟ่'],'PK','บรรจุภัณฑ์');
+push(['ซาโตรี่ ถุงมือยางทางการแพทย์ ไม่มีแป้ง S (100 ชิ้น)','ซาโตรี่ ถุงมือยางทางการแพทย์ ไม่มีแป้ง M (100 ชิ้น)','ซาโตรี่ ถุงมือยางทางการแพทย์ ไม่มีแป้ง L (100 ชิ้น)','หมวกคลุมผมใช้แล้วทิ้ง (50 ชิ้น / ถุง)','หมวกคลุมผมสีดำ','หมวกคลุมผมสีขาว','หน้ากากอนามัย','ถุงซิปล็อคใส 15x23 ซม.','ถุงซิปล็อคใส 25x38 ซม.','ถุงซิปล็อคใส 30x45 ซม.','ถุงร้อน 20x30 ซม.','ถุงร้อน 24x42 ซม.','ถุงขยะ 18x20 ซม.','ถุงขยะ 28x36 ซม.','กระดาษทิชชู (1 แพ็ค / 4 ห่อ)','กาวร้อน (10 อัน / กล่อง)','กาว UHU','น้ำยาลบหมึก IMARK WL-150','ตลับหมึก BROTHER TN-1000','กาวสองหน้าแบบบาง 12 มม.','กาวสองหน้าแบบบาง 6 มม.','สายพานฟันเฟือง 31.5','สายพานเทปล่อน 38.5','สายพานเทปล่อน 37.5'],'EQ','อุปกรณ์');
 
-/* ══ INIT ══ */
+let selected=new Set(),currentCat='ทั้งหมด',cols=3;
+let showQR=true,showBC=false,showName=true,showBrand=true;
+
 function init(){
-  buildCatPills();
-  filterItems();
-}
-
-function buildCatPills(){
   const cats=['ทั้งหมด',...new Set(CATALOG.map(i=>i.cat))];
-  const container=document.getElementById('catPills');
-  container.innerHTML=cats.map(c=>`<div class="cat-pill${c===currentCat?' active':''}" onclick="setCat('${c}',this)">${c}</div>`).join('');
-}
-
-function setCat(c,el){
-  currentCat=c;
-  document.querySelectorAll('.cat-pill').forEach(p=>p.classList.remove('active'));
-  el.classList.add('active');
+  document.getElementById('catPills').innerHTML=cats.map(c=>`<div class="cat-pill${c===currentCat?' active':''}" onclick="setCat('${c.replace(/'/g,'\\\')}',this)">${c}</div>`).join('');
   filterItems();
 }
-
+function setCat(c,el){currentCat=c;document.querySelectorAll('.cat-pill').forEach(p=>p.classList.remove('active'));el.classList.add('active');filterItems();}
 function filterItems(){
   const q=(document.getElementById('searchInput').value||'').toLowerCase();
-  const items=CATALOG.filter(item=>{
-    const matchCat=currentCat==='ทั้งหมด'||item.cat===currentCat;
-    const matchQ=!q||item.name.toLowerCase().includes(q)||item.code.toLowerCase().includes(q);
-    return matchCat&&matchQ;
-  });
-  const list=document.getElementById('itemList');
-  list.innerHTML=items.map(item=>`
-    <div class="item-entry${selected.has(item.code)?' selected':''}" onclick="toggleItem('${item.code}')">
-      <div class="item-entry-check"></div>
-      <div class="item-entry-info">
-        <div class="item-entry-name">${item.name}</div>
-        <div class="item-entry-code">${item.code}</div>
-      </div>
-    </div>`).join('');
-  updateSelectedBar();
+  const items=CATALOG.filter(i=>(currentCat==='ทั้งหมด'||i.cat===currentCat)&&(!q||i.name.toLowerCase().includes(q)||i.code.toLowerCase().includes(q)));
+  document.getElementById('itemListSb').innerHTML=`<div class="item-list-sb">${items.map(it=>`<div class="item-entry${selected.has(it.code)?' sel':''}" onclick="toggleItem('${it.code}')"><div class="ie-check">${selected.has(it.code)?'✓':''}</div><div class="ie-info"><div class="ie-name">${it.name}</div><div class="ie-code">${it.code}</div></div></div>`).join('')}</div>`;
+  updateSelBar();
 }
-
-function toggleItem(code){
-  if(selected.has(code))selected.delete(code);
-  else selected.add(code);
-  filterItems();
-  renderPreview();
-}
-
-function selectAll(){
-  const q=(document.getElementById('searchInput').value||'').toLowerCase();
-  CATALOG.filter(i=>{
-    const matchCat=currentCat==='ทั้งหมด'||i.cat===currentCat;
-    const matchQ=!q||i.name.toLowerCase().includes(q)||i.code.toLowerCase().includes(q);
-    return matchCat&&matchQ;
-  }).forEach(i=>selected.add(i.code));
-  filterItems();renderPreview();
-}
-
+function toggleItem(code){if(selected.has(code))selected.delete(code);else selected.add(code);filterItems();renderPreview();}
+function selectAll(){const q=(document.getElementById('searchInput').value||'').toLowerCase();CATALOG.filter(i=>(currentCat==='ทั้งหมด'||i.cat===currentCat)&&(!q||i.name.toLowerCase().includes(q)||i.code.toLowerCase().includes(q))).forEach(i=>selected.add(i.code));filterItems();renderPreview();}
 function clearAll(){selected.clear();filterItems();renderPreview();}
+function updateSelBar(){const bar=document.getElementById('selBar');if(selected.size>0){bar.classList.add('show');document.getElementById('selCount').textContent=`เลือก ${selected.size} รายการ`;}else bar.classList.remove('show');}
+function toggle(key,val,onId,offId){if(key==='showQR')showQR=val;else if(key==='showBC')showBC=val;else if(key==='showName')showName=val;else if(key==='showBrand')showBrand=val;document.getElementById(onId).classList.toggle('active',val);document.getElementById(offId).classList.toggle('active',!val);renderPreview();}
+function setCols(n){cols=n;[2,3,4,5].forEach(c=>document.getElementById('c'+c).classList.toggle('active',c===n));renderPreview();}
 
-function updateSelectedBar(){
-  const bar=document.getElementById('selectedBar');
-  const count=document.getElementById('selectedCount');
-  if(selected.size>0){bar.classList.remove('empty');count.textContent=`เลือก ${selected.size} รายการ`;}
-  else bar.classList.add('empty');
-}
-
-function setCols(n){
-  cols=n;
-  [2,3,4,5].forEach(c=>{
-    const b=document.getElementById(`col${c}btn`);
-    if(b)b.classList.toggle('active',c===n);
-  });
-  renderPreview();
-}
-function setShowName(v){
-  showName=v;
-  document.getElementById('showNameOn').classList.toggle('active',v);
-  document.getElementById('showNameOff').classList.toggle('active',!v);
-  renderPreview();
-}
-function setShowBrand(v){
-  showBrand=v;
-  document.getElementById('showBrandOn').classList.toggle('active',v);
-  document.getElementById('showBrandOff').classList.toggle('active',!v);
-  renderPreview();
-}
-
-/* ══ RENDER PREVIEW ══ */
 function renderPreview(){
   const area=document.getElementById('previewArea');
-  const countEl=document.getElementById('stickerCount');
-  if(selected.size===0){
-    area.innerHTML=`<div class="preview-empty"><i class="ti ti-qrcode" aria-hidden="true"></i><div class="preview-empty-text">เลือกรายการจากแถบซ้ายเพื่อดูตัวอย่างสติ๊กเกอร์</div></div>`;
-    countEl.textContent='';return;
-  }
+  const cntEl=document.getElementById('stickerCount');
+  if(!selected.size){area.innerHTML=`<div class="preview-empty"><i class="ti ti-qrcode preview-empty-icon" aria-hidden="true"></i><div class="preview-empty-text">เลือกรายการจากแถบซ้ายเพื่อดูตัวอย่าง</div></div>`;cntEl.textContent='';return;}
   const style=document.getElementById('styleOpt').value;
-  const qrSize=parseInt(document.getElementById('qrSizeOpt').value)||80;
-  const copies=parseInt(document.getElementById('copiesOpt').value)||1;
+  const qrSz=parseInt(document.getElementById('qrSize').value)||80;
+  const copies=parseInt(document.getElementById('copies').value)||1;
   const items=CATALOG.filter(i=>selected.has(i.code));
-
-  // expand by copies
-  const expanded=[];
-  items.forEach(item=>{for(let c=0;c<copies;c++)expanded.push(item);});
-
-  countEl.textContent=`${expanded.length} สติ๊กเกอร์`;
-
-  area.innerHTML=`<div class="sticker-sheet"><div class="sticker-grid cols-${cols}" id="stickerGrid"></div></div>`;
-  const grid=document.getElementById('stickerGrid');
-
-  expanded.forEach((item,idx)=>{
-    const div=document.createElement('div');
-    div.className=`sticker style-${style}`;
-
-    const canvas=document.createElement('canvas');
-    div.appendChild(canvas);
-
-    if(showName){
-      const nameEl=document.createElement('div');
-      nameEl.className='sticker-name';
-      nameEl.textContent=item.name;
-      div.appendChild(nameEl);
+  const expanded=[];items.forEach(it=>{for(let c=0;c<copies;c++)expanded.push(it);});
+  cntEl.textContent=`${expanded.length} สติ๊กเกอร์`;
+  area.innerHTML=`<div class="sheet"><div class="sticker-grid cols-${cols}" id="grid"></div></div>`;
+  const grid=document.getElementById('grid');
+  const isDark=style==='modern';
+  expanded.forEach(item=>{
+    const div=document.createElement('div');div.className=`sticker ${style}`;
+    if(showQR){
+      const canvas=document.createElement('canvas');div.appendChild(canvas);
+      try{new QRCode(canvas,{text:item.code,width:qrSz,height:qrSz,colorDark:isDark?'#ffffff':'#1a1a1c',colorLight:isDark?'#1a1a1c':'#ffffff',correctLevel:QRCode.CorrectLevel.M});}catch(e){}
     }
-
-    const codeEl=document.createElement('div');
-    codeEl.className='sticker-code';
-    codeEl.textContent=item.code;
-    div.appendChild(codeEl);
-
-    if(showBrand){
-      const brandEl=document.createElement('div');
-      brandEl.className='sticker-brand';
-      brandEl.textContent='SAWANBONDIN';
-      div.appendChild(brandEl);
+    if(showBC){
+      const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.style.cssText='display:block;margin:4px auto 0;max-width:100%';
+      div.appendChild(svg);
+      try{JsBarcode(svg,item.code,{format:'CODE128',width:1.2,height:30,displayValue:false,lineColor:isDark?'#fff':'#1a1a1c',background:isDark?'#1a1a1c':'#fff',margin:2});}catch(e){}
     }
-
+    if(showName){const el=document.createElement('div');el.className='sticker-name';el.textContent=item.name;div.appendChild(el);}
+    const cd=document.createElement('div');cd.className='sticker-code';cd.textContent=item.code;div.appendChild(cd);
+    if(showBrand){const br=document.createElement('div');br.className='sticker-brand';br.textContent='SAWANBONDIN';div.appendChild(br);}
     grid.appendChild(div);
-
-    const isDark=style==='modern';
-    try{
-      new QRCode(canvas,{
-        text:item.code,
-        width:qrSize,
-        height:qrSize,
-        colorDark:isDark?'#ffffff':'#1a1a1c',
-        colorLight:isDark?'#1a1a1c':'#ffffff',
-        correctLevel:QRCode.CorrectLevel.M
-      });
-    }catch(e){console.error('QR error',e);}
   });
 }
 
-function printStickers(){
-  if(selected.size===0){alert('กรุณาเลือกรายการก่อนพิมพ์');return;}
-  window.print();
-}
-
+function doPrint(){if(!selected.size){alert('กรุณาเลือกรายการก่อนพิมพ์');return;}window.print();}
 init();
 </script>
 </body>
