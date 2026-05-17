@@ -6,6 +6,7 @@
 <title>Sawanbondin — ระบบจัดการคลัง</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -395,7 +396,7 @@ function closeQR(){document.getElementById('qrSidebar').classList.remove('show')
 function buildQRList(pg){const list=document.getElementById('qrList');list.innerHTML='';masterDB.filter(m=>m.pg===pg).slice(0,50).forEach(m=>{const row=document.createElement('div');row.className='qr-list-item';const canvas=document.createElement('canvas');const info=document.createElement('div');info.className='qr-list-info';const nm=document.createElement('div');nm.className='qr-list-name';nm.textContent=m.name;const cd=document.createElement('div');cd.className='qr-list-code';cd.textContent=m.code;const st=document.createElement('div');st.className='qr-list-stock';st.textContent=`สต็อก: ${m.stock} ${m.unit}`;info.appendChild(nm);info.appendChild(cd);info.appendChild(st);row.appendChild(canvas);row.appendChild(info);list.appendChild(row);try{new QRCode(canvas,{text:m.code,width:60,height:60,colorDark:'#1c1c1e',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});}catch(e){}});}
 function doQRScan(){const code=(document.getElementById('qr-scan-input').value||'').trim();const action=document.getElementById('qr-scan-action').value;const qty=parseFloat(document.getElementById('qr-scan-qty').value||1);const res=document.getElementById('qr-scan-result');if(!code){res.className='qr-result err';res.textContent='กรุณาสแกนหรือพิมพ์รหัสก่อน';setTimeout(()=>res.className='qr-result',2500);return;}if(!qty||qty<=0){alert('กรุณาระบุจำนวน');return;}const m=masterDB.find(x=>x.code.toLowerCase()===code.toLowerCase());if(!m){res.className='qr-result err';res.textContent=`ไม่พบรหัส "${code}"`;setTimeout(()=>res.className='qr-result',3000);return;}if(action==='receive'||action==='return_good')m.stock+=qty;else if(action==='withdraw')m.stock=Math.max(0,m.stock-qty);const pg=m.pg;ST[pg].records.unshift({time:tnow(),_ts:Date.now(),type:action,typeLabel:AL[action],name:'(QR สแกน)',dept:getDepts(pg)[0],item:m.name,code:m.code,qty,unit:m.unit,lotSW:'-',pg,via:'scan'});checkAlerts();if(currentQRPage===pg)renderHistory(pg);res.className='qr-result ok';res.textContent=`${AL[action]} "${m.name}" ${qty} ${m.unit}${action==='return_bad'?' [ไม่หักสต็อก]':''} · สต็อก ${m.stock} ${m.unit}`;document.getElementById('qr-scan-input').value='';document.getElementById('qr-scan-qty').value='1';buildQRList(pg);setTimeout(()=>res.className='qr-result',4000);}
 let curPage='master';
-function switchPage(p){document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));document.querySelector(`[data-page="${p}"]`).classList.add('active');['master',...WAREHOUSE_PAGES].forEach(pg=>document.getElementById('page-'+pg).className=pg===p?'page-visible':'page-hidden');curPage=p;if(p==='master')renderMasterPage();else renderWarehousePage(p);}
+function switchPage(p){document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));document.querySelector(`[data-page="${p}"]`).classList.add('active');['master',...WAREHOUSE_PAGES].forEach(pg=>document.getElementById('page-'+pg).className=pg===p?'page-visible':'page-hidden');curPage=p;if(p==='master')renderMasterPage();else{renderWarehousePage(p);if(typeof loadTransactions==='function')loadTransactions(p);}}
 function scanStripHtml(pg){return `<div class="scan-strip"><div class="scan-strip-title"><i class="ti ti-barcode" aria-hidden="true"></i> สแกน Barcode / QR</div><div class="scan-strip-row"><input class="scan-strip-input" id="${pg}-sb" placeholder="รหัส เช่น ${PREFIX}-${PG_PREFIX[pg]}-0001 แล้วกด Enter" onkeydown="if(event.key==='Enter')doScan('${pg}')"><div class="scan-action-wrap"><select class="scan-strip-select" id="${pg}-sa"><option value="receive">รับเข้า</option><option value="withdraw">เบิก</option><option value="return_good">คืนดี</option><option value="return_bad">คืนเสีย</option></select><i class="ti ti-chevron-down scan-action-arrow" aria-hidden="true"></i></div><input class="scan-strip-qty" id="${pg}-sq" type="number" min="0.01" step="0.01" value="1"><button class="scan-strip-btn" onclick="doScan('${pg}')"><i class="ti ti-check" aria-hidden="true"></i> ยืนยัน</button></div><div class="scan-result" id="${pg}-sr"></div></div>`;}
 function doScan(pg){const code=(document.getElementById(pg+'-sb').value||'').trim();const action=document.getElementById(pg+'-sa').value;const qty=parseFloat(document.getElementById(pg+'-sq').value||1);const res=document.getElementById(pg+'-sr');if(!code){res.className='scan-result err';res.textContent='กรุณาสแกนหรือพิมพ์รหัสก่อน';setTimeout(()=>res.className='scan-result',2500);return;}if(!qty||qty<=0){alert('กรุณาระบุจำนวน');return;}const m=masterDB.find(x=>x.code.toLowerCase()===code.toLowerCase());if(!m){res.className='scan-result err';res.textContent=`ไม่พบรหัส "${code}"`;setTimeout(()=>res.className='scan-result',3000);return;}if(action==='receive'||action==='return_good')m.stock+=qty;else if(action==='withdraw')m.stock=Math.max(0,m.stock-qty);ST[pg].records.unshift({time:tnow(),_ts:Date.now(),type:action,typeLabel:AL[action],name:'(สแกน)',dept:getDepts(pg)[0],item:m.name,code:m.code,qty,unit:m.unit,lotSW:'-',pg,via:'scan'});checkAlerts();renderHistory(pg);res.className='scan-result ok';res.textContent=`${AL[action]} "${m.name}" ${qty} ${m.unit}${action==='return_bad'?' [ไม่หักสต็อก]':''} · สต็อก ${m.stock} ${m.unit}`;document.getElementById(pg+'-sb').value='';document.getElementById(pg+'-sq').value='1';setTimeout(()=>res.className='scan-result',4000);}
 function renderWarehousePage(pg){const div=document.getElementById('page-'+pg);const alerts=getAlertItems(pg);let alertHtml='';if(alerts.length)alertHtml=`<div class="alert-bar"><i class="ti ti-alert-triangle" aria-hidden="true"></i><div><div class="alert-bar-title">สต็อกต่ำ — ${PL[pg]}</div><div class="alert-items">${alerts.slice(0,5).map(i=>`<span class="alert-chip">${i.name} (${i.stock} ${i.unit})</span>`).join('')}${alerts.length>5?`<span class="alert-chip">+${alerts.length-5}</span>`:''}</div></div></div>`;div.innerHTML=`<div class="page-header"><div><div class="page-title">${PL[pg]}</div><div class="page-sub">รับเข้า · เบิก · คืนดี · คืนเสีย</div></div><button class="qr-btn" onclick="openQR('${pg}')"><i class="ti ti-qrcode" aria-hidden="true"></i> QR</button></div>${alertHtml}${scanStripHtml(pg)}<div class="wh-layout"><div class="wh-left"><div class="card"><div class="card-title"><div class="card-title-left"><span id="${pg}-ftitle">รับเข้า — ${PL[pg]}</span><span class="badge badge-receive" id="${pg}-fbadge">รับเข้า</span></div></div><div id="${pg}-fbody"></div></div></div><div class="wh-right"><div class="card"><div class="card-title"><div class="card-title-left">ประวัติรายการ <span class="mcount" id="${pg}-hcount">0</span></div></div><div class="hist-wrap"><table class="hist-table"><thead><tr><th style="width:44px">เวลา</th><th style="width:58px">ประเภท</th><th style="width:76px">ผู้ทำรายการ</th><th style="width:60px">แผนก</th><th>รายการ</th><th style="width:90px">รหัส</th><th style="width:56px">จำนวน</th><th style="width:62px">Lot SW</th></tr></thead><tbody id="${pg}-hbody"><tr><td colspan="8"><div class="empty"><i class="ti ti-notes" aria-hidden="true"></i><div class="empty-text">ยังไม่มีรายการ</div></div></td></tr></tbody></table></div></div></div></div>`;renderForm(pg);renderHistory(pg);}
@@ -426,9 +427,209 @@ function addMasterItem(){const name=(document.getElementById('new-name')?.value|
 let masterCatFilter2='all';
 function setCatFilter(c,el){masterCatFilter2=c;document.querySelectorAll('.cat-tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');renderMasterContent();}
 function renderMasterContent(){const search=(document.getElementById('masterSearch')?.value||'').toLowerCase();const cat=masterCatFilter2;const content=document.getElementById('masterContent');if(!content)return;function itemRowHtml(m){const st=stockStatus(m);const pct=m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):0;const fC=st==='out'?'fill-out':st==='low'?'fill-low':'fill-ok';const sC=st==='out'?'si-out':st==='low'?'si-low':'si-ok';const sL=st==='out'?'หมด':st==='low'?'ต่ำ':'ปกติ';const sI=st==='out'?'ti-circle-x':st==='low'?'ti-alert-triangle':'ti-check';const cls=st==='out'?'out-stock':st==='low'?'low-stock':'';return `<div class="item-row ${cls}"><div class="ir-main"><div class="ir-name" title="${m.name}">${m.name}</div><div class="ir-code">${m.code}</div><div class="ir-meta"><span class="ir-stock"><strong>${m.stock}</strong> ${m.unit}</span>${(m.min>0||m.max>0)?`<span class="ir-minmax">Min ${m.min} · Max ${m.max}</span><span class="ir-si ${sC}"><i class="ti ${sI}" style="font-size:10px" aria-hidden="true"></i> ${sL}</span>`:'<span class="ir-minmax" style="color:var(--ink4)">ยังไม่ตั้ง Min/Max</span>'}</div>${(m.min>0||m.max>0)?`<div class="stock-bar" style="width:80px;margin-top:4px"><div class="stock-bar-fill ${fC}" style="width:${pct}%"></div></div>`:''}</div><div class="ir-actions"><button class="icon-btn" onclick="editStock(${m.id})" title="แก้ไขสต็อก"><i class="ti ti-edit" aria-hidden="true"></i></button><button class="icon-btn" onclick="editMinMax(${m.id})" title="Min/Max"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i></button><button class="icon-btn danger" onclick="deleteMasterItem(${m.id})" title="ลบ"><i class="ti ti-trash" aria-hidden="true"></i></button></div></div>`;}function renderSec(items,label){const filtered=items.filter(m=>{if(search&&!m.name.toLowerCase().includes(search)&&!m.code.toLowerCase().includes(search))return false;if(cat==='alert')return stockStatus(m)!=='ok'&&(m.min>0||m.max>0);return true;});if(!filtered.length)return'';return `<div class="master-section"><div class="master-section-header"><div class="master-section-title">${label} <span class="mcount">${filtered.length}</span></div></div><div class="item-list">${filtered.map(itemRowHtml).join('')}</div></div>`;}const sa=cat==='all'||cat==='alert';const SL={PD:'วัตถุดิบ — PD',Raw:'วัตถุดิบ — Raw',Fw:'วัตถุดิบ — Fw',LL:'วัตถุดิบ — LL'};let html='';if(sa||cat==='raw'){['PD','Raw','Fw','LL'].forEach(sub=>html+=renderSec(masterDB.filter(m=>m.pg==='raw'&&m.subcat===sub),SL[sub]));(customCats['raw']||[]).forEach(c=>html+=renderSec(masterDB.filter(m=>m.pg==='raw'&&m.subcat===c.cat),`วัตถุดิบ — ${c.name}`));}if(sa||cat==='pack'){Object.keys(PACK_CATS).forEach(pc=>html+=renderSec(masterDB.filter(m=>m.pg==='pack'&&m.subcat===pc),`บรรจุภัณฑ์ — ${pc}`));(customCats['pack']||[]).forEach(c=>html+=renderSec(masterDB.filter(m=>m.pg==='pack'&&m.subcat===c.id),`บรรจุภัณฑ์ — ${c.name}`));}if(sa||cat==='packaging'){html+=renderSec(masterDB.filter(m=>m.pg==='packaging'),'Packaging');(customCats['packaging']||[]).forEach(c=>html+=renderSec(masterDB.filter(m=>m.pg==='packaging'&&m.subcat===c.id),`Packaging — ${c.name}`));}if(sa||cat==='equip'){Object.keys(EQUIP_CATS).forEach(ec=>html+=renderSec(masterDB.filter(m=>m.pg==='equip'&&m.subcat===ec),`อุปกรณ์ — ${ec}`));(customCats['equip']||[]).forEach(c=>html+=renderSec(masterDB.filter(m=>m.pg==='equip'&&m.subcat===c.id),`อุปกรณ์ — ${c.name}`));}if(sa||cat==='finish'){html+=renderSec(masterDB.filter(m=>m.pg==='finish'),'สินค้าสำเร็จรูป');(customCats['finish']||[]).forEach(c=>html+=renderSec(masterDB.filter(m=>m.pg==='finish'&&m.subcat===c.id),`สำเร็จรูป — ${c.name}`));}if(!html.trim())html='<div class="empty" style="padding:32px"><i class="ti ti-search" aria-hidden="true"></i><div class="empty-text">ไม่พบรายการ</div></div>';content.innerHTML=html;}
+/* ══════════════════════════════
+   SUPABASE — เชื่อมฐานข้อมูล
+══════════════════════════════ */
+const SB_URL='https://rsmcrshvcbtcxvvhdmnk.supabase.co';
+const SB_KEY='sb_publishable__RK27ReptMhtMdc8EdA-KQ_K4zfhMwJ';
+const sb=window.supabase.createClient(SB_URL,SB_KEY);
+
+/* ── โหลด stock จาก Supabase แล้วอัปเดต masterDB ── */
+async function loadStockFromDB(){
+  try{
+    const {data,error}=await sb.from('items').select('code,stock,min_stock,max_stock,unit');
+    if(error){console.warn('loadStock error',error);return;}
+    if(!data||!data.length)return;
+    data.forEach(row=>{
+      const m=masterDB.find(x=>x.code===row.code);
+      if(m){
+        m.stock=parseFloat(row.stock)||0;
+        m.min=parseFloat(row.min_stock)||0;
+        m.max=parseFloat(row.max_stock)||0;
+      }
+    });
+    checkAlerts();
+    // อัปเดต UI ทุกหน้าที่เปิดอยู่
+    WAREHOUSE_PAGES.forEach(pg=>{
+      const div=document.getElementById('page-'+pg);
+      if(div&&div.classList.contains('page-visible'))renderWarehousePage(pg);
+    });
+    const masterDiv=document.getElementById('page-master');
+    if(masterDiv&&masterDiv.classList.contains('page-visible'))renderMasterContent();
+  }catch(e){console.warn('loadStock exception',e);}
+}
+
+/* ── บันทึก/อัปเดต stock ของ item หนึ่งชิ้น ── */
+async function upsertItem(m){
+  try{
+    await sb.from('items').upsert({
+      code:m.code,name:m.name,pg:m.pg,subcat:m.subcat||'',
+      unit:m.unit,stock:m.stock,min_stock:m.min,max_stock:m.max
+    },{onConflict:'code'});
+  }catch(e){console.warn('upsertItem error',e);}
+}
+
+/* ── บันทึก transaction ── */
+async function insertTransaction(rec){
+  try{
+    await sb.from('transactions').insert({
+      item_code:rec.code,item_name:rec.item,pg:rec.pg,
+      action_type:rec.type,quantity:rec.qty,unit:rec.unit,
+      operator_name:rec.name,department:rec.dept,
+      lot_sw:rec.lotSW||'',lot_supplier:rec.lotSP||'',
+      note:rec.note||'',via:rec.via||'manual'
+    });
+  }catch(e){console.warn('insertTransaction error',e);}
+}
+
+/* ── โหลดประวัติจาก Supabase ── */
+async function loadTransactions(pg){
+  try{
+    const {data,error}=await sb.from('transactions')
+      .select('*').eq('pg',pg)
+      .order('created_at',{ascending:false}).limit(60);
+    if(error||!data)return;
+    ST[pg].records=data.map(r=>({
+      time:new Date(r.created_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),
+      _ts:new Date(r.created_at).getTime(),
+      type:r.action_type,typeLabel:AL[r.action_type]||r.action_type,
+      name:r.operator_name||'',dept:r.department||'',
+      item:r.item_name,code:r.item_code,
+      qty:parseFloat(r.quantity),unit:r.unit||'',
+      lotSW:r.lot_sw||'-',pg:r.pg,via:r.via||'manual'
+    }));
+    renderHistory(pg);
+  }catch(e){console.warn('loadTransactions error',e);}
+}
+
+/* ── override saveEditStock เพื่อบันทึก Supabase ── */
+const _origSaveStock=saveEditStock;
+saveEditStock=async function(){
+  const id=parseInt(document.getElementById('editStockId').value);
+  const val=parseFloat(document.getElementById('editStockVal').value);
+  if(isNaN(val)||val<0){alert('กรุณาระบุตัวเลขที่ถูกต้อง');return;}
+  const m=masterDB.find(x=>x.id===id);
+  if(m){m.stock=val;await upsertItem(m);}
+  checkAlerts();closeModal('editStockModal');renderMasterContent();
+};
+
+/* ── override saveEditMinMax ── */
+saveEditMinMax=async function(){
+  const id=parseInt(document.getElementById('editMMId').value);
+  const mn=parseFloat(document.getElementById('editMMMin').value);
+  const mx=parseFloat(document.getElementById('editMMMax').value);
+  if(isNaN(mn)||isNaN(mx)){alert('กรุณาระบุตัวเลขที่ถูกต้อง');return;}
+  const m=masterDB.find(x=>x.id===id);
+  if(m){m.min=mn;m.max=mx;await upsertItem(m);}
+  checkAlerts();closeModal('editMinMaxModal');renderMasterContent();
+};
+
+/* ── override submitF เพื่อบันทึก Supabase ── */
+const _origSubmitF=submitF;
+submitF=async function(pg){
+  const name=(document.getElementById(pg+'-name')?.value||'').trim();
+  const item=document.getElementById(pg+'-ival')?.value||document.getElementById(pg+'-idisplay')?.value?.trim()||'';
+  const qty=document.getElementById(pg+'-qty')?.value||'';
+  const unit=document.getElementById(pg+'-unit')?.value||'';
+  const lotSW=document.getElementById(pg+'-lotsw')?.value||'-';
+  const lotSP=document.getElementById(pg+'-lotsp')?.value||'';
+  const note=document.getElementById(pg+'-note')?.value||document.getElementById(pg+'-improve')?.value||'';
+  if(!name){alert('กรุณาระบุชื่อผู้ทำรายการ');return;}
+  if(!item){alert('กรุณาเลือกหรือระบุรายการ');return;}
+  if(!qty||parseFloat(qty)<=0){alert('กรุณาระบุจำนวน');return;}
+  const deptEl=document.querySelector('#'+pg+'-dept .sel');
+  if(!deptEl){alert('กรุณาเลือกแผนก');return;}
+  const dept=deptEl.textContent.trim();
+  const action=ST[pg].action;const q=parseFloat(qty);
+  const mi=masterDB.find(m=>m.name===item);
+  const code=mi?mi.code:'-';
+  const rec={time:tnow(),_ts:Date.now(),type:action,typeLabel:AL[action],name,dept,item,code,qty:q,unit,lotSW,lotSP,note,pg};
+  ST[pg].records.unshift(rec);
+  if(mi){
+    if(action==='receive'||action==='return_good')mi.stock+=q;
+    else if(action==='withdraw')mi.stock=Math.max(0,mi.stock-q);
+    await upsertItem(mi);
+  }
+  await insertTransaction(rec);
+  checkAlerts();renderHistory(pg);
+  const oldAction=action;resetForm(pg);ST[pg].action=oldAction;
+  document.getElementById(pg+'-lotsw').value=new Date().toISOString().split('T')[0];
+  document.getElementById('successDetail').textContent=`"${item}" (${code}) ${q} ${unit} — ${AL[action]}${action==='return_bad'?' (ไม่หักสต็อก)':''}`;
+  document.getElementById('successModal').classList.add('show');
+};
+
+/* ── override doScan ── */
+const _origDoScan=doScan;
+doScan=async function(pg){
+  const code=(document.getElementById(pg+'-sb').value||'').trim();
+  const action=document.getElementById(pg+'-sa').value;
+  const qty=parseFloat(document.getElementById(pg+'-sq').value||1);
+  const res=document.getElementById(pg+'-sr');
+  if(!code){res.className='scan-result err';res.textContent='กรุณาสแกนหรือพิมพ์รหัสก่อน';setTimeout(()=>res.className='scan-result',2500);return;}
+  if(!qty||qty<=0){alert('กรุณาระบุจำนวน');return;}
+  const m=masterDB.find(x=>x.code.toLowerCase()===code.toLowerCase());
+  if(!m){res.className='scan-result err';res.textContent=`ไม่พบรหัส "${code}"`;setTimeout(()=>res.className='scan-result',3000);return;}
+  if(action==='receive'||action==='return_good')m.stock+=qty;
+  else if(action==='withdraw')m.stock=Math.max(0,m.stock-qty);
+  await upsertItem(m);
+  const rec={time:tnow(),_ts:Date.now(),type:action,typeLabel:AL[action],name:'(สแกน)',dept:getDepts(pg)[0],item:m.name,code:m.code,qty,unit:m.unit,lotSW:'-',pg,via:'scan'};
+  ST[pg].records.unshift(rec);
+  await insertTransaction(rec);
+  checkAlerts();renderHistory(pg);
+  res.className='scan-result ok';
+  res.textContent=`${AL[action]} "${m.name}" ${qty} ${m.unit}${action==='return_bad'?' [ไม่หักสต็อก]':''} · สต็อก ${m.stock} ${m.unit}`;
+  document.getElementById(pg+'-sb').value='';document.getElementById(pg+'-sq').value='1';
+  setTimeout(()=>res.className='scan-result',4000);
+};
+
+/* ── override doQRScan ── */
+doQRScan=async function(){
+  const code=(document.getElementById('qr-scan-input').value||'').trim();
+  const action=document.getElementById('qr-scan-action').value;
+  const qty=parseFloat(document.getElementById('qr-scan-qty').value||1);
+  const res=document.getElementById('qr-scan-result');
+  if(!code){res.className='qr-result err';res.textContent='กรุณาสแกนหรือพิมพ์รหัสก่อน';setTimeout(()=>res.className='qr-result',2500);return;}
+  if(!qty||qty<=0){alert('กรุณาระบุจำนวน');return;}
+  const m=masterDB.find(x=>x.code.toLowerCase()===code.toLowerCase());
+  if(!m){res.className='qr-result err';res.textContent=`ไม่พบรหัส "${code}"`;setTimeout(()=>res.className='qr-result',3000);return;}
+  if(action==='receive'||action==='return_good')m.stock+=qty;
+  else if(action==='withdraw')m.stock=Math.max(0,m.stock-qty);
+  await upsertItem(m);
+  const pg=m.pg;
+  const rec={time:tnow(),_ts:Date.now(),type:action,typeLabel:AL[action],name:'(QR สแกน)',dept:getDepts(pg)[0],item:m.name,code:m.code,qty,unit:m.unit,lotSW:'-',pg,via:'scan'};
+  ST[pg].records.unshift(rec);
+  await insertTransaction(rec);
+  checkAlerts();
+  if(currentQRPage===pg)renderHistory(pg);
+  res.className='qr-result ok';
+  res.textContent=`${AL[action]} "${m.name}" ${qty} ${m.unit}${action==='return_bad'?' [ไม่หักสต็อก]':''} · สต็อก ${m.stock} ${m.unit}`;
+  document.getElementById('qr-scan-input').value='';document.getElementById('qr-scan-qty').value='1';
+  buildQRList(pg);setTimeout(()=>res.className='qr-result',4000);
+};
+
+/* ── เริ่มต้นระบบ ── */
+function showLoadingBanner(){
+  const banner=document.createElement('div');
+  banner.id='loadingBanner';
+  banner.style.cssText='position:fixed;bottom:16px;right:16px;background:#1a1a1c;color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;z-index:999;display:flex;align-items:center;gap:8px';
+  banner.innerHTML='<i class="ti ti-loader" style="animation:spin 1s linear infinite"></i> กำลังโหลดข้อมูลจาก Supabase...';
+  document.body.appendChild(banner);
+  if(!document.getElementById('spinStyle')){const s=document.createElement('style');s.id='spinStyle';s.textContent='@keyframes spin{to{transform:rotate(360deg)}}';document.head.appendChild(s);}
+}
+function hideLoadingBanner(){const b=document.getElementById('loadingBanner');if(b)b.remove();}
+
 WAREHOUSE_PAGES.forEach(pg=>renderWarehousePage(pg));
 renderMasterPage();
 checkAlerts();
+
+// โหลด stock จาก Supabase ทันทีที่เปิดหน้า
+(async()=>{
+  showLoadingBanner();
+  await loadStockFromDB();
+  // โหลดประวัติของ page ที่เปิดอยู่
+  if(curPage!=='master')await loadTransactions(curPage);
+  hideLoadingBanner();
+})();
 </script>
 </body>
 </html>
