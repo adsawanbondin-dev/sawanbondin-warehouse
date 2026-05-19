@@ -568,9 +568,10 @@ function renderWarehousePage(pg) {
                 <th>เวลา</th><th>ประเภท</th><th>ผู้ทำรายการ</th>
                 <th>แผนก</th><th>รายการ</th><th>รหัส</th><th>จำนวน</th>
                 ${cfg.hasLot ? '<th>Lot SW</th>' : ''}
+                ${cfg.lotSupplier ? '<th>Lot Supplier</th>' : ''}
               </tr></thead>
               <tbody id="${pg}-hbody">
-                <tr><td colspan="${cfg.hasLot?8:7}">
+                <tr><td colspan="${cfg.hasLot?(cfg.lotSupplier?9:8):7}">
                   <div class="empty">
                     <i class="ti ti-notes"></i>
                     <div class="empty-text">ยังไม่มีรายการ</div>
@@ -953,7 +954,6 @@ async function submitBatch(pg){
   showToast(`บันทึก <strong>${n}</strong> รายการสำเร็จ`);
 }
 
-/* ── HISTORY ── */
 function renderHistory(pg){
   const cfg=WAREHOUSE_CONFIG[pg];
   const tb=document.getElementById(pg+'-hbody');
@@ -961,8 +961,9 @@ function renderHistory(pg){
   if(!tb)return;
   const recs=txState[pg].records;
   if(hc)hc.textContent=recs.length;
+  const totalCols = cfg.hasLot ? (cfg.lotSupplier ? 9 : 8) : 7;
   if(!recs.length){
-    tb.innerHTML=`<tr><td colspan="${cfg.hasLot?8:7}"><div class="empty"><i class="ti ti-notes"></i><div class="empty-text">ยังไม่มีรายการ</div></div></td></tr>`;
+    tb.innerHTML=`<tr><td colspan="${totalCols}"><div class="empty"><i class="ti ti-notes"></i><div class="empty-text">ยังไม่มีรายการ</div></div></td></tr>`;
     return;
   }
   tb.innerHTML=recs.slice(0,60).map(r=>`<tr ${r.type==='return_bad'?'style="opacity:.75"':''}>
@@ -974,6 +975,7 @@ function renderHistory(pg){
     <td style="font-family:monospace;font-size:10px;color:var(--acc)">${r.code}</td>
     <td>${r.qty}</td>
     ${cfg.hasLot?`<td>${r.lotSW||'-'}</td>`:''}
+    ${cfg.lotSupplier?`<td style="font-size:10px;color:var(--ink3)">${r.lotSP||'-'}</td>`:''}
   </tr>`).join('');
 }
 
@@ -1319,7 +1321,15 @@ function renderMasterContent(){
     const loc=locationDB[m.code]||'';
     const lots=m.pg==='raw'?(lotDB[m.code]||[]):[];
     const lotSubHtml=lots.length
-      ?lots.map(l=>{const d=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'?';return`<div class="lot-sub-row"><span class="lot-date">${d}</span><span class="lot-stock-val">${l.stock}</span></div>`;}).join('')
+      ?lots.map(l=>{
+          const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'?';
+          const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
+          return`<div class="lot-sub-row">
+            <span class="lot-date" title="Lot SW">${sw}</span>
+            <span class="lot-stock-val">${l.stock}</span>
+            ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px" title="Lot Supplier">Sup: ${sp}</span>`:''}
+          </div>`;
+        }).join('')
       :'<div class="lot-empty">ยังไม่มี Lot</div>';
     return`<div class="item-row ${cls}">
       <div class="ir-main">
@@ -1391,7 +1401,15 @@ function toggleLotSub(subId,code){
     dbLoadLotsForItem(code).then(()=>{
       const lots=lotDB[code]||[];
       sub.innerHTML=lots.length
-        ?lots.map(l=>{const d=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'?';return`<div class="lot-sub-row"><span class="lot-date">${d}</span><span class="lot-stock-val">${l.stock}</span></div>`;}).join('')
+        ?lots.map(l=>{
+            const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'?';
+            const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
+            return`<div class="lot-sub-row">
+              <span class="lot-date" title="Lot SW">${sw}</span>
+              <span class="lot-stock-val">${l.stock}</span>
+              ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px" title="Lot Supplier">Sup: ${sp}</span>`:''}
+            </div>`;
+          }).join('')
         :'<div class="lot-empty">ยังไม่มี Lot</div>';
     });
   }
