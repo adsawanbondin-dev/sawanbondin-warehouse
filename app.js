@@ -521,6 +521,8 @@ function renderWarehousePage(pg) {
       <div><div class="page-title">${cfg.label}</div>
         <div class="page-sub">รับเข้า · เบิก · คืนดี · คืนเสีย</div></div>
       <div class="page-actions">
+        <button class="btn btn-sm" onclick="exportTransactionsCsv('${pg}')" title="Export ประวัติรายการ">
+          <i class="ti ti-table-export"></i> Export</button>
         <button class="cam-btn" onclick="openCamera('${pg}')">
           <i class="ti ti-camera"></i> กล้อง</button>
         <button class="qr-btn" onclick="openQR('${pg}')">
@@ -822,12 +824,21 @@ function selRadio(el,gid){
 /* ── LOT PICKER ── */
 async function buildLotPickerHtml(code, pg) {
   await dbLoadLotsForItem(code);
+  // ข้อ 2: แสดงเฉพาะ lot ที่ยังมีสต็อก (stock > 0) ใน picker
   const lots=(lotDB[code]||[]).filter(l=>l.stock>0);
-  if(!lots.length) return '<div class="lot-empty">ยังไม่มี Lot ในระบบ</div>';
+  if(!lots.length) return '<div class="lot-empty">ไม่มี Lot ที่มีสต็อกเหลืออยู่</div>';
   return lots.map(l=>{
-    const d=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}):'?';
+    const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}):'?';
+    // ข้อ 1: แสดง Lot Supplier ถ้ามี
+    const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}):'';
     return `<div class="lot-select-item" onclick="pickLot(this,'${pg}','${l.lot_sw}')" data-lot="${l.lot_sw}">
-      <span class="lot-date">${d}</span>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="lot-date" title="Lot Sawanbondin">${sw}</span>
+          ${sp?`<span style="font-size:10px;color:var(--ink3)" title="Lot Supplier">Sup: ${sp}</span>`:''}
+        </div>
+        ${sp?'':''}
+      </div>
       <span class="lot-sel-stock">คงเหลือ ${l.stock}</span>
     </div>`;
   }).join('');
@@ -1118,8 +1129,14 @@ function renderMasterPage(){
     <div class="page-header">
       <div><div class="page-title">Master Data</div>
         <div class="page-sub">จัดการรายการ หมวดหมู่ และ QR Code</div></div>
-      <button class="btn btn-primary btn-sm" onclick="showAddForm()">
-        <i class="ti ti-plus"></i> เพิ่มรายการ</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="exportStockCsv()" title="Export สต็อกทุกรายการ">
+          <i class="ti ti-table-export"></i> Export สต็อก</button>
+        <button class="btn btn-sm" onclick="exportLotsCsv()" title="Export Lot ทั้งหมด">
+          <i class="ti ti-table-export"></i> Export Lot</button>
+        <button class="btn btn-primary btn-sm" onclick="showAddForm()">
+          <i class="ti ti-plus"></i> เพิ่มรายการ</button>
+      </div>
     </div>
     ${alertHtml}
     <div class="card" style="margin-bottom:11px">
@@ -1320,13 +1337,18 @@ function renderMasterContent(){
     const cls=st==='out'?'out-stock':st==='low'?'low-stock':'';
     const loc=locationDB[m.code]||'';
     const lots=m.pg==='raw'?(lotDB[m.code]||[]):[];
-    const lotSubHtml=lots.length
-      ?lots.map(l=>{
+    // แสดงทุก lot รวมที่หมดแล้ว (เพื่อดูประวัติ) แต่ mark ว่าหมด
+    const allLots = lotDB[m.code] || [];
+    const activeLots = allLots.filter(l=>l.stock>0);
+    const zeroLots   = allLots.filter(l=>l.stock<=0);
+    const lotSubHtml=allLots.length
+      ?[...activeLots,...zeroLots].map(l=>{
           const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'?';
           const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
-          return`<div class="lot-sub-row">
-            <span class="lot-date" title="Lot SW">${sw}</span>
-            <span class="lot-stock-val">${l.stock}</span>
+          const isEmpty=l.stock<=0;
+          return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}" title="${isEmpty?'Lot นี้หมดแล้ว — บันทึกเพื่อการตรวจสอบ':''}">
+            <span class="lot-date" title="Lot SW">${sw}${isEmpty?' <span style=\'font-size:9px;color:var(--red)\'>หมด</span>':''}</span>
+            <span class="lot-stock-val" style="${isEmpty?'color:var(--ink3)':''}">คงเหลือ ${l.stock}</span>
             ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px" title="Lot Supplier">Sup: ${sp}</span>`:''}
           </div>`;
         }).join('')
@@ -1412,6 +1434,112 @@ function toggleLotSub(subId,code){
           }).join('')
         :'<div class="lot-empty">ยังไม่มี Lot</div>';
     });
+  }
+}
+
+
+/* ═══════════════════════════════════════════
+   CSV EXPORT
+═══════════════════════════════════════════ */
+function escapeCsv(val) {
+  const s = String(val ?? '');
+  return s.includes(',') || s.includes('"') || s.includes('\n')
+    ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadCsv(filename, rows) {
+  const bom = '\uFEFF'; // BOM สำหรับ Excel ภาษาไทย
+  const csv = bom + rows.map(r => r.map(escapeCsv).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+/** Export stock snapshot ของทุกรายการ */
+function exportStockCsv() {
+  const rows = [
+    ['รหัส','ชื่อรายการ','คลัง','หมวดหมู่','สต็อก','Min','Max','สถานที่จัดเก็บ'],
+    ...masterDB.map(m => [
+      m.code, m.name,
+      WAREHOUSE_CONFIG[m.pg]?.label || m.pg,
+      m.subcat || '',
+      m.stock, m.min, m.max,
+      locationDB[m.code] || '',
+    ])
+  ];
+  const d = new Date().toISOString().split('T')[0];
+  downloadCsv(`sawanbondin_stock_${d}.csv`, rows);
+}
+
+/** Export ประวัติรายการของคลังที่กำลังดูอยู่ */
+async function exportTransactionsCsv(pg) {
+  // โหลดข้อมูลใหม่จาก DB เพื่อให้ครบ ไม่ใช่แค่ in-memory 60 รายการ
+  showToast('กำลังโหลดข้อมูล...');
+  try {
+    const { data, error } = await sb.from('transactions')
+      .select('*')
+      .eq('pg', pg)
+      .order('created_at', { ascending: false })
+      .limit(5000);
+    if (error) { showToast('โหลดข้อมูลไม่สำเร็จ', 'err'); return; }
+    const cfg = WAREHOUSE_CONFIG[pg];
+    const header = ['วันที่','เวลา','ประเภท','ผู้ทำรายการ','แผนก','รายการ','รหัส','จำนวน'];
+    if (cfg.hasLot)        header.push('Lot Sawanbondin');
+    if (cfg.lotSupplier)   header.push('Lot Supplier');
+    header.push('หมายเหตุ','ช่องทาง');
+    const rows = [header];
+    for (const r of data) {
+      const dt = new Date(r.created_at);
+      const row = [
+        dt.toLocaleDateString('th-TH'),
+        dt.toLocaleTimeString('th-TH', { hour:'2-digit', minute:'2-digit' }),
+        ACTION_LABELS[r.action_type] || r.action_type,
+        r.operator_name || '',
+        r.department || '',
+        r.item_name || '',
+        r.item_code || '',
+        r.quantity || 0,
+      ];
+      if (cfg.hasLot)      row.push(r.lot_sw || '');
+      if (cfg.lotSupplier) row.push(r.lot_supplier || '');
+      row.push(r.note || '', r.via || '');
+      rows.push(row);
+    }
+    const d = new Date().toISOString().split('T')[0];
+    downloadCsv(`sawanbondin_${pg}_transactions_${d}.csv`, rows);
+    showToast(`Export ${data.length} รายการสำเร็จ`);
+  } catch(e) {
+    showToast('เกิดข้อผิดพลาด: ' + e.message, 'err');
+  }
+}
+
+/** Export Lot ทั้งหมดของวัตถุดิบ */
+async function exportLotsCsv() {
+  showToast('กำลังโหลดข้อมูล Lot...');
+  try {
+    const { data, error } = await sb.from('lots')
+      .select('*')
+      .order('item_code', { ascending: true })
+      .order('lot_sw', { ascending: true });
+    if (error) { showToast('โหลดข้อมูลไม่สำเร็จ', 'err'); return; }
+    const rows = [
+      ['รหัสสินค้า','ชื่อสินค้า','Lot Sawanbondin','Lot Supplier','สต็อกคงเหลือ','สถานะ'],
+      ...data.map(r => [
+        r.item_code, r.item_name,
+        r.lot_sw || '',
+        r.lot_supplier || '',
+        r.stock,
+        parseFloat(r.stock) <= 0 ? 'หมดแล้ว' : 'มีสต็อก',
+      ])
+    ];
+    const d = new Date().toISOString().split('T')[0];
+    downloadCsv(`sawanbondin_lots_${d}.csv`, rows);
+    showToast(`Export ${data.length} Lot สำเร็จ`);
+  } catch(e) {
+    showToast('เกิดข้อผิดพลาด: ' + e.message, 'err');
   }
 }
 
