@@ -250,7 +250,7 @@ async function dbAdjustStockWithLot(code, action, qty, { lotId=null, lotSW=null,
     p_qty:      qty,
     p_lot_id:   lotId   || null,
     p_lot_sw:   lotSW   || null,
-    p_lot_sp:   lotSP   || null,
+    p_lot_sp:   (lotSP && lotSP.length > 0) ? lotSP : null,
     p_lot_name: name    || null,
   };
   const { data, error } = await sb.rpc('adjust_stock_with_lot', params);
@@ -282,14 +282,6 @@ async function dbAdjustStockWithLot(code, action, qty, { lotId=null, lotSW=null,
     }
   }
   return data;
-}
-
-// ── backward compat aliases ──
-async function dbAdjustStock(code, action, qty) {
-  return dbAdjustStockWithLot(code, action, qty);
-}
-async function dbUpsertLot(code, name, lotSW, lotSP, qty, action, lotId=null) {
-  return dbAdjustStockWithLot(code, action, qty, { lotId, lotSW, lotSP, name });
 }
 
 
@@ -461,7 +453,7 @@ function openAlertPanel() {
       const cfg = WAREHOUSE_CONFIG[m.pg];
       const pct = m.max > 0 ? Math.min(100, Math.round(m.stock/m.max*100)) : 0;
       const cls = m.stock <= 0 ? 'fill-out' : 'fill-low';
-      return `<div style="padding:9px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;cursor:pointer" onclick="switchPage('${m.pg}')">
+      return `<div style="padding:9px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;cursor:pointer" onclick="document.getElementById('alertPanelWrap').classList.remove('show');switchPage('${m.pg}')">
         <div style="flex:1;min-width:0">
           <div style="font-size:12px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
           <div style="font-size:10px;color:var(--ink3);margin-top:1px">${cfg?.label||m.pg} · Min ${m.min}</div>
@@ -476,10 +468,7 @@ function openAlertPanel() {
   }
   const wrap = document.getElementById('alertPanelWrap');
   if (!wrap) return;
-  const isOpen = wrap.classList.contains('show');
-  // close any open
-  document.querySelectorAll('.alert-panel-shown').forEach(w=>w.classList.remove('show'));
-  if (!isOpen) wrap.classList.add('show');
+  wrap.classList.toggle('show');
 }
 
 function showToast(msg, type='ok') {
@@ -934,7 +923,7 @@ async function submitF(pg) {
       rpcResult = await dbAdjustStockWithLot(code, action, qty, {
         lotId,
         lotSW: (action==='receive'||action==='return_good') ? lotSW||null : null,
-        lotSP: lotSP||null,
+        lotSP: lotSP||null,  // date string 'YYYY-MM-DD' or null
         name: item,
       });
       if (!rpcResult.ok) { setLoading(pg+'-submit-btn', false); return; }
