@@ -274,9 +274,47 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   .topbar-sub{display:none}
   .main{padding:10px}
 }
+
+/* ══ LOGIN ══ */
+#loginScreen{position:fixed;inset:0;background:#f0f0ee;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-card{background:#fff;border-radius:16px;padding:32px;max-width:360px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.1)}
+.login-logo{font-size:18px;font-weight:600;color:#1c1c1e;margin-bottom:4px}
+.login-sub{font-size:12px;color:#8e8e93;margin-bottom:24px}
+.login-label{font-size:11px;font-weight:500;color:#8e8e93;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:5px}
+.login-input{width:100%;padding:10px 12px;border:1px solid #e4e4e0;border-radius:8px;font-family:inherit;font-size:14px;color:#1c1c1e;outline:none;transition:border-color .15s;margin-bottom:12px}
+.login-input:focus{border-color:#2c5282}
+.login-btn{width:100%;padding:11px;background:#1c1c1e;border:none;border-radius:8px;color:#fff;font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s}
+.login-btn:hover{background:#2c2c2e}
+.login-btn:disabled{background:#8e8e93;cursor:not-allowed}
+.login-error{font-size:12px;color:#7a2020;background:#faf0f0;border:1px solid #e0b0b0;border-radius:6px;padding:8px 11px;margin-top:10px;display:none}
+.login-error:not(:empty){display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 </style>
 </head>
 <body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" style="display:none">
+  <div class="login-card">
+    <div class="login-logo">Sawanbondin</div>
+    <div class="login-sub">ระบบจัดการคลัง — กรุณาเข้าสู่ระบบ</div>
+    <label class="login-label">Email</label>
+    <input class="login-input" id="loginEmail" type="email"
+      placeholder="warehouse@sawanbondin.com"
+      onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+    <label class="login-label">Password</label>
+    <input class="login-input" id="loginPass" type="password"
+      placeholder="••••••••"
+      onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">
+      <span id="loginBtnText">เข้าสู่ระบบ</span>
+    </button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- APP ROOT (hidden until logged in) -->
+<div id="appRoot" style="display:none">
 
 <!-- TOP BAR -->
 <div class="topbar">
@@ -293,6 +331,10 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       <div class="alert-dot" id="alertDot"></div>
     </div>
     <div class="topbar-date" id="topbarDate"></div>
+    <span id="topbarUser" style="font-size:10px;color:#6e6e73;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <button onclick="doLogout()" style="padding:4px 9px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#6e6e73;font-size:11px;cursor:pointer;font-family:inherit" title="ออกจากระบบ">
+      <i class="ti ti-logout" style="font-size:12px"></i>
+    </button>
   </div>
 </div>
 
@@ -487,5 +529,7 @@ function onAssignCatChange() {
 }
 </script>
 
+
+</div><!-- /appRoot -->
 </body>
 </html>
