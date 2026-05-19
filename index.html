@@ -288,7 +288,8 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .login-btn:disabled{background:#8e8e93;cursor:not-allowed}
 .login-error{font-size:12px;color:#7a2020;background:#faf0f0;border:1px solid #e0b0b0;border-radius:6px;padding:8px 11px;margin-top:10px;display:none}
 .login-error:not(:empty){display:block}
-@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+#alertPanelWrap{display:none}
+#alertPanelWrap.show{display:block}
 </style>
 </head>
 <body>
@@ -326,12 +327,23 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
     <a href="sawanbondin_qr_print.html" target="_blank" class="topbar-link">
       <i class="ti ti-printer" style="font-size:13px"></i> พิมพ์
     </a>
-    <div class="alert-bell" onclick="switchPage('master')">
+    <div class="alert-bell" onclick="openAlertPanel()">
       <i class="ti ti-bell" style="font-size:16px"></i>
       <div class="alert-dot" id="alertDot"></div>
+      <span id="alertCount" style="position:absolute;top:-2px;right:-4px;min-width:16px;height:16px;background:#e24b4a;border-radius:8px;font-size:9px;color:#fff;display:none;align-items:center;justify-content:center;font-weight:600;padding:0 3px"></span>
+    </div>
+    <!-- Alert Panel -->
+    <div id="alertPanelWrap" style="position:fixed;top:46px;right:10px;z-index:400;display:none">
+      <div style="background:#fff;border:1px solid var(--line2);border-radius:var(--rlg);box-shadow:0 8px 32px rgba(0,0,0,.15);width:300px;max-height:420px;overflow-y:auto">
+        <div style="padding:10px 14px 8px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:500;color:var(--ink)"><i class="ti ti-alert-triangle" style="color:var(--warn);margin-right:5px"></i>สต็อกต่ำ / หมด</span>
+          <button onclick="document.getElementById('alertPanelWrap').classList.remove('show')" style="background:none;border:none;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
+        </div>
+        <div id="alertPanel"></div>
+      </div>
     </div>
     <div class="topbar-date" id="topbarDate"></div>
-    <span id="topbarUser" style="font-size:10px;color:#6e6e73;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <span id="topbarUser" style="font-size:10px;color:#6e6e73;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" onclick="promptDisplayName()" title="คลิกเพื่อเปลี่ยนชื่อ"></span>
     <button onclick="doLogout()" style="padding:4px 9px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#6e6e73;font-size:11px;cursor:pointer;font-family:inherit" title="ออกจากระบบ">
       <i class="ti ti-logout" style="font-size:12px"></i>
     </button>
@@ -530,6 +542,22 @@ function onAssignCatChange() {
   const [, subcat] = val.split('|');
   const row = document.getElementById('assignNewSubcatRow');
   if (row) row.style.display = subcat==='' ? 'block' : 'none';
+}
+
+// ปิด alert panel เมื่อคลิกนอก
+document.addEventListener('click', function(e) {
+  const wrap = document.getElementById('alertPanelWrap');
+  const bell = e.target.closest('.alert-bell');
+  if (wrap && !bell && !wrap.contains(e.target)) {
+    wrap.classList.remove('show');
+  }
+});
+
+// แก้ชื่อผู้ใช้
+function promptDisplayName() {
+  const current = document.getElementById('topbarUser')?.textContent || '';
+  const name = prompt('ชื่อที่จะแสดงในรายการ:', current);
+  if (name && name.trim()) setDisplayName(name.trim());
 }
 </script>
 

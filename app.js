@@ -113,6 +113,19 @@ function setLoginLoading(on) {
 async function doLogout() {
   await sb.auth.signOut();
   masterDB = []; locationDB = {}; lotDB = {};
+  window._operatorName = '';
+}
+
+/** อัปเดต display name ของ user (เก็บใน user_metadata) */
+async function setDisplayName(name) {
+  if (!name) return;
+  const { error } = await sb.auth.updateUser({ data: { display_name: name } });
+  if (!error) {
+    window._operatorName = name;
+    const el = document.getElementById('topbarUser');
+    if (el) el.textContent = name;
+    showToast(`เปลี่ยนชื่อเป็น "${name}" สำเร็จ`);
+  }
 }
 
 /* ═══════════════════════════════════════════
@@ -393,7 +406,7 @@ function validateForm(pg, skipLot = false) {
   }
 
   // lot required for raw non-receive
-  if (!skipLot && cfg.hasLot && pg==='raw' && action!=='receive') {
+  if (!skipLot && cfg.hasLot && (pg==='raw'||pg==='finish') && action!=='receive') {
     const lotSW = document.getElementById(pg+'-lotsw')?.value||'';
     if (!lotSW) errors.push('กรุณาเลือก Lot Sawanbondin');
   }
@@ -430,8 +443,43 @@ function getAlertItems(pg) {
   });
 }
 function checkAlerts() {
+  const alerts = getAlertItems(null);
   const dot = document.getElementById('alertDot');
-  if (dot) dot.style.display = getAlertItems(null).length ? 'block' : 'none';
+  if (dot) dot.style.display = alerts.length ? 'block' : 'none';
+  const cnt = document.getElementById('alertCount');
+  if (cnt) { cnt.textContent = alerts.length||''; cnt.style.display = alerts.length?'flex':'none'; }
+}
+
+function openAlertPanel() {
+  const panel = document.getElementById('alertPanel');
+  if (!panel) return;
+  const alerts = getAlertItems(null);
+  if (!alerts.length) {
+    panel.innerHTML = '<div style="padding:16px;text-align:center;font-size:12px;color:var(--ink3)"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:8px;opacity:.5"></i>ไม่มีรายการสต็อกต่ำ</div>';
+  } else {
+    panel.innerHTML = alerts.map(m => {
+      const cfg = WAREHOUSE_CONFIG[m.pg];
+      const pct = m.max > 0 ? Math.min(100, Math.round(m.stock/m.max*100)) : 0;
+      const cls = m.stock <= 0 ? 'fill-out' : 'fill-low';
+      return `<div style="padding:9px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;cursor:pointer" onclick="switchPage('${m.pg}')">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
+          <div style="font-size:10px;color:var(--ink3);margin-top:1px">${cfg?.label||m.pg} · Min ${m.min}</div>
+          <div class="stock-bar" style="width:100%;margin-top:4px"><div class="stock-bar-fill ${cls}" style="width:${pct}%"></div></div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:14px;font-weight:600;color:${m.stock<=0?'var(--red)':'var(--warn)'}">${m.stock}</div>
+          <div style="font-size:9px;color:var(--ink4)">${m.stock<=0?'หมด':'ต่ำ'}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  const wrap = document.getElementById('alertPanelWrap');
+  if (!wrap) return;
+  const isOpen = wrap.classList.contains('show');
+  // close any open
+  document.querySelectorAll('.alert-panel-shown').forEach(w=>w.classList.remove('show'));
+  if (!isOpen) wrap.classList.add('show');
 }
 
 function showToast(msg, type='ok') {
@@ -499,17 +547,6 @@ function renderWarehousePage(pg) {
   const div = document.getElementById('page-'+pg);
   if (!div) return;
 
-  const alerts = getAlertItems(pg);
-  let alertHtml = '';
-  if (alerts.length) {
-    const chips = alerts.slice(0,5).map(i=>`<span class="alert-chip">${i.name} (${i.stock})</span>`).join('');
-    const more  = alerts.length>5 ? `<span class="alert-chip">+${alerts.length-5}</span>` : '';
-    alertHtml = `<div class="alert-bar"><i class="ti ti-alert-triangle"></i><div>
-      <div class="alert-bar-title">สต็อกต่ำ — ${cfg.label}</div>
-      <div class="alert-items">${chips}${more}</div>
-    </div></div>`;
-  }
-
   div.innerHTML = `
     <div class="page-header">
       <div><div class="page-title">${cfg.label}</div>
@@ -523,7 +560,6 @@ function renderWarehousePage(pg) {
           <i class="ti ti-qrcode"></i> QR</button>
       </div>
     </div>
-    ${alertHtml}
     <div class="wh-layout">
       <div class="wh-left">
         <div class="card">
@@ -673,7 +709,7 @@ function renderForm(pg) {
     } else if (cfg.lotSupplier) {
       h += `<div class="lot-pair">
         <div class="fg">
-          <label class="fl">Lot Sawanbondin${isRecv?' <span class="req">*</span>':''}</label>
+          <label class="fl">Lot Sawanbondin ${(pg==='raw'||pg==='finish')?'<span class="req">*</span>':''}</label>
           <input class="fi" id="${pg}-lotsw" type="date">
           <div class="fhint">วันที่รับเข้า Sawanbondin</div>
         </div>
@@ -686,7 +722,7 @@ function renderForm(pg) {
     } else {
       h += `<div class="lot-single">
         <div class="fg">
-          <label class="fl">Lot Sawanbondin${isRecv?' <span class="req">*</span>':''}</label>
+          <label class="fl">Lot Sawanbondin ${(pg==='raw'||pg==='finish')?'<span class="req">*</span>':''}</label>
           <input class="fi" id="${pg}-lotsw" type="date">
         </div>
       </div>`;
@@ -715,10 +751,23 @@ function renderForm(pg) {
     </div>`;
   }
 
-  if (isRecv) {
+  // ข้อ 3: location ใช้ได้ทุก action (เพื่อดู/แก้ไข) แต่ save เฉพาะ receive
+  {
+    const locVal = '';
+    const binOpts = binLocations.length
+      ? binLocations.map(b=>`<option value="${b.code}">${b.code}${b.label?' — '+b.label:''}</option>`).join('')
+      : '';
     h += `<div class="fg" style="margin-top:10px">
       <label class="fl"><i class="ti ti-map-pin" style="font-size:11px"></i> สถานที่จัดเก็บ</label>
-      <input class="fi" id="${pg}-loc" placeholder="เช่น ชั้น A1, ห้องเย็น" autocomplete="off">
+      <div style="display:flex;gap:5px">
+        <select class="fi" id="${pg}-loc-select" style="padding:7px 9px;flex:1" onchange="syncLocFromSelect('${pg}')">
+          <option value="">-- เลือกพิกัด --</option>
+          ${binOpts}
+        </select>
+        <input class="fi" id="${pg}-loc" placeholder="หรือพิมพ์เอง" autocomplete="off" style="flex:1"
+          oninput="syncLocFromInput('${pg}')">
+      </div>
+      <div class="fhint">เลือกจาก dropdown หรือพิมพ์เองก็ได้</div>
     </div>`;
   }
 
@@ -734,6 +783,11 @@ function renderForm(pg) {
 
   body.innerHTML = h;
   buildDDList(pg, '');
+  // autofill ชื่อผู้ใช้ที่ login อยู่
+  if(window._operatorName){
+    const nameEl=document.getElementById(pg+'-name');
+    if(nameEl&&!nameEl.value)nameEl.value=window._operatorName;
+  }
 }
 
 function changeAction(pg, action) {
@@ -795,7 +849,11 @@ function selItem(pg, item) {
   const dd=document.getElementById(pg+'-dd');
   if(di)di.value=item; if(iv)iv.value=item; if(dd)dd.style.display='none';
   const m=masterDB.find(x=>x.name===item&&x.pg===pg);
-  if(m&&locationDB[m.code]){ const locEl=document.getElementById(pg+'-loc'); if(locEl)locEl.value=locationDB[m.code]; }
+  if(m&&locationDB[m.code]){
+    const locEl=document.getElementById(pg+'-loc');if(locEl)locEl.value=locationDB[m.code];
+    const sel=document.getElementById(pg+'-loc-select');
+    if(sel){const opt=[...sel.options].find(o=>o.value===locationDB[m.code]);sel.value=opt?locationDB[m.code]:'';}
+  }
   const pickerList=document.getElementById(pg+'-lot-picker-list');
   if(m&&pickerList&&pg==='raw') {
     pickerList.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด Lot...</div>';
@@ -1153,15 +1211,12 @@ function renderMasterPage(){
       <div><div class="page-title">Master Data</div>
         <div class="page-sub">จัดการรายการ หมวดหมู่ และ QR Code</div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-sm" onclick="exportStockCsv()" title="Export สต็อกทุกรายการ">
-          <i class="ti ti-table-export"></i> Export สต็อก</button>
-        <button class="btn btn-sm" onclick="exportLotsCsv()" title="Export Lot ทั้งหมด">
-          <i class="ti ti-table-export"></i> Export Lot</button>
+        <button class="btn btn-sm" onclick="exportAllCsv()" title="Export ทุกอย่าง: สต็อก + ประวัติ + Lot">
+          <i class="ti ti-table-export"></i> Export ทั้งหมด</button>
         <button class="btn btn-primary btn-sm" onclick="showAddForm()">
           <i class="ti ti-plus"></i> เพิ่มรายการ</button>
       </div>
     </div>
-    ${alertHtml}
     <div class="card" style="margin-bottom:11px">
       <div class="card-title"><div class="card-title-left"><i class="ti ti-hash"></i> รูปแบบรหัส</div></div>
       <div class="naming-grid">${namingRows}</div>
@@ -1436,6 +1491,19 @@ function renderMasterContent(){
   content.innerHTML=html||'<div class="empty" style="padding:32px"><i class="ti ti-search"></i><div class="empty-text">ไม่พบรายการ</div></div>';
 }
 
+function syncLocFromSelect(pg){
+  const sel=document.getElementById(pg+'-loc-select')?.value||'';
+  const inp=document.getElementById(pg+'-loc');
+  if(sel&&inp)inp.value=sel;
+}
+function syncLocFromInput(pg){
+  const inp=document.getElementById(pg+'-loc')?.value||'';
+  const sel=document.getElementById(pg+'-loc-select');
+  if(!sel)return;
+  // reset select if typed manually
+  const matching=[...sel.options].find(o=>o.value===inp);
+  sel.value=matching?inp:'';
+}
 function toggleLotSub(subId,code){
   const sub=document.getElementById(subId);if(!sub)return;
   const isOpen=sub.style.display!=='none';
@@ -1479,6 +1547,54 @@ function downloadCsv(filename, rows) {
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+/** Export รวมทุกอย่าง: stock + transactions + lots ──
+ * ออกเป็น 1 ไฟล์ CSV ต่อ sheet (3 tabs แต่ CSV เป็น 1 ไฟล์ต่อ type)
+ * สำหรับ full export ใช้ exportAllCsv()
+ */
+async function exportAllCsv() {
+  showToast('กำลัง Export ข้อมูลทั้งหมด...');
+  const d = new Date().toISOString().split('T')[0];
+
+  // ── Sheet 1: Stock ──
+  const stockRows = [
+    ['รหัส','ชื่อรายการ','คลัง','หมวดหมู่','สต็อก','Min','Max','สถานที่จัดเก็บ'],
+    ...masterDB.map(m => [m.code, m.name, WAREHOUSE_CONFIG[m.pg]?.label||m.pg, m.subcat||'', m.stock, m.min, m.max, locationDB[m.code]||''])
+  ];
+  downloadCsv(`sawanbondin_stock_${d}.csv`, stockRows);
+
+  // ── Sheet 2: Transactions ──
+  try {
+    const { data } = await sb.from('transactions').select('*').order('created_at',{ascending:false}).limit(10000);
+    if (data) {
+      const txRows = [
+        ['วันที่','เวลา','ประเภท','ผู้ทำรายการ','แผนก','รายการ','รหัส','คลัง','จำนวน','Lot SW','Lot Supplier','สต็อกก่อน','สต็อกหลัง','หมายเหตุ','ช่องทาง'],
+        ...data.map(r => {
+          const dt = new Date(r.created_at);
+          return [dt.toLocaleDateString('th-TH'), dt.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),
+            ACTION_LABELS[r.action_type]||r.action_type, r.operator_name||'', r.department||'',
+            r.item_name||'', r.item_code||'', r.pg||'', r.quantity||0,
+            r.lot_sw||'', r.lot_supplier||'', r.old_stock??'', r.new_stock??'', r.note||'', r.via||''];
+        })
+      ];
+      setTimeout(() => downloadCsv(`sawanbondin_transactions_${d}.csv`, txRows), 500);
+    }
+  } catch(e) { console.warn(e); }
+
+  // ── Sheet 3: Lots ──
+  try {
+    const { data } = await sb.from('lots').select('*').order('item_code',{ascending:true}).order('lot_sw',{ascending:true});
+    if (data) {
+      const lotRows = [
+        ['รหัสสินค้า','ชื่อสินค้า','Lot Sawanbondin','Lot Supplier','สต็อกคงเหลือ','สถานะ'],
+        ...data.map(r => [r.item_code, r.item_name, r.lot_sw||'', r.lot_supplier||'', r.stock, parseFloat(r.stock)<=0?'หมดแล้ว':'มีสต็อก'])
+      ];
+      setTimeout(() => downloadCsv(`sawanbondin_lots_${d}.csv`, lotRows), 1000);
+    }
+  } catch(e) { console.warn(e); }
+
+  showToast('Export สำเร็จ — ดาวน์โหลด 3 ไฟล์');
 }
 
 /** Export stock snapshot ของทุกรายการ */
@@ -1612,10 +1728,16 @@ async function boot(){
   loadBatchLS();
   document.getElementById('topbarDate').textContent=dateToday();
 
-  // Show logged-in user
+  // Show logged-in user + save display name
   if(currentUser){
     const el=document.getElementById('topbarUser');
-    if(el)el.textContent=currentUser.email;
+    const displayName = currentUser.user_metadata?.display_name
+      || currentUser.user_metadata?.name
+      || currentUser.email?.split('@')[0]
+      || 'User';
+    if(el)el.textContent=displayName;
+    // เก็บชื่อไว้ใช้ autofill ฟอร์ม
+    window._operatorName = displayName;
   }
 
   checkAlerts();

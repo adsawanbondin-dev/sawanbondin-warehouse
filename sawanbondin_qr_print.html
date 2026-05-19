@@ -108,6 +108,14 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       <div class="cat-pills" id="catPills"></div>
     </div>
     <div class="sb-sec">
+      <div class="sb-label">Lot QR (สแกนเข้า/ออก)</div>
+      <button id="loadLotsBtn" onclick="loadLots()" style="width:100%;padding:7px;background:var(--acc);border:none;border-radius:var(--r);color:#fff;font-family:inherit;font-size:12px;cursor:pointer;margin-bottom:6px">โหลด Lot จากระบบ</button>
+      <div id="lotList" style="display:none">
+        <input style="width:100%;padding:6px 9px;border:1px solid var(--line);border-radius:var(--r);font-family:inherit;font-size:12px;margin-bottom:5px" placeholder="ค้นหา Lot..." oninput="buildLotList(this.value)">
+        <div id="lotItemList" class="item-list-sb" style="max-height:180px"></div>
+      </div>
+    </div>
+    <div class="sb-sec">
       <div class="sb-label">รายการ</div>
       <div class="sel-bar" id="selBar"><span id="selCount">เลือก 0 รายการ</span><span style="cursor:pointer;font-size:11px" onclick="clearAll()">ล้างทั้งหมด</span></div>
       <div class="sel-actions">
@@ -150,6 +158,124 @@ push(['Oriental Beauty Finely ground 20 g','Oriental Beauty Finely ground 100 g'
 
 let selected=new Set(),currentCat='ทั้งหมด',cols=3;
 let showQR=true,showBC=false,showName=true,showBrand=true;
+
+// ── Lot QR section ──
+// lots จะถูกโหลดจาก Supabase เมื่อกด "โหลด Lot"
+let lotCatalog = [];
+let selectedLots = new Set();
+
+async function loadLots() {
+  const btn = document.getElementById('loadLotsBtn');
+  btn.textContent = 'กำลังโหลด...';
+  btn.disabled = true;
+  try {
+    const res = await fetch('https://rsmcrshvcbtcxvvhdmnk.supabase.co/rest/v1/lots?select=id,item_code,item_name,lot_sw,lot_supplier,stock,qr_payload&stock=gt.0&order=item_code,lot_sw', {
+      headers: {
+        'apikey': 'sb_publishable__RK27ReptMhtMdc8EdA-KQ_K4zfhMwJ',
+        'Authorization': 'Bearer sb_publishable__RK27ReptMhtMdc8EdA-KQ_K4zfhMwJ'
+      }
+    });
+    const data = await res.json();
+    lotCatalog = data.map(r => ({
+      name: r.item_name + (r.lot_sw ? ' [' + new Date(r.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) + ']' : ''),
+      code: r.qr_payload || (r.item_code + '__LOT__' + r.lot_sw),
+      cat: 'Lot',
+      lotSW: r.lot_sw, lotSP: r.lot_supplier, stock: r.stock,
+      itemCode: r.item_code, itemName: r.item_name,
+    }));
+    btn.textContent = `โหลดแล้ว (${lotCatalog.length} Lot)`;
+    document.getElementById('lotList').style.display = 'block';
+    buildLotList('');
+  } catch(e) {
+    btn.textContent = 'โหลดไม่สำเร็จ — ลองใหม่';
+    btn.disabled = false;
+  }
+}
+
+function buildLotList(filter) {
+  const container = document.getElementById('lotItemList');
+  const filt = filter.toLowerCase();
+  const items = lotCatalog.filter(l => !filt || l.name.toLowerCase().includes(filt) || l.itemCode.toLowerCase().includes(filt));
+  container.innerHTML = '';
+  items.forEach(it => {
+    const row = document.createElement('div');
+    row.className = 'item-entry' + (selectedLots.has(it.code) ? ' sel' : '');
+    row.innerHTML = `<div class="ie-check">${selectedLots.has(it.code)?'✓':''}</div>
+      <div class="ie-info">
+        <div class="ie-name">${it.itemName}</div>
+        <div class="ie-code" style="font-size:9px">${it.lotSW||''} ${it.lotSP?' | Sup:'+it.lotSP:''} | คงเหลือ ${it.stock}</div>
+      </div>`;
+    row.addEventListener('click', () => {
+      if (selectedLots.has(it.code)) selectedLots.delete(it.code);
+      else selectedLots.add(it.code);
+      buildLotList(filter);
+      renderAllSelected();
+    });
+    container.appendChild(row);
+  });
+}
+
+function renderAllSelected() {
+  // รวม item + lot ที่เลือก
+  const allCodes = new Set([...selected, ...selectedLots]);
+  const allItems = [
+    ...CATALOG.filter(i => selected.has(i.code)),
+    ...lotCatalog.filter(l => selectedLots.has(l.code)),
+  ];
+  const cnt = document.getElementById('stickerCount');
+  if (!allCodes.size) {
+    document.getElementById('previewArea').innerHTML = `<div class="preview-empty"><i class="ti ti-qrcode preview-empty-icon"></i><div class="preview-empty-text">เลือกรายการหรือ Lot จากแถบซ้าย</div></div>`;
+    if (cnt) cnt.textContent = '';
+    return;
+  }
+  const style = document.getElementById('styleOpt').value;
+  const qrSz = parseInt(document.getElementById('qrSize').value)||80;
+  const copies = parseInt(document.getElementById('copies').value)||1;
+  const expanded = [];
+  allItems.forEach(it => { for(let c=0;c<copies;c++) expanded.push(it); });
+  if (cnt) cnt.textContent = `${expanded.length} สติ๊กเกอร์`;
+  document.getElementById('previewArea').innerHTML = `<div class="sheet"><div class="sticker-grid cols-${cols}" id="grid"></div></div>`;
+  const grid = document.getElementById('grid');
+  const isDark = style === 'modern';
+  const qrItems = [];
+  expanded.forEach((item, idx) => {
+    const div = document.createElement('div'); div.className = `sticker ${style}`;
+    if (showQR) {
+      const qrWrap = document.createElement('div');
+      qrWrap.id = `qr_${idx}`; qrWrap.style.cssText = `width:${qrSz}px;height:${qrSz}px;margin:0 auto`;
+      div.appendChild(qrWrap);
+      qrItems.push({id:`qr_${idx}`, code:item.code, sz:qrSz, dark:isDark?'#ffffff':'#1a1a1c', light:isDark?'#1a1a1c':'#ffffff'});
+    }
+    if (showBC) {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.id = `bc_${idx}`; svg.style.cssText = 'display:block;margin:4px auto 0;max-width:100%';
+      div.appendChild(svg);
+    }
+    if (showName) { const el=document.createElement('div'); el.className='sticker-name'; el.textContent=item.name; div.appendChild(el); }
+    // lot info line
+    if (item.lotSW) {
+      const li = document.createElement('div'); li.className='sticker-code';
+      li.style.cssText='font-size:8px;color:#666';
+      li.textContent = new Date(item.lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'});
+      div.appendChild(li);
+    }
+    const cd = document.createElement('div'); cd.className='sticker-code'; cd.textContent=item.code.split('__LOT__')[0]; div.appendChild(cd);
+    if (showBrand) { const br=document.createElement('div'); br.className='sticker-brand'; br.textContent='SAWANBONDIN'; div.appendChild(br); }
+    grid.appendChild(div);
+  });
+  requestAnimationFrame(() => {
+    qrItems.forEach(q => {
+      const el = document.getElementById(q.id);
+      if (el) { try { new QRCode(el,{text:q.code,width:q.sz,height:q.sz,colorDark:q.dark,colorLight:q.light,correctLevel:QRCode.CorrectLevel.M}); } catch(e){} }
+    });
+    if (showBC) {
+      expanded.forEach((item,idx) => {
+        const svg = document.getElementById('bc_'+idx);
+        if (svg) { try { JsBarcode(svg, item.code.split('__LOT__')[0], {format:'CODE128',width:1.5,height:36,displayValue:true,fontSize:9,lineColor:isDark?'#fff':'#1a1a1c',background:isDark?'#1a1a1c':'#fff',margin:3}); } catch(e){} }
+      });
+    }
+  });
+}
 
 function init(){
   const cats=['ทั้งหมด',...new Set(CATALOG.map(i=>i.cat))];
@@ -194,7 +320,7 @@ function updateSelBar(){const bar=document.getElementById('selBar');if(selected.
 function toggle(key,val,onId,offId){if(key==='showQR')showQR=val;else if(key==='showBC')showBC=val;else if(key==='showName')showName=val;else if(key==='showBrand')showBrand=val;document.getElementById(onId).classList.toggle('active',val);document.getElementById(offId).classList.toggle('active',!val);renderPreview();}
 function setCols(n){cols=n;[2,3,4,5].forEach(c=>document.getElementById('c'+c).classList.toggle('active',c===n));renderPreview();}
 
-function renderPreview(){
+function _renderPreviewOld(){
   const area=document.getElementById('previewArea');
   const cntEl=document.getElementById('stickerCount');
   if(!selected.size){area.innerHTML=`<div class="preview-empty"><i class="ti ti-qrcode preview-empty-icon" aria-hidden="true"></i><div class="preview-empty-text">เลือกรายการจากแถบซ้ายเพื่อดูตัวอย่าง</div></div>`;cntEl.textContent='';return;}
@@ -263,3 +389,5 @@ init();
 </script>
 </body>
 </html>
+
+function renderPreview(){ renderAllSelected(); }
