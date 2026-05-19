@@ -147,21 +147,56 @@ async function dbLoadItems() {
 }
 
 async function dbUpsertItem(m) {
+  // upsert metadata only (name, pg, subcat, min, max, note, seq)
+  // stock ถูก update ผ่าน RPC adjust_stock แยกต่างหาก
   const { error } = await sb.from('items').upsert({
     code:m.code, name:m.name, pg:m.pg, subcat:m.subcat||'',
-    stock:m.stock, min_stock:m.min, max_stock:m.max,
+    min_stock:m.min, max_stock:m.max,
     note:locationDB[m.code]||'', seq:m.seq||0,
   }, { onConflict:'code' });
-  if (error) {
-    // stock_non_negative constraint
-    if (error.message.includes('stock_non_negative')) {
-      showToast('สต็อกไม่สามารถติดลบได้', 'err');
-    } else {
-      console.error('dbUpsertItem:', error.message);
-    }
-    return false;
-  }
+  if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
+}
+
+/**
+ * dbAdjustStock — เรียก RPC ที่ทำ row-level lock ใน DB
+ * ป้องกัน race condition เมื่อมีคนใช้พร้อมกัน
+ * return { ok, new_stock, error }
+ */
+async function dbAdjustStock(code, action, qty) {
+  const { data, error } = await sb.rpc('adjust_stock', {
+    p_code: code, p_action: action, p_qty: qty,
+  });
+  if (error) { console.error('adjust_stock RPC:', error.message); return { ok:false, error:error.message }; }
+  if (!data.ok) {
+    if (data.error === 'insufficient_stock') {
+      showToast(`สต็อกไม่พอ (มี ${data.available} เหลือ)`, 'err');
+    } else {
+      showToast(`เกิดข้อผิดพลาด: ${data.error}`, 'err');
+    }
+    return data;
+  }
+  // sync local cache
+  const m = masterDB.find(x => x.code===code);
+  if (m) m.stock = data.new_stock;
+  return data;
+}
+
+/**
+ * dbAdjustLotStock — RPC สำหรับ lot table
+ */
+async function dbAdjustLotStock(lotId, action, qty) {
+  const { data, error } = await sb.rpc('adjust_lot_stock', {
+    p_lot_id: lotId, p_action: action, p_qty: qty,
+  });
+  if (error) { console.error('adjust_lot_stock RPC:', error.message); return { ok:false, error:error.message }; }
+  if (!data.ok) {
+    if (data.error === 'insufficient_stock') {
+      showToast(`สต็อก Lot ไม่พอ (มี ${data.available} เหลือ)`, 'err');
+    }
+    return data;
+  }
+  return data;
 }
 
 async function dbDeleteItem(code) {
@@ -208,8 +243,8 @@ async function dbLoadLotsForItem(code) {
 }
 
 /**
- * dbUpsertLot — กัน concurrent update ด้วย optimistic locking
- * ถ้า updated_at ไม่ตรงกัน = มีคนอื่นแก้ไขก่อน → reload แล้วลองใหม่
+ * dbUpsertLot — ใช้ RPC adjust_lot_stock สำหรับ stock adjustment
+ * ส่วน insert lot ใหม่ยังใช้ direct insert (ไม่มี race condition เพราะเป็น row ใหม่)
  */
 async function dbUpsertLot(code, name, lotSW, lotSP, qty, action) {
   if (!lotDB[code]) await dbLoadLotsForItem(code);
@@ -218,44 +253,131 @@ async function dbUpsertLot(code, name, lotSW, lotSP, qty, action) {
   if (action === 'receive' || action === 'return_good') {
     const existing = lots.find(l => l.lot_sw === lotSW);
     if (existing) {
-      // optimistic lock: only update if updated_at matches
-      const newStock = existing.stock + qty;
-      const { error } = await sb.from('lots')
-        .update({ stock: newStock })
-        .eq('id', existing.id)
-        .eq('updated_at', existing.updated_at);  // concurrent guard
-      if (error) {
-        // reload and retry once
-        await dbLoadLotsForItem(code);
-        const fresh = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
-        if (fresh) {
-          await sb.from('lots').update({ stock: fresh.stock+qty }).eq('id', fresh.id);
-          fresh.stock += qty;
-        }
-      } else {
-        existing.stock = newStock;
-      }
+      // ใช้ RPC แทน direct update — ป้องกัน concurrent
+      const res = await dbAdjustLotStock(existing.id, action, qty);
+      if (res.ok) existing.stock = res.new_stock;
     } else {
+      // lot ใหม่ — insert พร้อม qr_payload
+      const qrPayload = `${code}__LOT__${lotSW}`;
       const { data, error } = await sb.from('lots').insert({
         item_code:code, item_name:name, lot_sw:lotSW,
-        lot_supplier:lotSP||null, stock:qty
+        lot_supplier:lotSP||null, stock:qty,
+        qr_payload:qrPayload,
       }).select().single();
-      if (!error && data) lots.push({ id:data.id, lot_sw:data.lot_sw, lot_supplier:data.lot_supplier||'', stock:qty, updated_at:data.updated_at });
+      if (!error && data) {
+        lots.push({
+          id:data.id, lot_sw:data.lot_sw,
+          lot_supplier:data.lot_supplier||'',
+          stock:qty, updated_at:data.updated_at,
+          qr_payload:qrPayload,
+        });
+      }
     }
     lotDB[code] = lots;
   } else {
+    // withdraw / return_bad — ใช้ RPC
     const lot = lots.find(l => l.lot_sw === lotSW);
     if (lot) {
-      const newStock = Math.max(0, lot.stock - qty); // กัน lot stock ติดลบ
-      await sb.from('lots').update({ stock:newStock }).eq('id', lot.id);
-      lot.stock = newStock;
+      const res = await dbAdjustLotStock(lot.id, action, qty);
+      if (res.ok) lot.stock = res.new_stock;
+      else return false;
     }
   }
+  return true;
 }
 
 /* ═══════════════════════════════════════════
-   VALIDATION
+   BIN LOCATION — ระบบพิกัดชั้นวาง
 ═══════════════════════════════════════════ */
+let binLocations = []; // cache [{id, zone, row, level, code, label}]
+
+async function dbLoadBinLocations() {
+  const { data, error } = await sb.from('bin_locations')
+    .select('*').order('code', { ascending: true });
+  if (error) { console.error('dbLoadBins:', error.message); return; }
+  binLocations = data || [];
+}
+
+async function dbSaveBinLocation(zone, row, level, label='') {
+  const { data, error } = await sb.from('bin_locations')
+    .insert({ zone, row, level, label })
+    .select().single();
+  if (error) { console.error('dbSaveBin:', error.message); return null; }
+  binLocations.push(data);
+  return data;
+}
+
+async function dbAssignBin(itemCode, binCode) {
+  locationDB[itemCode] = binCode;
+  const m = masterDB.find(x => x.code===itemCode);
+  if (m) await dbUpsertItem(m);
+}
+
+function buildBinSelectHtml(selectedCode='') {
+  if (!binLocations.length) return '<option value="">ยังไม่มีพิกัด — เพิ่มที่หน้า Master</option>';
+  const zones = [...new Set(binLocations.map(b=>b.zone))];
+  return '<option value="">-- เลือกพิกัด --</option>' +
+    zones.map(z => {
+      const bins = binLocations.filter(b=>b.zone===z);
+      return `<optgroup label="โซน ${z}">${
+        bins.map(b=>`<option value="${b.code}" ${b.code===selectedCode?'selected':''}>${b.code}${b.label?' ('+b.label+')':''}</option>`).join('')
+      }</optgroup>`;
+    }).join('');
+}
+
+/* ═══════════════════════════════════════════
+   QR INBOUND / OUTBOUND FLOW
+═══════════════════════════════════════════ */
+/**
+ * parseScanCode — แยก QR payload ออกเป็น { type, itemCode, lotSW }
+ * รองรับ 2 รูปแบบ:
+ *   1. SWBD_RM_PD_0001              → item scan
+ *   2. SWBD_RM_PD_0001__LOT__2025-05-19 → lot scan
+ */
+function parseScanCode(raw) {
+  if (raw.includes('__LOT__')) {
+    const [itemCode, lotSW] = raw.split('__LOT__');
+    return { type: 'lot', itemCode: itemCode.trim(), lotSW: lotSW.trim() };
+  }
+  return { type: 'item', itemCode: raw.trim(), lotSW: '' };
+}
+
+/**
+ * handleScanResult — เรียกเมื่อสแกน QR ได้ ทั้งจากกล้องและ QR sidebar
+ * ถ้าสแกนได้ lot QR → autofill ทั้ง item และ lot date ในฟอร์ม
+ */
+function handleScanResult(raw, pg) {
+  const parsed = parseScanCode(raw);
+  const m = masterDB.find(x => x.code === parsed.itemCode);
+  if (!m) return { found: false };
+
+  // autofill item
+  const di = document.getElementById(pg+'-idisplay');
+  const iv = document.getElementById(pg+'-ival');
+  if (di) di.value = m.name;
+  if (iv) iv.value = m.name;
+
+  // autofill lot date ถ้าเป็น lot QR
+  if (parsed.type === 'lot' && parsed.lotSW) {
+    const sw = document.getElementById(pg+'-lotsw');
+    if (sw) sw.value = parsed.lotSW;
+    // autofill lot picker
+    const pickerList = document.getElementById(pg+'-lot-picker-list');
+    if (pickerList && pg==='raw') {
+      buildLotPickerHtml(m.code, pg).then(html => { pickerList.innerHTML = html; });
+    }
+  }
+
+  // autofill location
+  if (locationDB[m.code]) {
+    const locEl = document.getElementById(pg+'-loc');
+    if (locEl) locEl.value = locationDB[m.code];
+  }
+
+  return { found: true, item: m, lotSW: parsed.lotSW };
+}
+
+
 function validateForm(pg, skipLot = false) {
   const errors = [];
   const name = (document.getElementById(pg+'-name')?.value||'').trim();
@@ -737,14 +859,21 @@ async function submitF(pg) {
 
   let ok = true;
   if (mi) {
-    if (action==='receive'||action==='return_good') mi.stock+=qty;
-    else if (action==='withdraw') mi.stock=Math.max(0,mi.stock-qty);
-    if (action==='receive'&&loc) locationDB[code]=loc;
-    ok = await dbUpsertItem(mi);
-    if (ok && pg==='raw' && lotSW) await dbUpsertLot(code,item,lotSW,lotSP,qty,action);
+    // ── ใช้ RPC สำหรับ stock adjustment (atomic, row-lock) ──
+    if (action !== 'return_bad') {
+      const res = await dbAdjustStock(code, action, qty);
+      if (!res.ok) { setLoading(pg+'-submit-btn', false); return; }
+    }
+    // upsert metadata (name, min, max, location) — ไม่รวม stock
+    if (action==='receive' && loc) locationDB[code] = loc;
+    await dbUpsertItem(mi);
+    if (pg==='raw' && lotSW) {
+      const lotOk = await dbUpsertLot(code, item, lotSW, lotSP, qty, action);
+      if (!lotOk) { setLoading(pg+'-submit-btn', false); return; }
+    }
   }
 
-  if (ok) {
+  if (true) {
     const rec={time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],name,dept,item,code,qty,lotSW:lotSW||'-',lotSP,note,pg,via:'manual'};
     txState[pg].records.unshift(rec);
     await dbInsertTransaction(rec);
@@ -804,8 +933,11 @@ async function submitBatch(pg){
     const mi=masterDB.find(m=>m.name===r.item);
     const code=mi?mi.code:r.code;
     if(mi){
-      if(r.action==='receive'||r.action==='return_good')mi.stock+=r.qty;
-      else if(r.action==='withdraw')mi.stock=Math.max(0,mi.stock-r.qty);
+      // ── RPC stock adjustment ──
+      if(r.action!=='return_bad'){
+        const res=await dbAdjustStock(code,r.action,r.qty);
+        if(!res.ok)continue; // skip รายการนี้ ทำต่อรายการถัดไป
+      }
       if(r.action==='receive'&&r.loc)locationDB[code]=r.loc;
       await dbUpsertItem(mi);
       if(pg==='raw'&&r.lotSW&&r.lotSW!=='-')await dbUpsertLot(code,r.item,r.lotSW,r.lotSP||'',r.qty,r.action);
@@ -855,12 +987,25 @@ function openCamera(pg){
   document.getElementById('camOverlay').classList.add('show');
   camScanner=new Html5Qrcode('cam-reader');
   camScanner.start({facingMode:'environment'},{fps:10,qrbox:{width:250,height:250}},
-    code=>{
-      lastCamCode=code;
-      const m=masterDB.find(x=>x.code.toLowerCase()===code.toLowerCase());
+    rawCode=>{
+      lastCamCode=rawCode;
+      const parsed=parseScanCode(rawCode);
+      const m=masterDB.find(x=>x.code===parsed.itemCode);
       const res=document.getElementById('camResult');
-      if(m){res.className='cam-result ok';res.textContent=`พบ: ${m.name} · สต็อก ${m.stock}`;}
-      else{res.className='cam-result err';res.textContent=`ไม่พบรหัส "${code}"`;}
+      if(m){
+        res.className='cam-result ok';
+        res.textContent=`พบ: ${m.name}${parsed.lotSW?' · Lot '+parsed.lotSW:''} · สต็อก ${m.stock}`;
+        // autofill lot ถ้าเป็น lot QR
+        if(parsed.lotSW){
+          document.getElementById('camLotSW').style.display='block';
+          document.getElementById('camLotSWVal').textContent=parsed.lotSW;
+          document.getElementById('camLotHidden').value=parsed.lotSW;
+        } else {
+          document.getElementById('camLotSW').style.display='none';
+          document.getElementById('camLotHidden').value='';
+        }
+      }
+      else{res.className='cam-result err';res.textContent=`ไม่พบรหัส "${rawCode}"`;}
     },()=>{}
   ).catch(()=>{document.getElementById('camResult').textContent='ไม่สามารถเปิดกล้องได้';});
 }
@@ -868,21 +1013,31 @@ async function confirmCamScan(){
   if(!lastCamCode){alert('ยังไม่ได้สแกน');return;}
   const action=document.getElementById('camAction').value;
   const qty=parseFloat(document.getElementById('camQty').value||1);
+  const lotHidden=document.getElementById('camLotHidden')?.value||'';
   if(!qty||qty<=0){alert('กรุณาระบุจำนวน');return;}
-  const m=masterDB.find(x=>x.code.toLowerCase()===lastCamCode.toLowerCase());
+  const parsed=parseScanCode(lastCamCode);
+  const m=masterDB.find(x=>x.code===parsed.itemCode);
   if(!m){alert('ไม่พบรหัสในระบบ');return;}
-  if(action==='withdraw'&&qty>m.stock){showToast(`สต็อกไม่พอ (มี ${m.stock} เหลือ)`,'err');return;}
-  if(action==='receive'||action==='return_good')m.stock+=qty;
-  else if(action==='withdraw')m.stock=Math.max(0,m.stock-qty);
-  await dbUpsertItem(m);
   const pg=m.pg;
-  const rec={time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],name:'(กล้องสแกน)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],item:m.name,code:m.code,qty,lotSW:'-',pg,via:'camera'};
+  // ── RPC stock adjustment ──
+  if(action!=='return_bad'){
+    const res=await dbAdjustStock(m.code,action,qty);
+    if(!res.ok)return;
+  }
+  await dbUpsertItem(m);
+  if(pg==='raw'&&(parsed.lotSW||lotHidden)){
+    const lotSW=parsed.lotSW||lotHidden;
+    await dbUpsertLot(m.code,m.name,lotSW,'',qty,action);
+  }
+  const rec={time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],name:'(กล้องสแกน)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],item:m.name,code:m.code,qty,lotSW:parsed.lotSW||'-',pg,via:'camera'};
   txState[pg].records.unshift(rec);
   await dbInsertTransaction(rec);
   checkAlerts();if(currentQRPage===pg)renderHistory(pg);
   document.getElementById('camResult').className='cam-result ok';
   document.getElementById('camResult').textContent=`${ACTION_LABELS[action]} "${m.name}" ${qty} · สต็อก ${m.stock}`;
   lastCamCode='';document.getElementById('camQty').value='1';
+  document.getElementById('camLotSW').style.display='none';
+  document.getElementById('camLotHidden').value='';
 }
 function closeCamera(){
   if(camScanner){camScanner.stop().catch(()=>{});camScanner=null;}
@@ -969,7 +1124,32 @@ function renderMasterPage(){
       <div class="card-title"><div class="card-title-left"><i class="ti ti-hash"></i> รูปแบบรหัส</div></div>
       <div class="naming-grid">${namingRows}</div>
     </div>
-    <div class="card" id="addFormCard" style="display:none;margin-bottom:11px">
+    <div class="card" style="margin-bottom:11px">
+      <div class="card-title">
+        <div class="card-title-left"><i class="ti ti-map-pin"></i> พิกัดชั้นวาง (Bin Location)</div>
+        <button class="btn btn-sm btn-primary" onclick="showBinForm()">
+          <i class="ti ti-plus"></i> เพิ่มพิกัด</button>
+      </div>
+      <div id="binAddForm" style="display:none;margin-bottom:10px;padding:10px;background:var(--s2);border:1px solid var(--line);border-radius:var(--r)">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:end">
+          <div class="fg"><label class="fl">โซน</label>
+            <input class="fi" id="bin-zone" placeholder="ZN1"></div>
+          <div class="fg"><label class="fl">แถว</label>
+            <input class="fi" id="bin-row" placeholder="A"></div>
+          <div class="fg"><label class="fl">ชั้น</label>
+            <input class="fi" id="bin-level" placeholder="01"></div>
+          <div class="fg"><label class="fl">ชื่อ (ถ้ามี)</label>
+            <input class="fi" id="bin-label" placeholder="ตู้แช่เย็น"></div>
+          <div class="fg"><label class="fl" style="opacity:0">-</label>
+            <button class="btn btn-primary btn-sm" onclick="addBinLocation()">บันทึก</button></div>
+        </div>
+      </div>
+      <div id="binList" style="display:flex;flex-wrap:wrap;gap:5px">
+        ${binLocations.length ? binLocations.map(b=>
+          `<span style="font-size:11px;padding:3px 9px;background:var(--acc-bg);color:var(--acc);border-radius:5px;font-family:monospace">${b.code}${b.label?' — '+b.label:''}</span>`
+        ).join('') : '<span style="font-size:12px;color:var(--ink3)">ยังไม่มีพิกัด</span>'}
+      </div>
+    </div>
       <div class="card-title">
         <div class="card-title-left"><i class="ti ti-plus"></i> เพิ่มรายการใหม่</div>
         <button class="btn btn-sm" onclick="hideAddForm()">ยกเลิก</button>
@@ -1089,6 +1269,20 @@ async function saveEditLoc(){ const code=document.getElementById('editLocId').va
 async function deleteMasterItem(code){ if(!confirm('ลบรายการนี้? ข้อมูลจะหายถาวร'))return;masterDB=masterDB.filter(m=>m.code!==code);delete locationDB[code];await dbDeleteItem(code);checkAlerts();renderMasterContent(); }
 
 /* ── MASTER CONTENT ── */
+function showBinForm(){ const f=document.getElementById('binAddForm');if(f)f.style.display=f.style.display==='none'?'block':'none'; }
+async function addBinLocation(){
+  const zone=(document.getElementById('bin-zone')?.value||'').trim().toUpperCase();
+  const row=(document.getElementById('bin-row')?.value||'').trim().toUpperCase();
+  const level=(document.getElementById('bin-level')?.value||'').trim();
+  const label=(document.getElementById('bin-label')?.value||'').trim();
+  if(!zone||!row||!level){showToast('กรุณากรอก โซน แถว และ ชั้น','err');return;}
+  const data=await dbSaveBinLocation(zone,row,level,label);
+  if(data){
+    showToast(`เพิ่มพิกัด ${data.code} สำเร็จ`);
+    renderMasterPage();
+  }
+}
+
 function renderMasterContent(){
   const search=(document.getElementById('masterSearch')?.value||'').toLowerCase();
   const cat=masterCatFilter;
@@ -1222,6 +1416,9 @@ async function boot(){
       });
     }
   }catch(e){console.warn(e);}
+
+  // Load bin locations
+  await dbLoadBinLocations();
 
   loadBatchLS();
   document.getElementById('topbarDate').textContent=dateToday();

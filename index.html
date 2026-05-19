@@ -374,9 +374,13 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       <option value="return_good">คืนดี</option>
       <option value="return_bad">คืนเสีย</option>
     </select>
-    <input class="cam-qty" id="camQty" type="number" value="1" min="0.01" step="0.01">
+    <input class="cam-qty" id="camQty" type="number" value="1" min="0.01" step="0.01" inputmode="decimal">
     <button class="cam-confirm" onclick="confirmCamScan()">ยืนยัน</button>
   </div>
+  <div id="camLotSW" style="display:none;margin-top:8px;padding:5px 12px;background:rgba(44,82,130,.6);border-radius:6px;font-size:12px;color:#fff">
+    <i class="ti ti-tag" style="font-size:11px"></i> Lot: <span id="camLotSWVal"></span>
+  </div>
+  <input type="hidden" id="camLotHidden">
 </div>
 
 <!-- QR SIDEBAR -->
