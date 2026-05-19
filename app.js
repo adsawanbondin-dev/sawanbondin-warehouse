@@ -1130,26 +1130,34 @@ function renderMasterPage(){
         <button class="btn btn-sm btn-primary" onclick="showBinForm()">
           <i class="ti ti-plus"></i> เพิ่มพิกัด</button>
       </div>
-      <div id="binAddForm" style="display:none;margin-bottom:10px;padding:10px;background:var(--s2);border:1px solid var(--line);border-radius:var(--r)">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:end">
-          <div class="fg"><label class="fl">โซน</label>
-            <input class="fi" id="bin-zone" placeholder="ZN1"></div>
-          <div class="fg"><label class="fl">แถว</label>
-            <input class="fi" id="bin-row" placeholder="A"></div>
-          <div class="fg"><label class="fl">ชั้น</label>
-            <input class="fi" id="bin-level" placeholder="01"></div>
-          <div class="fg"><label class="fl">ชื่อ (ถ้ามี)</label>
-            <input class="fi" id="bin-label" placeholder="ตู้แช่เย็น"></div>
-          <div class="fg"><label class="fl" style="opacity:0">-</label>
-            <button class="btn btn-primary btn-sm" onclick="addBinLocation()">บันทึก</button></div>
+      <div id="binAddForm" style="display:none;margin-bottom:10px;padding:11px;background:var(--s2);border:1px solid var(--line);border-radius:var(--r)">
+        <div class="form-grid" style="margin-bottom:8px">
+          <div class="fg"><label class="fl">โซน <span class="req">*</span></label>
+            <input class="fi" id="bin-zone" placeholder="เช่น ZN1, COLD"></div>
+          <div class="fg"><label class="fl">แถว <span class="req">*</span></label>
+            <input class="fi" id="bin-row" placeholder="เช่น A, B, C"></div>
+          <div class="fg"><label class="fl">ชั้น <span class="req">*</span></label>
+            <input class="fi" id="bin-level" placeholder="เช่น 01, 02"></div>
+          <div class="fg"><label class="fl">ชื่อเพิ่มเติม</label>
+            <input class="fi" id="bin-label" placeholder="เช่น ตู้แช่เย็น"></div>
+        </div>
+        <div style="display:flex;gap:7px;justify-content:flex-end">
+          <button class="btn btn-sm" onclick="showBinForm()">ยกเลิก</button>
+          <button class="btn btn-primary btn-sm" onclick="addBinLocation()">
+            <i class="ti ti-check"></i> บันทึกพิกัด</button>
         </div>
       </div>
       <div id="binList" style="display:flex;flex-wrap:wrap;gap:5px">
         ${binLocations.length ? binLocations.map(b=>
-          `<span style="font-size:11px;padding:3px 9px;background:var(--acc-bg);color:var(--acc);border-radius:5px;font-family:monospace">${b.code}${b.label?' — '+b.label:''}</span>`
-        ).join('') : '<span style="font-size:12px;color:var(--ink3)">ยังไม่มีพิกัด</span>'}
+          `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--acc-bg);border:1px solid var(--line);border-radius:6px;margin-bottom:3px">
+            <span style="font-size:11px;color:var(--acc);font-family:monospace;font-weight:500">${b.code}</span>
+            ${b.label?`<span style="font-size:10px;color:var(--ink3)">${b.label}</span>`:''}
+            <button onclick="deleteBinLocation(${b.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:0;font-size:12px;line-height:1" title="ลบ"><i class="ti ti-x"></i></button>
+          </div>`
+        ).join('') : '<span style="font-size:12px;color:var(--ink3)">ยังไม่มีพิกัด — กด "+ เพิ่มพิกัด" เพื่อเริ่มต้น</span>'}
       </div>
     </div>
+    <div class="card" id="addFormCard" style="display:none;margin-bottom:11px">
       <div class="card-title">
         <div class="card-title-left"><i class="ti ti-plus"></i> เพิ่มรายการใหม่</div>
         <button class="btn btn-sm" onclick="hideAddForm()">ยกเลิก</button>
@@ -1209,16 +1217,17 @@ function buildAddForm(){
       <div class="fg"><label class="fl">ชื่อหมวดหมู่ใหม่ <span class="req">*</span></label>
         <input class="fi" id="new-subcat-name" placeholder="เช่น Herbal, Special Blend"></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:9px;align-items:end">
+    <div class="form-grid" style="margin-bottom:9px">
       <div class="fg"><label class="fl">สต็อกเริ่มต้น</label>
         <input class="fi" id="new-stock" type="number" min="0" step="0.01" value="0" inputmode="decimal"></div>
       <div class="fg"><label class="fl">Min</label>
         <input class="fi" id="new-min" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal"></div>
       <div class="fg"><label class="fl">Max</label>
         <input class="fi" id="new-max" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal"></div>
-      <div class="fg"><label class="fl" style="opacity:0">-</label>
-        <button class="btn btn-primary" id="add-item-btn" onclick="addMasterItem()">
-          <i class="ti ti-check"></i> บันทึก</button></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end">
+      <button class="btn btn-primary" id="add-item-btn" onclick="addMasterItem()">
+        <i class="ti ti-check"></i> บันทึก</button>
     </div>`;
 }
 function onNewCatChange(){
@@ -1269,7 +1278,10 @@ async function saveEditLoc(){ const code=document.getElementById('editLocId').va
 async function deleteMasterItem(code){ if(!confirm('ลบรายการนี้? ข้อมูลจะหายถาวร'))return;masterDB=masterDB.filter(m=>m.code!==code);delete locationDB[code];await dbDeleteItem(code);checkAlerts();renderMasterContent(); }
 
 /* ── MASTER CONTENT ── */
-function showBinForm(){ const f=document.getElementById('binAddForm');if(f)f.style.display=f.style.display==='none'?'block':'none'; }
+function showBinForm(){
+  const f=document.getElementById('binAddForm');
+  if(f) f.style.display=f.style.display==='none'?'block':'none';
+}
 async function addBinLocation(){
   const zone=(document.getElementById('bin-zone')?.value||'').trim().toUpperCase();
   const row=(document.getElementById('bin-row')?.value||'').trim().toUpperCase();
@@ -1279,6 +1291,14 @@ async function addBinLocation(){
   const data=await dbSaveBinLocation(zone,row,level,label);
   if(data){
     showToast(`เพิ่มพิกัด ${data.code} สำเร็จ`);
+    renderMasterPage();
+  }
+}
+async function deleteBinLocation(id){
+  if(!confirm('ลบพิกัดนี้?'))return;
+  const{error}=await sb.from('bin_locations').delete().eq('id',id);
+  if(!error){
+    binLocations=binLocations.filter(b=>b.id!==id);
     renderMasterPage();
   }
 }
