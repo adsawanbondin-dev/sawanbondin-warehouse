@@ -132,20 +132,7 @@ function nextSeq(pg, subcat) {
    SUPABASE — DB LAYER
    ทุก call มี error handling และ return result
 ═══════════════════════════════════════════ */
-async function dbLoadItems() {
-  const { data, error } = await sb.from('items')
-    .select('code,name,pg,subcat,stock,min_stock,max_stock,note,seq,updated_at')
-    .order('seq', { ascending: true });
-  if (error) { console.error('dbLoadItems:', error.message); return false; }
-  masterDB = (data || []).map(r => ({
-    code:r.code, name:r.name, pg:r.pg||'', subcat:r.subcat||'',
-    stock:parseFloat(r.stock)||0, min:parseFloat(r.min_stock)||0,
-    max:parseFloat(r.max_stock)||0, seq:r.seq||0, updated_at:r.updated_at,
-  }));
-  (data||[]).forEach(r => { if (r.note) locationDB[r.code] = r.note; });
-  return true;
-}
-
+/* DB functions defined below after dbAdjustStockWithLot */
 async function dbUpsertItem(m) {
   // upsert metadata only (name, pg, subcat, min, max, note, seq)
   // stock ถูก update ผ่าน RPC adjust_stock แยกต่างหาก
@@ -158,60 +145,22 @@ async function dbUpsertItem(m) {
   return true;
 }
 
-/**
- * dbAdjustStock — เรียก RPC ที่ทำ row-level lock ใน DB
- * ป้องกัน race condition เมื่อมีคนใช้พร้อมกัน
- * return { ok, new_stock, error }
- */
-async function dbAdjustStock(code, action, qty) {
-  const { data, error } = await sb.rpc('adjust_stock', {
-    p_code: code, p_action: action, p_qty: qty,
-  });
-  if (error) { console.error('adjust_stock RPC:', error.message); return { ok:false, error:error.message }; }
-  if (!data.ok) {
-    if (data.error === 'insufficient_stock') {
-      showToast(`สต็อกไม่พอ (มี ${data.available} เหลือ)`, 'err');
-    } else {
-      showToast(`เกิดข้อผิดพลาด: ${data.error}`, 'err');
-    }
-    return data;
-  }
-  // sync local cache
-  const m = masterDB.find(x => x.code===code);
-  if (m) m.stock = data.new_stock;
-  return data;
-}
-
-/**
- * dbAdjustLotStock — RPC สำหรับ lot table
- */
-async function dbAdjustLotStock(lotId, action, qty) {
-  const { data, error } = await sb.rpc('adjust_lot_stock', {
-    p_lot_id: lotId, p_action: action, p_qty: qty,
-  });
-  if (error) { console.error('adjust_lot_stock RPC:', error.message); return { ok:false, error:error.message }; }
-  if (!data.ok) {
-    if (data.error === 'insufficient_stock') {
-      showToast(`สต็อก Lot ไม่พอ (มี ${data.available} เหลือ)`, 'err');
-    }
-    return data;
-  }
-  return data;
-}
-
-async function dbDeleteItem(code) {
-  const { error } = await sb.from('items').delete().eq('code', code);
-  if (error) { console.error('dbDeleteItem:', error.message); return false; }
-  return true;
-}
-
 async function dbInsertTransaction(rec) {
   const { error } = await sb.from('transactions').insert({
-    item_code:rec.code, item_name:rec.item, pg:rec.pg,
-    action_type:rec.type, quantity:rec.qty, unit:'',
-    operator_name:rec.name, department:rec.dept,
-    lot_sw:rec.lotSW||'', lot_supplier:rec.lotSP||'',
-    note:rec.note||'', via:rec.via||'manual',
+    item_code:    rec.code,
+    item_name:    rec.item,
+    pg:           rec.pg,
+    action_type:  rec.type,
+    quantity:     rec.qty,
+    unit:         '',
+    operator_name: rec.name,
+    department:   rec.dept,
+    lot_sw:       rec.lotSW   || '',
+    lot_supplier: rec.lotSP   || '',
+    note:         rec.note    || '',
+    via:          rec.via     || 'manual',
+    old_stock:    rec.oldStock ?? null,
+    new_stock:    rec.newStock ?? null,
   });
   if (error) { console.error('dbInsertTx:', error.message); return false; }
   return true;
@@ -227,9 +176,19 @@ async function dbLoadTransactions(pg) {
     type:r.action_type, typeLabel:ACTION_LABELS[r.action_type]||r.action_type,
     name:r.operator_name||'', dept:r.department||'',
     item:r.item_name, code:r.item_code,
-    qty:parseFloat(r.quantity), lotSW:r.lot_sw||'-',
+    qty:parseFloat(r.quantity), lotSW:r.lot_sw||'-', lotSP:r.lot_supplier||'',
     pg:r.pg, via:r.via||'manual',
+    oldStock:r.old_stock, newStock:r.new_stock,
   }));
+}
+
+async function dbDeleteItem(code) {
+  // soft delete — ไม่ลบจริง แค่ set is_active = false
+  const { error } = await sb.from('items')
+    .update({ is_active: false })
+    .eq('code', code);
+  if (error) { console.error('dbDeleteItem:', error.message); return false; }
+  return true;
 }
 
 async function dbLoadLotsForItem(code) {
@@ -242,49 +201,84 @@ async function dbLoadLotsForItem(code) {
   }));
 }
 
-/**
- * dbUpsertLot — ใช้ RPC adjust_lot_stock สำหรับ stock adjustment
- * ส่วน insert lot ใหม่ยังใช้ direct insert (ไม่มี race condition เพราะเป็น row ใหม่)
- */
-async function dbUpsertLot(code, name, lotSW, lotSP, qty, action) {
-  if (!lotDB[code]) await dbLoadLotsForItem(code);
-  const lots = lotDB[code] || [];
-
-  if (action === 'receive' || action === 'return_good') {
-    const existing = lots.find(l => l.lot_sw === lotSW);
-    if (existing) {
-      // ใช้ RPC แทน direct update — ป้องกัน concurrent
-      const res = await dbAdjustLotStock(existing.id, action, qty);
-      if (res.ok) existing.stock = res.new_stock;
-    } else {
-      // lot ใหม่ — insert พร้อม qr_payload
-      const qrPayload = `${code}__LOT__${lotSW}`;
-      const { data, error } = await sb.from('lots').insert({
-        item_code:code, item_name:name, lot_sw:lotSW,
-        lot_supplier:lotSP||null, stock:qty,
-        qr_payload:qrPayload,
-      }).select().single();
-      if (!error && data) {
-        lots.push({
-          id:data.id, lot_sw:data.lot_sw,
-          lot_supplier:data.lot_supplier||'',
-          stock:qty, updated_at:data.updated_at,
-          qr_payload:qrPayload,
-        });
-      }
-    }
-    lotDB[code] = lots;
-  } else {
-    // withdraw / return_bad — ใช้ RPC
-    const lot = lots.find(l => l.lot_sw === lotSW);
-    if (lot) {
-      const res = await dbAdjustLotStock(lot.id, action, qty);
-      if (res.ok) lot.stock = res.new_stock;
-      else return false;
-    }
-  }
+async function dbLoadItems() {
+  const { data, error } = await sb.from('items')
+    .select('code,name,pg,subcat,stock,min_stock,max_stock,note,seq,updated_at')
+    .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
+    .order('seq', { ascending: true });
+  if (error) { console.error('dbLoadItems:', error.message); return false; }
+  masterDB = (data || []).map(r => ({
+    code:r.code, name:r.name, pg:r.pg||'', subcat:r.subcat||'',
+    stock:parseFloat(r.stock)||0, min:parseFloat(r.min_stock)||0,
+    max:parseFloat(r.max_stock)||0, seq:r.seq||0, updated_at:r.updated_at,
+  }));
+  (data||[]).forEach(r => { if (r.note) locationDB[r.code] = r.note; });
   return true;
 }
+
+/**
+ * dbAdjustStockWithLot — RPC เดียวที่ทำทุกอย่างใน 1 DB transaction
+ * ─ อัปเดต items.stock และ lots.stock พร้อมกัน ป้องกัน desync
+ * ─ บันทึก old_stock / new_stock ใน transactions อัตโนมัติ
+ *
+ * params:
+ *   code    — item code
+ *   action  — receive | withdraw | return_good | return_bad
+ *   qty     — จำนวน
+ *   lotId   — bigint id ของ lot (withdraw/return) หรือ null
+ *   lotSW   — date string สำหรับ receive (สร้าง lot ใหม่)
+ *   lotSP   — date string lot supplier
+ *   name    — item name (ใช้ตอน insert lot ใหม่)
+ */
+async function dbAdjustStockWithLot(code, action, qty, { lotId=null, lotSW=null, lotSP=null, name='' } = {}) {
+  const params = {
+    p_code:     code,
+    p_action:   action,
+    p_qty:      qty,
+    p_lot_id:   lotId   || null,
+    p_lot_sw:   lotSW   || null,
+    p_lot_sp:   lotSP   || null,
+    p_lot_name: name    || null,
+  };
+  const { data, error } = await sb.rpc('adjust_stock_with_lot', params);
+  if (error) {
+    console.error('adjust_stock_with_lot RPC:', error.message);
+    showToast('เกิดข้อผิดพลาด: ' + error.message, 'err');
+    return { ok: false, error: error.message };
+  }
+  if (!data.ok) {
+    if (data.error === 'insufficient_lot_stock' || data.error === 'insufficient_stock') {
+      showToast(`สต็อกไม่พอ (มี ${data.available} เหลือ)`, 'err');
+    } else if (data.error === 'lot_not_found') {
+      showToast('ไม่พบ Lot ที่เลือก กรุณาโหลดใหม่', 'err');
+    } else {
+      showToast(`เกิดข้อผิดพลาด: ${data.error}`, 'err');
+    }
+    return data;
+  }
+  // sync local cache
+  const m = masterDB.find(x => x.code === code);
+  if (m) m.stock = data.new_stock;
+  // sync lot cache ถ้ามี
+  if (data.lot_id && lotDB[code]) {
+    const lot = lotDB[code].find(l => l.id === data.lot_id);
+    if (lot && data.new_lot_stock !== undefined) lot.stock = data.new_lot_stock;
+    // เพิ่ม lot ใหม่เข้า cache ถ้าเป็น receive
+    if (!lot && (action === 'receive' || action === 'return_good') && lotSW) {
+      await dbLoadLotsForItem(code);
+    }
+  }
+  return data;
+}
+
+// ── backward compat aliases ──
+async function dbAdjustStock(code, action, qty) {
+  return dbAdjustStockWithLot(code, action, qty);
+}
+async function dbUpsertLot(code, name, lotSW, lotSP, qty, action, lotId=null) {
+  return dbAdjustStockWithLot(code, action, qty, { lotId, lotSW, lotSP, name });
+}
+
 
 /* ═══════════════════════════════════════════
    BIN LOCATION — ระบบพิกัดชั้นวาง
@@ -869,24 +863,37 @@ async function submitF(pg) {
   const mi   = masterDB.find(m=>m.name===item);
   const code = mi ? mi.code : '-';
 
-  let ok = true;
+  let rpcResult = { ok: true, new_stock: mi?.stock };
   if (mi) {
-    // ── ใช้ RPC สำหรับ stock adjustment (atomic, row-lock) ──
+    // ── RPC เดียวจัดการ items.stock + lots.stock พร้อมกัน ──
     if (action !== 'return_bad') {
-      const res = await dbAdjustStock(code, action, qty);
-      if (!res.ok) { setLoading(pg+'-submit-btn', false); return; }
+      // หา lotId จาก lotDB cache ถ้าเป็นการเบิก/คืน
+      let lotId = null;
+      if (pg==='raw' && lotSW && (action==='withdraw'||action==='return_good')) {
+        const cached = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
+        if (cached) lotId = cached.id;
+      }
+      rpcResult = await dbAdjustStockWithLot(code, action, qty, {
+        lotId,
+        lotSW: (action==='receive'||action==='return_good') ? lotSW||null : null,
+        lotSP: lotSP||null,
+        name: item,
+      });
+      if (!rpcResult.ok) { setLoading(pg+'-submit-btn', false); return; }
     }
-    // upsert metadata (name, min, max, location) — ไม่รวม stock
+    // upsert metadata เท่านั้น (ไม่รวม stock — DB คำนวณแล้ว)
     if (action==='receive' && loc) locationDB[code] = loc;
     await dbUpsertItem(mi);
-    if (pg==='raw' && lotSW) {
-      const lotOk = await dbUpsertLot(code, item, lotSW, lotSP, qty, action);
-      if (!lotOk) { setLoading(pg+'-submit-btn', false); return; }
-    }
   }
 
   if (true) {
-    const rec={time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],name,dept,item,code,qty,lotSW:lotSW||'-',lotSP,note,pg,via:'manual'};
+    const rec={
+      time:timeNow(), type:action, typeLabel:ACTION_LABELS[action],
+      name, dept, item, code, qty,
+      lotSW:lotSW||'-', lotSP, note, pg, via:'manual',
+      oldStock: rpcResult.ok ? (rpcResult.new_stock - (action==='receive'||action==='return_good' ? qty : -qty)) : null,
+      newStock:  rpcResult.ok ? rpcResult.new_stock : null,
+    };
     txState[pg].records.unshift(rec);
     await dbInsertTransaction(rec);
     checkAlerts(); renderHistory(pg);
@@ -945,14 +952,23 @@ async function submitBatch(pg){
     const mi=masterDB.find(m=>m.name===r.item);
     const code=mi?mi.code:r.code;
     if(mi){
-      // ── RPC stock adjustment ──
+      // ── RPC เดียว: items.stock + lots.stock พร้อมกัน ──
       if(r.action!=='return_bad'){
-        const res=await dbAdjustStock(code,r.action,r.qty);
-        if(!res.ok)continue; // skip รายการนี้ ทำต่อรายการถัดไป
+        let lotId=null;
+        if(pg==='raw'&&r.lotSW&&(r.action==='withdraw'||r.action==='return_good')){
+          const cached=(lotDB[code]||[]).find(l=>l.lot_sw===r.lotSW);
+          if(cached)lotId=cached.id;
+        }
+        const res=await dbAdjustStockWithLot(code,r.action,r.qty,{
+          lotId,
+          lotSW:(r.action==='receive'||r.action==='return_good')?(r.lotSW&&r.lotSW!=='-'?r.lotSW:null):null,
+          lotSP:r.lotSP||null,
+          name:r.item,
+        });
+        if(!res.ok)continue;
       }
       if(r.action==='receive'&&r.loc)locationDB[code]=r.loc;
       await dbUpsertItem(mi);
-      if(pg==='raw'&&r.lotSW&&r.lotSW!=='-')await dbUpsertLot(code,r.item,r.lotSW,r.lotSP||'',r.qty,r.action);
     }
     const rec={time:timeNow(),type:r.action,typeLabel:r.typeLabel,name,dept,item:r.item,code,qty:r.qty,lotSW:r.lotSW||'-',lotSP:r.lotSP||'',note:r.note||'',pg,via:'batch'};
     txState[pg].records.unshift(rec);
@@ -1032,16 +1048,23 @@ async function confirmCamScan(){
   const m=masterDB.find(x=>x.code===parsed.itemCode);
   if(!m){alert('ไม่พบรหัสในระบบ');return;}
   const pg=m.pg;
-  // ── RPC stock adjustment ──
+  // ── RPC เดียว: items.stock + lots.stock ──
   if(action!=='return_bad'){
-    const res=await dbAdjustStock(m.code,action,qty);
+    const lotSW=parsed.lotSW||lotHidden||null;
+    let lotId=null;
+    if(pg==='raw'&&lotSW&&(action==='withdraw'||action==='return_good')){
+      const cached=(lotDB[m.code]||[]).find(l=>l.lot_sw===lotSW);
+      if(cached)lotId=cached.id;
+    }
+    const res=await dbAdjustStockWithLot(m.code,action,qty,{
+      lotId,
+      lotSW:(action==='receive'||action==='return_good')?lotSW:null,
+      lotSP:null,
+      name:m.name,
+    });
     if(!res.ok)return;
   }
   await dbUpsertItem(m);
-  if(pg==='raw'&&(parsed.lotSW||lotHidden)){
-    const lotSW=parsed.lotSW||lotHidden;
-    await dbUpsertLot(m.code,m.name,lotSW,'',qty,action);
-  }
   const rec={time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],name:'(กล้องสแกน)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],item:m.name,code:m.code,qty,lotSW:parsed.lotSW||'-',pg,via:'camera'};
   txState[pg].records.unshift(rec);
   await dbInsertTransaction(rec);
