@@ -2,7 +2,14 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1a1a1c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SWBD คลัง">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Sawanbondin — ระบบจัดการคลัง</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
@@ -299,9 +306,10 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div class="login-card">
     <div class="login-logo">Sawanbondin</div>
     <div class="login-sub">ระบบจัดการคลัง — กรุณาเข้าสู่ระบบ</div>
-    <label class="login-label">Email</label>
-    <input class="login-input" id="loginEmail" type="email"
-      placeholder="warehouse@sawanbondin.com"
+    <label class="login-label">Username หรือ Email</label>
+    <input class="login-input" id="loginEmail" type="text"
+      placeholder="username หรือ email@sawanbondin.com"
+      autocomplete="username"
       onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
     <label class="login-label">Password</label>
     <input class="login-input" id="loginPass" type="password"
@@ -364,17 +372,18 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div class="nav-item" onclick="switchPage('packaging')" data-page="packaging">Packaging</div>
   <div class="nav-item" onclick="switchPage('equip')"     data-page="equip">อุปกรณ์</div>
   <div class="nav-item" onclick="switchPage('finish')"    data-page="finish">สินค้าสำเร็จรูป</div>
+
 </nav>
 
 <!-- PAGE CONTAINERS -->
 <div class="main">
-  <div id="page-master"    class="page-visible"></div>
-  <div id="page-raw"       class="page-hidden"></div>
-  <div id="page-matcha"    class="page-hidden"></div>
-  <div id="page-pack"      class="page-hidden"></div>
-  <div id="page-packaging" class="page-hidden"></div>
-  <div id="page-equip"     class="page-hidden"></div>
-  <div id="page-finish"    class="page-hidden"></div>
+  <div id="page-master"      class="page-visible"></div>
+  <div id="page-raw"         class="page-hidden"></div>
+  <div id="page-matcha"      class="page-hidden"></div>
+  <div id="page-pack"        class="page-hidden"></div>
+  <div id="page-packaging"   class="page-hidden"></div>
+  <div id="page-equip"       class="page-hidden"></div>
+  <div id="page-finish"      class="page-hidden"></div>
 </div>
 
 <!-- CAMERA OVERLAY -->
@@ -580,7 +589,14 @@ function promptDisplayName() {
 }
 </script>
 
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => console.log('SW registered'))
+      .catch(e => console.warn('SW failed:', e));
+  });
+}
+</script>
 
 </div><!-- /appRoot -->
-</body>
-</html>

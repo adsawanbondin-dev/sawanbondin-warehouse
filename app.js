@@ -94,14 +94,38 @@ function hideLoginScreen() {
 }
 
 async function doLogin() {
-  const email = (document.getElementById('loginEmail')?.value || '').trim();
+  const input = (document.getElementById('loginEmail')?.value || '').trim();
   const pass  = document.getElementById('loginPass')?.value || '';
   const errEl = document.getElementById('loginError');
-  if (!email || !pass) { errEl.textContent = 'กรุณากรอก Email และ Password'; return; }
+  if (!input || !pass) { errEl.textContent = 'กรุณากรอก Username/Email และ Password'; return; }
   setLoginLoading(true);
+
+  // ถ้าไม่มี @ ให้ค้นหา email จาก username ใน user_profiles
+  let email = input;
+  if (!input.includes('@')) {
+    const { data: profile } = await sb
+      .from('user_profiles')
+      .select('id')
+      .eq('username', input.toLowerCase())
+      .single();
+    if (!profile) {
+      setLoginLoading(false);
+      errEl.textContent = 'ไม่พบ Username นี้ในระบบ';
+      return;
+    }
+    // ดึง email จาก auth.users ผ่าน RPC
+    const { data: emailData } = await sb.rpc('get_user_email_by_id', { user_id: profile.id });
+    if (!emailData) {
+      setLoginLoading(false);
+      errEl.textContent = 'ไม่พบ Username นี้ในระบบ';
+      return;
+    }
+    email = emailData;
+  }
+
   const { error } = await sb.auth.signInWithPassword({ email, password: pass });
   setLoginLoading(false);
-  if (error) { errEl.textContent = 'Email หรือ Password ไม่ถูกต้อง'; return; }
+  if (error) { errEl.textContent = 'Username/Password ไม่ถูกต้อง'; return; }
   errEl.textContent = '';
 }
 function setLoginLoading(on) {
@@ -772,10 +796,20 @@ function renderForm(pg) {
 
   body.innerHTML = h;
   buildDDList(pg, '');
-  // autofill ชื่อผู้ใช้ที่ login อยู่
+  // autofill ชื่อและแผนกจาก login
   if(window._operatorName){
     const nameEl=document.getElementById(pg+'-name');
     if(nameEl&&!nameEl.value)nameEl.value=window._operatorName;
+  }
+  // autofill แผนก
+  if(window._operatorDept){
+    setTimeout(()=>{
+      document.querySelectorAll('#'+pg+'-dept .radio-opt').forEach(o=>{
+        if(o.textContent.trim()===window._operatorDept){
+          o.classList.add('sel');
+        }
+      });
+    },50);
   }
 }
 
@@ -1737,16 +1771,23 @@ async function boot(){
   loadBatchLS();
   document.getElementById('topbarDate').textContent=dateToday();
 
-  // Show logged-in user + save display name
+  // โหลด user profile (username, display_name, department)
   if(currentUser){
-    const el=document.getElementById('topbarUser');
-    const displayName = currentUser.user_metadata?.display_name
-      || currentUser.user_metadata?.name
+    const { data: profile } = await sb
+      .from('user_profiles')
+      .select('username,display_name,department,role')
+      .eq('id', currentUser.id)
+      .single();
+    const displayName = profile?.display_name
+      || currentUser.user_metadata?.display_name
       || currentUser.email?.split('@')[0]
       || 'User';
-    if(el)el.textContent=displayName;
-    // เก็บชื่อไว้ใช้ autofill ฟอร์ม
+    const dept = profile?.department || '';
     window._operatorName = displayName;
+    window._operatorDept = dept;
+    window._operatorRole = profile?.role || 'staff';
+    const el = document.getElementById('topbarUser');
+    if (el) el.textContent = `${displayName}${dept?' · '+dept:''}`;
   }
 
   checkAlerts();
