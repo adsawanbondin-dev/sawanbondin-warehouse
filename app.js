@@ -1754,6 +1754,48 @@ async function boot(){
   renderMasterPage();
   WAREHOUSE_PAGES.forEach(pg=>renderBatchCard(pg));
   banner.remove();
+
+  // ── Realtime: sync ทันทีเมื่อ items เปลี่ยนใน DB ──
+  sb.channel('items-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, payload => {
+      const row = payload.new || payload.old;
+      if (!row) return;
+      if (payload.eventType === 'DELETE' || row.is_active === false) {
+        // ลบออกจาก memory
+        masterDB = masterDB.filter(m => m.code !== (row.code || payload.old?.code));
+      } else if (payload.eventType === 'INSERT') {
+        // เพิ่มใหม่ถ้ายังไม่มี
+        if (!masterDB.find(m => m.code === row.code)) {
+          masterDB.push({
+            code:row.code, name:row.name, pg:row.pg||'', subcat:row.subcat||'',
+            stock:parseFloat(row.stock)||0, min:parseFloat(row.min_stock)||0,
+            max:parseFloat(row.max_stock)||0, seq:row.seq||0,
+          });
+        }
+      } else if (payload.eventType === 'UPDATE') {
+        // อัปเดตใน memory
+        const m = masterDB.find(x => x.code === row.code);
+        if (m) {
+          m.stock = parseFloat(row.stock)||0;
+          m.min   = parseFloat(row.min_stock)||0;
+          m.max   = parseFloat(row.max_stock)||0;
+          m.name  = row.name || m.name;
+          if (row.note) locationDB[row.code] = row.note;
+        }
+      }
+      // re-render หน้าที่กำลังดูอยู่
+      checkAlerts();
+      if (curPage === 'master') renderMasterContent();
+      else renderWarehousePage(curPage);
+    })
+    .subscribe();
+
+  // ── Auto-refresh ทุก 5 นาที (fallback) ──
+  setInterval(async () => {
+    await dbLoadItems();
+    checkAlerts();
+    if (curPage === 'master') renderMasterContent();
+  }, 5 * 60 * 1000);
 }
 
 // Start with auth
