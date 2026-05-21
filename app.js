@@ -147,10 +147,10 @@ function nextSeq(pg, subcat) {
 ═══════════════════════════════════════════ */
 /* DB functions defined below after dbAdjustStockWithLot */
 async function dbUpsertItem(m) {
-  // upsert metadata only (name, pg, subcat, min, max, note, seq)
-  // stock ถูก update ผ่าน RPC adjust_stock แยกต่างหาก
+  // upsert ทั้ง stock และ metadata — stock ถูก update โดย RPC แล้ว แต่ต้อง sync กลับ DB ด้วย
   const { error } = await sb.from('items').upsert({
     code:m.code, name:m.name, pg:m.pg, subcat:m.subcat||'',
+    stock:m.stock,           // ← include stock ที่ sync มาจาก RPC
     min_stock:m.min, max_stock:m.max,
     note:locationDB[m.code]||'', seq:m.seq||0,
   }, { onConflict:'code' });
@@ -1095,7 +1095,7 @@ async function confirmCamScan(){
   const m=masterDB.find(x=>x.code===parsed.itemCode);
   if(!m){alert('ไม่พบรหัสในระบบ');return;}
   const pg=m.pg;
-  // ── RPC เดียว: items.stock + lots.stock ──
+
   if(action!=='return_bad'){
     const lotSW=parsed.lotSW||lotHidden||null;
     let lotId=null;
@@ -1110,15 +1110,32 @@ async function confirmCamScan(){
       name:m.name,
     });
     if(!res.ok)return;
+    // ── sync stock กลับมาจาก DB result ──
+    if(res.new_stock!==undefined) m.stock=res.new_stock;
+  } else {
+    // return_bad — ไม่หักสต็อก แต่ยังต้อง upsert metadata
   }
+
   await dbUpsertItem(m);
-  const rec={time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],name:'(กล้องสแกน)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],item:m.name,code:m.code,qty,lotSW:parsed.lotSW||'-',pg,via:'camera'};
+  const rec={
+    time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],
+    name:'(กล้องสแกน)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],
+    item:m.name,code:m.code,qty,
+    lotSW:parsed.lotSW||'-',pg,via:'camera',
+    oldStock:action!=='return_bad'?m.stock+((action==='withdraw'?1:-1)*qty):null,
+    newStock:action!=='return_bad'?m.stock:null,
+  };
   txState[pg].records.unshift(rec);
   await dbInsertTransaction(rec);
-  checkAlerts();if(currentQRPage===pg)renderHistory(pg);
+  checkAlerts();
+  if(currentQRPage===pg) renderHistory(pg);
+  // อัปเดต Master ถ้ากำลังดูอยู่
+  if(curPage==='master') renderMasterContent();
+
   document.getElementById('camResult').className='cam-result ok';
   document.getElementById('camResult').textContent=`${ACTION_LABELS[action]} "${m.name}" ${qty} · สต็อก ${m.stock}`;
-  lastCamCode='';document.getElementById('camQty').value='1';
+  lastCamCode='';
+  document.getElementById('camQty').value='1';
   document.getElementById('camLotSW').style.display='none';
   document.getElementById('camLotHidden').value='';
 }
@@ -1163,8 +1180,11 @@ async function doQRScan(){
   const m=masterDB.find(x=>x.code.toLowerCase()===code.toLowerCase());
   if(!m){res.className='qr-result err';res.textContent=`ไม่พบรหัส "${code}"`;setTimeout(()=>res.className='qr-result',3000);return;}
   if(action==='withdraw'&&qty>m.stock){res.className='qr-result err';res.textContent=`สต็อกไม่พอ (มี ${m.stock} เหลือ)`;setTimeout(()=>res.className='qr-result',3000);return;}
-  if(action==='receive'||action==='return_good')m.stock+=qty;
-  else if(action==='withdraw')m.stock=Math.max(0,m.stock-qty);
+  if(action==='receive'||action==='return_good') m.stock+=qty;
+  else if(action==='withdraw') m.stock=Math.max(0,m.stock-qty);
+  const rpcRes=await dbAdjustStockWithLot(m.code,action,qty,{name:m.name});
+  if(!rpcRes.ok){res.className='qr-result err';res.textContent=rpcRes.error||'เกิดข้อผิดพลาด';setTimeout(()=>res.className='qr-result',3000);return;}
+  if(rpcRes.new_stock!==undefined) m.stock=rpcRes.new_stock;
   await dbUpsertItem(m);
   const pg=m.pg;
   const rec={time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],name:'(QR)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],item:m.name,code:m.code,qty,lotSW:'-',pg,via:'scan'};
