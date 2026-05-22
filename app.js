@@ -1823,10 +1823,8 @@ async function boot(){
       const row = payload.new || payload.old;
       if (!row) return;
       if (payload.eventType === 'DELETE' || row.is_active === false) {
-        // ลบออกจาก memory
         masterDB = masterDB.filter(m => m.code !== (row.code || payload.old?.code));
       } else if (payload.eventType === 'INSERT') {
-        // เพิ่มใหม่ถ้ายังไม่มี
         if (!masterDB.find(m => m.code === row.code)) {
           masterDB.push({
             code:row.code, name:row.name, pg:row.pg||'', subcat:row.subcat||'',
@@ -1835,7 +1833,6 @@ async function boot(){
           });
         }
       } else if (payload.eventType === 'UPDATE') {
-        // อัปเดตใน memory
         const m = masterDB.find(x => x.code === row.code);
         if (m) {
           m.stock = parseFloat(row.stock)||0;
@@ -1845,10 +1842,65 @@ async function boot(){
           if (row.note) locationDB[row.code] = row.note;
         }
       }
-      // re-render หน้าที่กำลังดูอยู่
       checkAlerts();
       if (curPage === 'master') renderMasterContent();
       else renderWarehousePage(curPage);
+    })
+    .subscribe();
+
+  // ── Realtime: sync transactions ──
+  sb.channel('tx-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, async payload => {
+      const pg = payload.new?.pg || payload.old?.pg;
+      if (!pg || !WAREHOUSE_PAGES.includes(pg)) return;
+      // reload ประวัติของคลังที่เปลี่ยน
+      const recs = await dbLoadTransactions(pg);
+      if (recs) { txState[pg].records = recs; }
+      if (curPage === pg) renderHistory(pg);
+    })
+    .subscribe();
+
+  // ── Realtime: sync lots ──
+  sb.channel('lots-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'lots' }, payload => {
+      const row = payload.new || payload.old;
+      if (!row?.item_code) return;
+      const code = row.item_code;
+      if (payload.eventType === 'DELETE') {
+        // ลบออกจาก cache
+        if (lotDB[code]) lotDB[code] = lotDB[code].filter(l => l.id !== payload.old.id);
+      } else if (payload.eventType === 'INSERT') {
+        if (!lotDB[code]) lotDB[code] = [];
+        if (!lotDB[code].find(l => l.id === row.id)) {
+          lotDB[code].push({ id:row.id, lot_sw:row.lot_sw, lot_supplier:row.lot_supplier||'', stock:parseFloat(row.stock)||0, updated_at:row.updated_at });
+        }
+      } else if (payload.eventType === 'UPDATE') {
+        if (lotDB[code]) {
+          const lot = lotDB[code].find(l => l.id === row.id);
+          if (lot) { lot.stock = parseFloat(row.stock)||0; lot.updated_at = row.updated_at; }
+        }
+      }
+      // re-render ถ้ากำลังดู master และมี lot expand เปิดอยู่
+      const subEl = document.getElementById(`lot_sub_${code}`);
+      if (subEl && subEl.style.display !== 'none') {
+        // reload lot sub display
+        const lots = lotDB[code] || [];
+        const allLots = lots;
+        const activeLots = allLots.filter(l=>l.stock>0);
+        const zeroLots   = allLots.filter(l=>l.stock<=0);
+        subEl.innerHTML = allLots.length
+          ? [...activeLots,...zeroLots].map(l=>{
+              const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'?';
+              const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
+              const isEmpty=l.stock<=0;
+              return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}">
+                <span class="lot-date">${sw}${isEmpty?' <span style="font-size:9px;color:var(--red)">หมด</span>':''}</span>
+                <span class="lot-stock-val" style="${isEmpty?'color:var(--ink3)':''}">คงเหลือ ${l.stock}</span>
+                ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">Sup: ${sp}</span>`:''}
+              </div>`;
+            }).join('')
+          : '<div class="lot-empty">ยังไม่มี Lot</div>';
+      }
     })
     .subscribe();
 
@@ -1857,6 +1909,10 @@ async function boot(){
     await dbLoadItems();
     checkAlerts();
     if (curPage === 'master') renderMasterContent();
+    else {
+      const recs = await dbLoadTransactions(curPage);
+      if (recs) { txState[curPage].records = recs; renderHistory(curPage); }
+    }
   }, 5 * 60 * 1000);
 }
 
