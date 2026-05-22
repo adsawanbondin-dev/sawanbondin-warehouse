@@ -863,7 +863,7 @@ function buildDDList(pg, filter) {
     if (grp!=='-') h += `<div class="dd-grp-label">${grp}</div>`;
     grpItems.forEach(m => {
       const es = m.name.replace(/'/g,"\\'");
-      h += `<div class="dd-item" onclick="selItem('${pg}','${es}')">
+      h += `<div class="dd-item" onclick="selItem('${pg}','${es}','${m.code}')">
         <span>${m.name}</span><span class="dd-code">${m.code}</span>
       </div>`;
     });
@@ -874,12 +874,15 @@ function ddFilter(pg,v)    { buildDDList(pg,v); document.getElementById(pg+'-dd'
 function ddListFilter(pg,v){ buildDDList(pg,v); }
 function ddShow(pg)        { buildDDList(pg,document.getElementById(pg+'-idisplay')?.value||''); document.getElementById(pg+'-dd').style.display='block'; }
 function ddToggle(pg)      { const d=document.getElementById(pg+'-dd'); if(!d)return; d.style.display=d.style.display==='none'?'block':'none'; if(d.style.display==='block')ddShow(pg); }
-function selItem(pg, item) {
+function selItem(pg, item, code) {
   const di=document.getElementById(pg+'-idisplay');
   const iv=document.getElementById(pg+'-ival');
   const dd=document.getElementById(pg+'-dd');
   if(di)di.value=item; if(iv)iv.value=item; if(dd)dd.style.display='none';
-  const m=masterDB.find(x=>x.name===item&&x.pg===pg);
+  // ค้นหาด้วย code ก่อน (แม่นยำกว่า) แล้วค่อย fallback เป็นชื่อ+คลัง
+  const m = code
+    ? masterDB.find(x=>x.code===code)
+    : masterDB.find(x=>x.name===item&&x.pg===pg);
   if(m&&locationDB[m.code]){
     const locEl=document.getElementById(pg+'-loc');if(locEl)locEl.value=locationDB[m.code];
     const sel=document.getElementById(pg+'-loc-select');
@@ -939,7 +942,7 @@ async function submitF(pg) {
 
   const cfg    = WAREHOUSE_CONFIG[pg];
   const name   = document.getElementById(pg+'-name').value.trim();
-  const item   = document.getElementById(pg+'-ival')?.value||document.getElementById(pg+'-idisplay')?.value?.trim()||'';
+  const itemName = document.getElementById(pg+'-ival')?.value||document.getElementById(pg+'-idisplay')?.value?.trim()||'';
   const qty    = parseFloat(document.getElementById(pg+'-qty').value);
   const lotSW  = cfg.hasLot ? (document.getElementById(pg+'-lotsw')?.value||'') : '';
   const lotSP  = cfg.lotSupplier ? (document.getElementById(pg+'-lotsp')?.value||'') : '';
@@ -949,7 +952,9 @@ async function submitF(pg) {
   const dept   = document.querySelector('#'+pg+'-dept .sel').textContent.trim();
 
   setLoading(pg+'-submit-btn', true);
-  const mi   = masterDB.find(m=>m.name===item);
+  // ค้นหาด้วย pg + ชื่อ เพื่อให้ตรงคลัง (ไม่ข้ามคลัง)
+  const mi   = masterDB.find(m=>m.name===itemName && m.pg===pg);
+  const item = itemName;
   const code = mi ? mi.code : '-';
 
   let rpcResult = { ok: true, new_stock: mi?.stock };
@@ -1008,7 +1013,8 @@ function addToBatch(pg) {
   const note   = document.getElementById(pg+'-note')?.value||document.getElementById(pg+'-improve')?.value||'';
   const loc    = (document.getElementById(pg+'-loc')?.value||'').trim();
   const action = txState[pg].action;
-  const mi     = masterDB.find(m=>m.name===item);
+  // ค้นหาด้วย pg + ชื่อ ให้ตรงคลัง
+  const mi     = masterDB.find(m=>m.name===item && m.pg===pg);
   batchDB[pg].push({item,code:mi?mi.code:'-',qty,lotSW,lotSP,note,loc,action,typeLabel:ACTION_LABELS[action]});
   saveBatchLS(); renderBatchCard(pg);
   const di=document.getElementById(pg+'-idisplay');if(di)di.value='';
