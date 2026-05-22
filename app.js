@@ -965,14 +965,15 @@ async function submitF(pg) {
       rpcResult = await dbAdjustStockWithLot(code, action, qty, {
         lotId,
         lotSW: (action==='receive'||action==='return_good') ? lotSW||null : null,
-        lotSP: lotSP||null,  // date string 'YYYY-MM-DD' or null
+        lotSP: (lotSP && lotSP.length > 0) ? lotSP : null,
         name: item,
       });
       if (!rpcResult.ok) { setLoading(pg+'-submit-btn', false); return; }
+      // sync stock ใน memory จาก RPC result ก่อน upsert
+      if (rpcResult.new_stock !== undefined) mi.stock = rpcResult.new_stock;
     }
-    // upsert metadata เท่านั้น (ไม่รวม stock — DB คำนวณแล้ว)
     if (action==='receive' && loc) locationDB[code] = loc;
-    await dbUpsertItem(mi);
+    await dbUpsertItem(mi);  // ตอนนี้ mi.stock เป็นค่าถูกต้องแล้ว
   }
 
   if (true) {
@@ -985,7 +986,10 @@ async function submitF(pg) {
     };
     txState[pg].records.unshift(rec);
     await dbInsertTransaction(rec);
-    checkAlerts(); renderHistory(pg);
+    checkAlerts();
+    renderHistory(pg);
+    // อัปเดตตัวเลขใน Master ถ้ากำลังดูอยู่
+    if (curPage === 'master') renderMasterContent();
     const a=action; resetForm(pg); txState[pg].action=a;
     showToast(`"${item}" ${qty} — ${ACTION_LABELS[action]}`);
   }
@@ -1051,10 +1055,12 @@ async function submitBatch(pg){
         const res=await dbAdjustStockWithLot(code,r.action,r.qty,{
           lotId,
           lotSW:(r.action==='receive'||r.action==='return_good')?(r.lotSW&&r.lotSW!=='-'?r.lotSW:null):null,
-          lotSP:r.lotSP||null,
+          lotSP:(r.lotSP && r.lotSP.length > 0) ? r.lotSP : null,
           name:r.item,
         });
         if(!res.ok)continue;
+        // sync stock จาก RPC result
+        if(res.new_stock !== undefined) mi.stock = res.new_stock;
       }
       if(r.action==='receive'&&r.loc)locationDB[code]=r.loc;
       await dbUpsertItem(mi);
@@ -1063,7 +1069,8 @@ async function submitBatch(pg){
     txState[pg].records.unshift(rec);
     await dbInsertTransaction(rec);
   }
-  checkAlerts();renderHistory(pg);
+  checkAlerts(); renderHistory(pg);
+  if(curPage==='master') renderMasterContent();
   const n=rows.length;
   batchDB[pg]=[]; saveBatchLS(); renderBatchCard(pg);
   setLoading(pg+'-batch-submit-btn',false);
