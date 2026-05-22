@@ -100,24 +100,32 @@ async function doLogin() {
   if (!input || !pass) { errEl.textContent = 'กรุณากรอก Username/Email และ Password'; return; }
   setLoginLoading(true);
 
-  // ถ้าไม่มี @ ให้ค้นหา email จาก username ใน user_profiles
   let email = input;
+
+  // ถ้าไม่มี @ ให้ค้นหา email จาก username
   if (!input.includes('@')) {
-    const { data: profile } = await sb
+    // ใช้ anon key query user_profiles แบบ bypass RLS ผ่าน service role ไม่ได้
+    // แทนด้วยการเก็บ email mapping ใน user_profiles โดยตรง
+    const { data, error } = await sb
       .from('user_profiles')
-      .select('id')
+      .select('id, username')
       .eq('username', input.toLowerCase())
-      .single();
-    if (!profile) {
+      .maybeSingle();
+
+    if (!data) {
       setLoginLoading(false);
       errEl.textContent = 'ไม่พบ Username นี้ในระบบ';
       return;
     }
+
     // ดึง email จาก auth.users ผ่าน RPC
-    const { data: emailData } = await sb.rpc('get_user_email_by_id', { user_id: profile.id });
-    if (!emailData) {
+    const { data: emailData, error: rpcErr } = await sb
+      .rpc('get_user_email_by_id', { user_id: data.id });
+
+    if (rpcErr || !emailData) {
+      // fallback: ลอง login ด้วย input ตรงๆ
       setLoginLoading(false);
-      errEl.textContent = 'ไม่พบ Username นี้ในระบบ';
+      errEl.textContent = 'ไม่พบ Username นี้ กรุณาใช้ Email แทน';
       return;
     }
     email = emailData;
