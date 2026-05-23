@@ -214,10 +214,11 @@ async function dbInsertTransaction(rec) {
 async function dbLoadTransactions(pg) {
   const { data, error } = await sb.from('transactions')
     .select('*').eq('pg', pg)
-    .order('created_at', { ascending:false }).limit(60);
+    .order('created_at', { ascending:true }).limit(200);
   if (error) { console.error('dbLoadTx:', error.message); return []; }
   return (data||[]).map(r => ({
-    time: new Date(r.created_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),
+    time: new Date(r.created_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}),
+    timeDetail: new Date(r.created_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),
     type:r.action_type, typeLabel:ACTION_LABELS[r.action_type]||r.action_type,
     name:r.operator_name||'', dept:r.department||'',
     item:r.item_name, code:r.item_code,
@@ -618,7 +619,7 @@ function renderWarehousePage(pg) {
           <div class="hist-wrap">
             <table class="hist-table">
               <thead><tr>
-                <th>เวลา</th><th>ประเภท</th><th>ผู้ทำรายการ</th>
+                <th>วันที่</th><th>ประเภท</th><th>ผู้ทำรายการ</th>
                 <th>แผนก</th><th>รายการ</th><th>รหัส</th><th>จำนวน</th>
                 ${cfg.hasLot ? '<th>Lot SW</th>' : ''}
                 ${cfg.lotSupplier ? '<th>Lot Supplier</th>' : ''}
@@ -983,7 +984,7 @@ async function submitF(pg) {
 
   if (true) {
     const rec={
-      time:timeNow(), type:action, typeLabel:ACTION_LABELS[action],
+      time:dateToday(), timeDetail:timeNow(), type:action, typeLabel:ACTION_LABELS[action],
       name, dept, item, code, qty,
       lotSW:lotSW||'-', lotSP, note, pg, via:'manual',
       oldStock: rpcResult.ok ? (rpcResult.new_stock - (action==='receive'||action==='return_good' ? qty : -qty)) : null,
@@ -1071,7 +1072,7 @@ async function submitBatch(pg){
       if(r.action==='receive'&&r.loc)locationDB[code]=r.loc;
       await dbUpsertItem(mi);
     }
-    const rec={time:timeNow(),type:r.action,typeLabel:r.typeLabel,name,dept,item:r.item,code,qty:r.qty,lotSW:r.lotSW||'-',lotSP:r.lotSP||'',note:r.note||'',pg,via:'batch'};
+    const rec={time:dateToday(),timeDetail:timeNow(),type:r.action,typeLabel:r.typeLabel,name,dept,item:r.item,code,qty:r.qty,lotSW:r.lotSW||'-',lotSP:r.lotSP||'',note:r.note||'',pg,via:'batch'};
     txState[pg].records.unshift(rec);
     await dbInsertTransaction(rec);
   }
@@ -1096,7 +1097,7 @@ function renderHistory(pg){
     return;
   }
   tb.innerHTML=recs.slice(0,60).map(r=>`<tr ${r.type==='return_bad'?'style="opacity:.75"':''}>
-    <td>${r.time}</td>
+    <td title="${r.timeDetail||''}">${r.time}</td>
     <td><span class="tbadge ${ACTION_BADGE[r.type]}">${r.typeLabel}</span></td>
     <td>${r.name}${r.via==='scan'||r.via==='camera'?'<span style="font-size:9px;color:var(--acc);margin-left:3px">scan</span>':r.via==='batch'?'<span style="font-size:9px;color:var(--grn);margin-left:3px">batch</span>':''}</td>
     <td><span class="dept-pill ${DEPT_PILL_CLS[r.dept]||''}">${r.dept}</span></td>
@@ -1152,7 +1153,9 @@ async function confirmCamScan(){
   const pg=m.pg;
 
   if(action!=='return_bad'){
-    const lotSW=parsed.lotSW||lotHidden||null;
+    const lotSW = parsed.lotSW || lotHidden ||
+    document.getElementById('camLotSWInput')?.value || null;
+  const lotSP = document.getElementById('camLotSPInput')?.value || null;
     let lotId=null;
     if(pg==='raw'&&lotSW&&(action==='withdraw'||action==='return_good')){
       const cached=(lotDB[m.code]||[]).find(l=>l.lot_sw===lotSW);
@@ -1161,7 +1164,7 @@ async function confirmCamScan(){
     const res=await dbAdjustStockWithLot(m.code,action,qty,{
       lotId,
       lotSW:(action==='receive'||action==='return_good')?lotSW:null,
-      lotSP:null,
+      lotSP:(lotSP&&lotSP.length>0)?lotSP:null,
       name:m.name,
     });
     if(!res.ok)return;
@@ -1173,7 +1176,7 @@ async function confirmCamScan(){
 
   await dbUpsertItem(m);
   const rec={
-    time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],
+    time:dateToday(),timeDetail:timeNow(),type:action,typeLabel:ACTION_LABELS[action],
     name:'(กล้องสแกน)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],
     item:m.name,code:m.code,qty,
     lotSW:parsed.lotSW||'-',pg,via:'camera',
@@ -1193,6 +1196,8 @@ async function confirmCamScan(){
   document.getElementById('camQty').value='1';
   document.getElementById('camLotSW').style.display='none';
   document.getElementById('camLotHidden').value='';
+  document.getElementById('camLotSWInput').value='';
+  document.getElementById('camLotSPInput').value='';
 }
 function closeCamera(){
   if(camScanner){camScanner.stop().catch(()=>{});camScanner=null;}
@@ -1478,7 +1483,7 @@ function renderMasterContent(){
     const sI=st==='out'?'ti-circle-x':st==='low'?'ti-alert-triangle':'ti-check';
     const cls=st==='out'?'out-stock':st==='low'?'low-stock':'';
     const loc=locationDB[m.code]||'';
-    const lots=m.pg==='raw'?(lotDB[m.code]||[]):[];
+    const lots=(m.pg==='raw'||m.pg==='finish')?(lotDB[m.code]||[]):[];
     // แสดงทุก lot รวมที่หมดแล้ว (เพื่อดูประวัติ) แต่ mark ว่าหมด
     const allLots = lotDB[m.code] || [];
     const activeLots = allLots.filter(l=>l.stock>0);
@@ -1510,7 +1515,7 @@ function renderMasterContent(){
             ${loc||'<span style="color:var(--ink4)">ยังไม่ระบุสถานที่</span>'}
           </span>
         </div>
-        ${m.pg==='raw'?`<div>
+        ${(m.pg==='raw'||m.pg==='finish')?`<div>
           <button class="lot-expand-btn" onclick="toggleLotSub('lot_sub_${m.code}','${m.code}')">
             <i class="ti ti-layers-subtract" style="font-size:11px"></i>
             Lot <span style="font-size:10px;color:var(--ink4)">(${lots.length})</span>
@@ -1773,11 +1778,11 @@ async function boot(){
     await dbLoadItems();
   }
 
-  // Preload lots
+  // Preload lots สำหรับ raw และ finish
   try{
-    const rawCodes=masterDB.filter(m=>m.pg==='raw').map(m=>m.code);
-    if(rawCodes.length){
-      const{data}=await sb.from('lots').select('*').in('item_code',rawCodes).order('lot_sw',{ascending:true});
+    const lotCodes=masterDB.filter(m=>m.pg==='raw'||m.pg==='finish').map(m=>m.code);
+    if(lotCodes.length){
+      const{data}=await sb.from('lots').select('*').in('item_code',lotCodes).order('lot_sw',{ascending:true});
       if(data)data.forEach(r=>{
         if(!lotDB[r.item_code])lotDB[r.item_code]=[];
         if(!lotDB[r.item_code].find(l=>l.id===r.id))
