@@ -395,7 +395,7 @@ function handleScanResult(raw, pg) {
     if (sw) sw.value = parsed.lotSW;
     // autofill lot picker
     const pickerList = document.getElementById(pg+'-lot-picker-list');
-    if (pickerList && (pg==='raw'||pg==='finish')) {
+    if (pickerList && (pg==='raw'||pg==='finish'||pg==='matcha')) {
       buildLotPickerHtml(m.code, pg).then(html => { pickerList.innerHTML = html; });
     }
   }
@@ -431,7 +431,7 @@ function validateForm(pg, skipLot = false) {
   }
 
   // lot required for raw non-receive
-  if (!skipLot && cfg.hasLot && (pg==='raw'||pg==='finish') && action!=='receive') {
+  if (!skipLot && cfg.hasLot && (pg==='raw'||pg==='finish'||pg==='matcha') && action!=='receive') {
     const lotSW = document.getElementById(pg+'-lotsw')?.value||'';
     if (!lotSW) errors.push('กรุณาเลือก Lot Sawanbondin');
   }
@@ -714,8 +714,8 @@ function renderForm(pg) {
   // Lot fields
   if (cfg.hasLot) {
     h += '<div class="divider"></div>';
-    if (!isRecv && (pg==='raw'||pg==='finish')) {
-      // เบิก/คืน raw และ finish: แสดง lot picker
+    if (!isRecv && (pg==='raw'||pg==='finish'||pg==='matcha')) {
+      // เบิก/คืน raw, finish และ matcha: แสดง lot picker
       h += `<div class="fg">
         <label class="fl">Lot Sawanbondin <span class="req">*</span></label>
         <input class="fi" id="${pg}-lotsw" type="date">
@@ -732,7 +732,7 @@ function renderForm(pg) {
     } else if (cfg.lotSupplier) {
       h += `<div class="lot-pair">
         <div class="fg">
-          <label class="fl">Lot Sawanbondin ${(pg==='raw'||pg==='finish')?'<span class="req">*</span>':''}</label>
+          <label class="fl">Lot Sawanbondin ${(pg==='raw'||pg==='finish'||pg==='matcha')?'<span class="req">*</span>':''}</label>
           <input class="fi" id="${pg}-lotsw" type="date">
           <div class="fhint">วันที่รับเข้า Sawanbondin</div>
         </div>
@@ -745,7 +745,7 @@ function renderForm(pg) {
     } else {
       h += `<div class="lot-single">
         <div class="fg">
-          <label class="fl">Lot Sawanbondin ${(pg==='raw'||pg==='finish')?'<span class="req">*</span>':''}</label>
+          <label class="fl">Lot Sawanbondin ${(pg==='raw'||pg==='finish'||pg==='matcha')?'<span class="req">*</span>':''}</label>
           <input class="fi" id="${pg}-lotsw" type="date">
         </div>
       </div>`;
@@ -891,7 +891,7 @@ function selItem(pg, item, code) {
     if(sel){const opt=[...sel.options].find(o=>o.value===locationDB[m.code]);sel.value=opt?locationDB[m.code]:'';}
   }
   const pickerList=document.getElementById(pg+'-lot-picker-list');
-  if(m&&pickerList&&(pg==='raw'||pg==='finish')) {
+  if(m&&pickerList&&(pg==='raw'||pg==='finish'||pg==='matcha')) {
     pickerList.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด Lot...</div>';
     buildLotPickerHtml(m.code,pg).then(html=>{ pickerList.innerHTML=html; });
   }
@@ -965,7 +965,7 @@ async function submitF(pg) {
     if (action !== 'return_bad') {
       // หา lotId จาก lotDB cache ถ้าเป็นการเบิก/คืน
       let lotId = null;
-      if ((pg==='raw'||pg==='finish') && lotSW && (action==='withdraw'||action==='return_good')) {
+      if ((pg==='raw'||pg==='finish'||pg==='matcha') && lotSW && (action==='withdraw'||action==='return_good')) {
         const cached = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
         if (cached) lotId = cached.id;
       }
@@ -1056,7 +1056,7 @@ async function submitBatch(pg){
       // ── RPC เดียว: items.stock + lots.stock พร้อมกัน ──
       if(r.action!=='return_bad'){
         let lotId=null;
-        if((pg==='raw'||pg==='finish')&&r.lotSW&&(r.action==='withdraw'||r.action==='return_good')){
+        if((pg==='raw'||pg==='finish'||pg==='matcha')&&r.lotSW&&(r.action==='withdraw'||r.action==='return_good')){
           const cached=(lotDB[code]||[]).find(l=>l.lot_sw===r.lotSW);
           if(cached)lotId=cached.id;
         }
@@ -1485,7 +1485,7 @@ function renderMasterContent(){
     const sI=st==='out'?'ti-circle-x':st==='low'?'ti-alert-triangle':'ti-check';
     const cls=st==='out'?'out-stock':st==='low'?'low-stock':'';
     const loc=locationDB[m.code]||'';
-    const lots=(m.pg==='raw'||m.pg==='finish')?(lotDB[m.code]||[]):[];
+    const lots=(m.pg==='raw'||m.pg==='finish'||m.pg==='matcha')?(lotDB[m.code]||[]):[];
     // แสดงทุก lot รวมที่หมดแล้ว (เพื่อดูประวัติ) แต่ mark ว่าหมด
     const allLots = lotDB[m.code] || [];
     const activeLots = allLots.filter(l=>l.stock>0);
@@ -1517,7 +1517,7 @@ function renderMasterContent(){
             ${loc||'<span style="color:var(--ink4)">ยังไม่ระบุสถานที่</span>'}
           </span>
         </div>
-        ${(m.pg==='raw'||m.pg==='finish')?`<div>
+        ${(m.pg==='raw'||m.pg==='finish'||m.pg==='matcha')?`<div>
           <button class="lot-expand-btn" onclick="toggleLotSub('lot_sub_${m.code}','${m.code}')">
             <i class="ti ti-layers-subtract" style="font-size:11px"></i>
             Lot <span style="font-size:10px;color:var(--ink4)">(${lots.length})</span>
@@ -1782,7 +1782,7 @@ async function boot(){
 
   // Preload lots สำหรับ raw และ finish
   try{
-    const lotCodes=masterDB.filter(m=>m.pg==='raw'||m.pg==='finish').map(m=>m.code);
+    const lotCodes=masterDB.filter(m=>m.pg==='raw'||m.pg==='finish'||m.pg==='matcha').map(m=>m.code);
     if(lotCodes.length){
       const{data}=await sb.from('lots').select('*').in('item_code',lotCodes).order('lot_sw',{ascending:true});
       if(data)data.forEach(r=>{
