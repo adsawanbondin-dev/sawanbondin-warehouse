@@ -395,7 +395,7 @@ function handleScanResult(raw, pg) {
     if (sw) sw.value = parsed.lotSW;
     // autofill lot picker
     const pickerList = document.getElementById(pg+'-lot-picker-list');
-    if (pickerList && pg==='raw') {
+    if (pickerList && (pg==='raw'||pg==='finish')) {
       buildLotPickerHtml(m.code, pg).then(html => { pickerList.innerHTML = html; });
     }
   }
@@ -714,7 +714,8 @@ function renderForm(pg) {
   // Lot fields
   if (cfg.hasLot) {
     h += '<div class="divider"></div>';
-    if (!isRecv && pg==='raw') {
+    if (!isRecv && (pg==='raw'||pg==='finish')) {
+      // เบิก/คืน raw และ finish: แสดง lot picker
       h += `<div class="fg">
         <label class="fl">Lot Sawanbondin <span class="req">*</span></label>
         <input class="fi" id="${pg}-lotsw" type="date">
@@ -890,7 +891,7 @@ function selItem(pg, item, code) {
     if(sel){const opt=[...sel.options].find(o=>o.value===locationDB[m.code]);sel.value=opt?locationDB[m.code]:'';}
   }
   const pickerList=document.getElementById(pg+'-lot-picker-list');
-  if(m&&pickerList&&pg==='raw') {
+  if(m&&pickerList&&(pg==='raw'||pg==='finish')) {
     pickerList.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด Lot...</div>';
     buildLotPickerHtml(m.code,pg).then(html=>{ pickerList.innerHTML=html; });
   }
@@ -964,13 +965,13 @@ async function submitF(pg) {
     if (action !== 'return_bad') {
       // หา lotId จาก lotDB cache ถ้าเป็นการเบิก/คืน
       let lotId = null;
-      if (pg==='raw' && lotSW && (action==='withdraw'||action==='return_good')) {
+      if ((pg==='raw'||pg==='finish') && lotSW && (action==='withdraw'||action==='return_good')) {
         const cached = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
         if (cached) lotId = cached.id;
       }
       rpcResult = await dbAdjustStockWithLot(code, action, qty, {
         lotId,
-        lotSW: (action==='receive'||action==='return_good') ? lotSW||null : null,
+        lotSW: (cfg.hasLot && lotSW && lotSW.length > 0) ? lotSW : null,
         lotSP: (lotSP && lotSP.length > 0) ? lotSP : null,
         name: item,
       });
@@ -1055,13 +1056,14 @@ async function submitBatch(pg){
       // ── RPC เดียว: items.stock + lots.stock พร้อมกัน ──
       if(r.action!=='return_bad'){
         let lotId=null;
-        if(pg==='raw'&&r.lotSW&&(r.action==='withdraw'||r.action==='return_good')){
+        if((pg==='raw'||pg==='finish')&&r.lotSW&&(r.action==='withdraw'||r.action==='return_good')){
           const cached=(lotDB[code]||[]).find(l=>l.lot_sw===r.lotSW);
           if(cached)lotId=cached.id;
         }
+        const cfg_r = WAREHOUSE_CONFIG[pg];
         const res=await dbAdjustStockWithLot(code,r.action,r.qty,{
           lotId,
-          lotSW:(r.action==='receive'||r.action==='return_good')?(r.lotSW&&r.lotSW!=='-'?r.lotSW:null):null,
+          lotSW:(cfg_r.hasLot && r.lotSW && r.lotSW!=='-') ? r.lotSW : null,
           lotSP:(r.lotSP && r.lotSP.length > 0) ? r.lotSP : null,
           name:r.item,
         });
