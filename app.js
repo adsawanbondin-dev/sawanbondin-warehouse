@@ -214,7 +214,7 @@ async function dbInsertTransaction(rec) {
 async function dbLoadTransactions(pg) {
   const { data, error } = await sb.from('transactions')
     .select('*').eq('pg', pg)
-    .order('created_at', { ascending:true }).limit(200);
+    .order('created_at', { ascending:false }).limit(200);
   if (error) { console.error('dbLoadTx:', error.message); return []; }
   return (data||[]).map(r => ({
     time: new Date(r.created_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}),
@@ -430,11 +430,7 @@ function validateForm(pg, skipLot = false) {
     if (mi && qty > mi.stock) errors.push(`สต็อกไม่พอ (มี ${mi.stock} เหลือ)`);
   }
 
-  // lot required for raw non-receive
-  if (!skipLot && cfg.hasLot && (pg==='raw'||pg==='finish'||pg==='matcha') && action!=='receive') {
-    const lotSW = document.getElementById(pg+'-lotsw')?.value||'';
-    if (!lotSW) errors.push('กรุณาเลือก Lot Sawanbondin');
-  }
+  // lot SW ไม่บังคับ — user เลือกเองได้
 
   return errors;
 }
@@ -717,7 +713,7 @@ function renderForm(pg) {
     if (!isRecv && (pg==='raw'||pg==='finish'||pg==='matcha')) {
       // เบิก/คืน raw, finish และ matcha: แสดง lot picker
       h += `<div class="fg">
-        <label class="fl">Lot Sawanbondin <span class="req">*</span></label>
+        <label class="fl">Lot Sawanbondin</label>
         <input class="fi" id="${pg}-lotsw" type="date">
         <div class="fhint">เลือก Lot ที่ต้องการเบิก/คืน</div>
       </div>
@@ -732,7 +728,7 @@ function renderForm(pg) {
     } else if (cfg.lotSupplier) {
       h += `<div class="lot-pair">
         <div class="fg">
-          <label class="fl">Lot Sawanbondin ${(pg==='raw'||pg==='finish'||pg==='matcha')?'<span class="req">*</span>':''}</label>
+          <label class="fl">Lot Sawanbondin</label>
           <input class="fi" id="${pg}-lotsw" type="date">
           <div class="fhint">วันที่รับเข้า Sawanbondin</div>
         </div>
@@ -745,7 +741,7 @@ function renderForm(pg) {
     } else {
       h += `<div class="lot-single">
         <div class="fg">
-          <label class="fl">Lot Sawanbondin ${(pg==='raw'||pg==='finish'||pg==='matcha')?'<span class="req">*</span>':''}</label>
+          <label class="fl">Lot Sawanbondin</label>
           <input class="fi" id="${pg}-lotsw" type="date">
         </div>
       </div>`;
@@ -1119,6 +1115,12 @@ function openCamera(pg){
   document.getElementById('camResult').textContent='พุ่งกล้องไปที่ QR หรือ Barcode';
   document.getElementById('camResult').className='cam-result';
   document.getElementById('camOverlay').classList.add('show');
+  // autofill แผนกจาก profile
+  const deptSel=document.getElementById('camDept');
+  if(deptSel&&window._operatorDept){
+    const opt=[...deptSel.options].find(o=>o.value===window._operatorDept);
+    if(opt) deptSel.value=window._operatorDept;
+  }
   camScanner=new Html5Qrcode('cam-reader');
   camScanner.start({facingMode:'environment'},{fps:10,qrbox:{width:250,height:250}},
     rawCode=>{
@@ -1148,6 +1150,7 @@ async function confirmCamScan(){
   const action=document.getElementById('camAction').value;
   const qty=parseFloat(document.getElementById('camQty').value||1);
   const lotHidden=document.getElementById('camLotHidden')?.value||'';
+  const dept=document.getElementById('camDept')?.value||(window._operatorDept||'คลัง');
   if(!qty||qty<=0){alert('กรุณาระบุจำนวน');return;}
   const parsed=parseScanCode(lastCamCode);
   const m=masterDB.find(x=>x.code===parsed.itemCode);
@@ -1159,7 +1162,7 @@ async function confirmCamScan(){
     document.getElementById('camLotSWInput')?.value || null;
   const lotSP = document.getElementById('camLotSPInput')?.value || null;
     let lotId=null;
-    if(pg==='raw'&&lotSW&&(action==='withdraw'||action==='return_good')){
+    if((pg==='raw'||pg==='finish'||pg==='matcha')&&lotSW&&(action==='withdraw'||action==='return_good')){
       const cached=(lotDB[m.code]||[]).find(l=>l.lot_sw===lotSW);
       if(cached)lotId=cached.id;
     }
@@ -1170,16 +1173,13 @@ async function confirmCamScan(){
       name:m.name,
     });
     if(!res.ok)return;
-    // ── sync stock กลับมาจาก DB result ──
     if(res.new_stock!==undefined) m.stock=res.new_stock;
-  } else {
-    // return_bad — ไม่หักสต็อก แต่ยังต้อง upsert metadata
   }
 
   await dbUpsertItem(m);
   const rec={
     time:dateToday(),timeDetail:timeNow(),type:action,typeLabel:ACTION_LABELS[action],
-    name:'(กล้องสแกน)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],
+    name:window._operatorName||'(กล้องสแกน)',dept,
     item:m.name,code:m.code,qty,
     lotSW:parsed.lotSW||'-',pg,via:'camera',
     oldStock:action!=='return_bad'?m.stock+((action==='withdraw'?1:-1)*qty):null,
@@ -1189,7 +1189,6 @@ async function confirmCamScan(){
   await dbInsertTransaction(rec);
   checkAlerts();
   if(currentQRPage===pg) renderHistory(pg);
-  // อัปเดต Master ถ้ากำลังดูอยู่
   if(curPage==='master') renderMasterContent();
 
   document.getElementById('camResult').className='cam-result ok';
@@ -1485,20 +1484,19 @@ function renderMasterContent(){
     const sI=st==='out'?'ti-circle-x':st==='low'?'ti-alert-triangle':'ti-check';
     const cls=st==='out'?'out-stock':st==='low'?'low-stock':'';
     const loc=locationDB[m.code]||'';
-    const lots=(m.pg==='raw'||m.pg==='finish'||m.pg==='matcha')?(lotDB[m.code]||[]):[];
-    // แสดงทุก lot รวมที่หมดแล้ว (เพื่อดูประวัติ) แต่ mark ว่าหมด
-    const allLots = lotDB[m.code] || [];
-    const activeLots = allLots.filter(l=>l.stock>0);
-    const zeroLots   = allLots.filter(l=>l.stock<=0);
+    const hasLotPg=(m.pg==='raw'||m.pg==='finish'||m.pg==='matcha');
+    const allLots=hasLotPg?(lotDB[m.code]||[]):[];
+    const activeLots=allLots.filter(l=>l.stock>0);
+    const zeroLots=allLots.filter(l=>l.stock<=0);
     const lotSubHtml=allLots.length
       ?[...activeLots,...zeroLots].map(l=>{
-          const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'?';
+          const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):' ?';
           const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
           const isEmpty=l.stock<=0;
-          return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}" title="${isEmpty?'Lot นี้หมดแล้ว — บันทึกเพื่อการตรวจสอบ':''}">
-            <span class="lot-date" title="Lot SW">${sw}${isEmpty?' <span style=\'font-size:9px;color:var(--red)\'>หมด</span>':''}</span>
-            <span class="lot-stock-val" style="${isEmpty?'color:var(--ink3)':''}">คงเหลือ ${l.stock}</span>
-            ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px" title="Lot Supplier">Sup: ${sp}</span>`:''}
+          return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}">
+            <span class="lot-date">${sw}${isEmpty?' <span style="font-size:9px;color:var(--red)">หมด</span>':''}</span>
+            <span class="lot-stock-val">คงเหลือ ${l.stock}</span>
+            ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">Sup: ${sp}</span>`:''}
           </div>`;
         }).join('')
       :'<div class="lot-empty">ยังไม่มี Lot</div>';
@@ -1508,19 +1506,22 @@ function renderMasterContent(){
         <div class="ir-code">${m.code}</div>
         <div class="ir-meta">
           <span class="ir-stock"><strong>${m.stock}</strong></span>
-          ${(m.min>0||m.max>0)?`<span class="ir-minmax">Min ${m.min} · Max ${m.max}</span><span class="ir-si ${sC}"><i class="ti ${sI}" style="font-size:10px"></i> ${sL}</span>`:'<span class="ir-minmax" style="color:var(--ink4)">ยังไม่ตั้ง Min/Max</span>'}
+          ${(m.min>0||m.max>0)?`
+            <div class="stock-bar" style="width:80px"><div class="stock-bar-fill ${fC}" style="width:${pct}%"></div></div>
+            <span class="ir-si ${sC}"><i class="ti ${sI}" style="font-size:10px"></i> ${sL}</span>
+            <span class="ir-minmax">Min ${m.min} · Max ${m.max}</span>
+          `:' <span class="ir-minmax" style="color:var(--ink4)">ยังไม่ตั้ง Min/Max</span>'}
         </div>
-        ${(m.min>0||m.max>0)?`<div class="stock-bar" style="width:80px;margin-top:4px"><div class="stock-bar-fill ${fC}" style="width:${pct}%"></div></div>`:''}
         <div>
           <span class="loc-tag" onclick="editLoc('${m.code}')">
             <i class="ti ti-map-pin"></i>
             ${loc||'<span style="color:var(--ink4)">ยังไม่ระบุสถานที่</span>'}
           </span>
         </div>
-        ${(m.pg==='raw'||m.pg==='finish'||m.pg==='matcha')?`<div>
+        ${hasLotPg?`<div>
           <button class="lot-expand-btn" onclick="toggleLotSub('lot_sub_${m.code}','${m.code}')">
             <i class="ti ti-layers-subtract" style="font-size:11px"></i>
-            Lot <span style="font-size:10px;color:var(--ink4)">(${lots.length})</span>
+            Lot <span style="font-size:10px;color:var(--ink4)">(${allLots.length})</span>
           </button>
           <div class="lot-sub-list" id="lot_sub_${m.code}" style="display:none">${lotSubHtml}</div>
         </div>`:''}
