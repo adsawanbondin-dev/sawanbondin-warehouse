@@ -1288,40 +1288,54 @@ function renderMasterPage(){
       </div>
     </div>
     <div class="card" style="margin-bottom:11px">
-      <div class="card-title"><div class="card-title-left"><i class="ti ti-hash"></i> รูปแบบรหัส</div></div>
-      <div class="naming-grid">${namingRows}</div>
+      <div class="card-title" style="cursor:pointer;user-select:none;margin-bottom:0" onclick="toggleAccordion('namingBody','namingChev')">
+        <div class="card-title-left"><i class="ti ti-hash" style="color:var(--ink3)"></i>
+          <span style="color:var(--ink2)">รูปแบบรหัส</span>
+        </div>
+        <i class="ti ti-chevron-down" id="namingChev" style="color:var(--ink4);font-size:13px;transition:transform .2s;transform:rotate(-90deg)"></i>
+      </div>
+      <div id="namingBody" style="display:none;margin-top:12px">
+        <div class="naming-grid">${namingRows}</div>
+      </div>
     </div>
     <div class="card" style="margin-bottom:11px">
-      <div class="card-title">
-        <div class="card-title-left"><i class="ti ti-map-pin"></i> พิกัดชั้นวาง (Bin Location)</div>
-        <button class="btn btn-sm btn-primary" onclick="showBinForm()">
-          <i class="ti ti-plus"></i> เพิ่มพิกัด</button>
-      </div>
-      <div id="binAddForm" style="display:none;margin-bottom:10px;padding:11px;background:var(--s2);border:1px solid var(--line);border-radius:var(--r)">
-        <div class="form-grid" style="margin-bottom:8px">
-          <div class="fg"><label class="fl">โซน <span class="req">*</span></label>
-            <input class="fi" id="bin-zone" placeholder="เช่น ZN1, COLD"></div>
-          <div class="fg"><label class="fl">แถว <span class="req">*</span></label>
-            <input class="fi" id="bin-row" placeholder="เช่น A, B, C"></div>
-          <div class="fg"><label class="fl">ชั้น <span class="req">*</span></label>
-            <input class="fi" id="bin-level" placeholder="เช่น 01, 02"></div>
-          <div class="fg"><label class="fl">ชื่อเพิ่มเติม</label>
-            <input class="fi" id="bin-label" placeholder="เช่น ตู้แช่เย็น"></div>
+      <div class="card-title" style="cursor:pointer;user-select:none;margin-bottom:0" onclick="toggleAccordion('binBody','binChev')">
+        <div class="card-title-left"><i class="ti ti-map-pin" style="color:var(--ink3)"></i>
+          <span style="color:var(--ink2)">พิกัดชั้นวาง (Bin Location)</span>
         </div>
-        <div style="display:flex;gap:7px;justify-content:flex-end">
-          <button class="btn btn-sm" onclick="showBinForm()">ยกเลิก</button>
-          <button class="btn btn-primary btn-sm" onclick="addBinLocation()">
-            <i class="ti ti-check"></i> บันทึกพิกัด</button>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-sm btn-primary" onclick="event.stopPropagation();showBinForm()">
+            <i class="ti ti-plus"></i> เพิ่มพิกัด</button>
+          <i class="ti ti-chevron-down" id="binChev" style="color:var(--ink4);font-size:13px;transition:transform .2s;transform:rotate(-90deg)"></i>
         </div>
       </div>
-      <div id="binList" style="display:flex;flex-wrap:wrap;gap:5px">
-        ${binLocations.length ? binLocations.map(b=>
-          `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--acc-bg);border:1px solid var(--line);border-radius:6px;margin-bottom:3px">
-            <span style="font-size:11px;color:var(--acc);font-family:monospace;font-weight:500">${b.code}</span>
-            ${b.label?`<span style="font-size:10px;color:var(--ink3)">${b.label}</span>`:''}
-            <button onclick="deleteBinLocation(${b.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:0;font-size:12px;line-height:1" title="ลบ"><i class="ti ti-x"></i></button>
-          </div>`
-        ).join('') : '<span style="font-size:12px;color:var(--ink3)">ยังไม่มีพิกัด — กด "+ เพิ่มพิกัด" เพื่อเริ่มต้น</span>'}
+      <div id="binBody" style="display:none;margin-top:12px">
+        <div id="binAddForm" style="display:none;margin-bottom:10px;padding:11px;background:var(--s2);border:1px solid var(--line);border-radius:var(--r)">
+          <div class="form-grid" style="margin-bottom:8px">
+            <div class="fg"><label class="fl">โซน <span class="req">*</span></label>
+              <input class="fi" id="bin-zone" placeholder="เช่น ZN1, COLD"></div>
+            <div class="fg"><label class="fl">แถว <span class="req">*</span></label>
+              <input class="fi" id="bin-row" placeholder="เช่น A, B, C"></div>
+            <div class="fg"><label class="fl">ชั้น <span class="req">*</span></label>
+              <input class="fi" id="bin-level" placeholder="เช่น 01, 02"></div>
+            <div class="fg"><label class="fl">ชื่อเพิ่มเติม</label>
+              <input class="fi" id="bin-label" placeholder="เช่น ตู้แช่เย็น"></div>
+          </div>
+          <div style="display:flex;gap:7px;justify-content:flex-end">
+            <button class="btn btn-sm" onclick="showBinForm()">ยกเลิก</button>
+            <button class="btn btn-primary btn-sm" onclick="addBinLocation()">
+              <i class="ti ti-check"></i> บันทึกพิกัด</button>
+          </div>
+        </div>
+        <div id="binList" style="display:flex;flex-wrap:wrap;gap:5px">
+          ${binLocations.length ? binLocations.map(b=>
+            `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--acc-bg);border:1px solid var(--line);border-radius:6px;margin-bottom:3px">
+              <span style="font-size:11px;color:var(--acc);font-family:monospace;font-weight:500">${b.code}</span>
+              ${b.label?`<span style="font-size:10px;color:var(--ink3)">${b.label}</span>`:''}
+              <button onclick="deleteBinLocation(${b.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:0;font-size:12px;line-height:1" title="ลบ"><i class="ti ti-x"></i></button>
+            </div>`
+          ).join('') : '<span style="font-size:12px;color:var(--ink3)">ยังไม่มีพิกัด — กด "+ เพิ่มพิกัด" เพื่อเริ่มต้น</span>'}
+        </div>
       </div>
     </div>
     <div class="card" id="addFormCard" style="display:none;margin-bottom:11px">
@@ -1576,6 +1590,15 @@ function syncLocFromInput(pg){
   const matching=[...sel.options].find(o=>o.value===inp);
   sel.value=matching?inp:'';
 }
+function toggleAccordion(bodyId, chevId) {
+  const body = document.getElementById(bodyId);
+  const chev = document.getElementById(chevId);
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (chev) chev.style.transform = isOpen ? 'rotate(-90deg)' : 'rotate(0deg)';
+}
+
 function toggleLotSub(subId,code){
   const sub=document.getElementById(subId);if(!sub)return;
   const isOpen=sub.style.display!=='none';
