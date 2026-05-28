@@ -1118,16 +1118,16 @@ function renderHistory(pg){
     tb.innerHTML=`<tr><td colspan="${totalCols}"><div class="empty"><i class="ti ti-notes"></i><div class="empty-text">ยังไม่มีรายการ</div></div></td></tr>`;
     return;
   }
-  tb.innerHTML=recs.slice(0,60).map(r=>`<tr ${r.type==='return_bad'?'style="opacity:.7"':''}>
-    <td title="${r.timeDetail||''}" style="color:var(--ink4);white-space:nowrap">${r.time}</td>
-    <td><span class="tbadge">${r.typeLabel}</span></td>
-    <td style="color:var(--ink2)">${r.name}${r.via==='scan'||r.via==='camera'?'<span style="font-size:9px;color:var(--ink4);margin-left:4px">scan</span>':r.via==='batch'?'<span style="font-size:9px;color:var(--ink4);margin-left:4px">batch</span>':''}</td>
-    <td style="color:var(--ink3);font-size:11px">${r.dept}</td>
-    <td title="${r.item}" style="font-weight:500;color:var(--ink)">${r.item}</td>
-    <td style="font-family:monospace;font-size:10px;color:var(--ink3)">${r.code}</td>
-    <td style="font-weight:500;color:var(--ink)">${r.qty}</td>
-    ${cfg.hasLot?`<td style="font-family:monospace;font-size:10px;color:var(--ink3)">${r.lotSW||'—'}</td>`:''}
-    ${cfg.lotSupplier?`<td style="font-size:10px;color:var(--ink4)">${r.lotSP||'—'}</td>`:''}
+  tb.innerHTML=recs.slice(0,60).map(r=>`<tr ${r.type==='return_bad'?'style="opacity:.75"':''}>
+    <td title="${r.timeDetail||''}">${r.time}</td>
+    <td><span class="tbadge ${ACTION_BADGE[r.type]}">${r.typeLabel}</span></td>
+    <td>${r.name}${r.via==='scan'||r.via==='camera'?'<span style="font-size:9px;color:var(--acc);margin-left:3px">scan</span>':r.via==='batch'?'<span style="font-size:9px;color:var(--grn);margin-left:3px">batch</span>':''}</td>
+    <td><span class="dept-pill ${DEPT_PILL_CLS[r.dept]||''}">${r.dept}</span></td>
+    <td title="${r.item}">${r.item}</td>
+    <td style="font-family:monospace;font-size:10px;color:var(--acc)">${r.code}</td>
+    <td>${r.qty}</td>
+    ${cfg.hasLot?`<td>${r.lotSW||'-'}</td>`:''}
+    ${cfg.lotSupplier?`<td style="font-size:10px;color:var(--ink3)">${r.lotSP||'-'}</td>`:''}
   </tr>`).join('');
 }
 
