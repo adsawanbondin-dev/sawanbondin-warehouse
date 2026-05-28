@@ -313,17 +313,15 @@ async function dbAdjustStockWithLot(code, action, qty, { lotId=null, lotSW=null,
   if (data.lot_id && lotDB[code]) {
     const lot = lotDB[code].find(l => l.id === data.lot_id);
     if (lot && data.new_lot_stock !== undefined) lot.stock = data.new_lot_stock;
-    // อัปเดต expiry ถ้ากรอกมา
     if (lot && expiry) { lot.expiry_date = expiry; }
-  }
-  // ถ้าเป็น receive + มี expiry → update lots ตรงๆ
-  if ((action==='receive'||action==='return_good') && expiry && data.lot_id) {
-    await sb.from('lots').update({ expiry_date: expiry }).eq('id', data.lot_id);
-  }
     // เพิ่ม lot ใหม่เข้า cache ถ้าเป็น receive
     if (!lot && (action === 'receive' || action === 'return_good') && lotSW) {
       await dbLoadLotsForItem(code);
     }
+  }
+  // ถ้าเป็น receive + มี expiry → update lots ตรงๆ
+  if ((action==='receive'||action==='return_good') && expiry && data.lot_id) {
+    await sb.from('lots').update({ expiry_date: expiry }).eq('id', data.lot_id);
   }
   return data;
 }
