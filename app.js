@@ -26,6 +26,9 @@ const WAREHOUSE_CONFIG = {
   packaging: { label:'Packaging',          prefix:'PA', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
   equip:     { label:'อุปกรณ์',           prefix:'EQ', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
   finish:    { label:'สินค้าสำเร็จรูป',  prefix:'FG', hasLot:true,  lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
+  sample:    { label:'ชาตัวอย่าง',          prefix:'SA', hasLot:true,  lotSupplier:true,  rawFields:false, hasExpiry:true, depts:['ผลิต','คลัง','Tea House'],
+               subcats:['OEM','RD','ชาประกวด'],
+               subPrefixes:{ OEM:'OEM', RD:'SWBD_RD', 'ชาประกวด':'TCT' } },
 };
 const WAREHOUSE_PAGES = Object.keys(WAREHOUSE_CONFIG);
 
@@ -244,6 +247,7 @@ async function dbLoadLotsForItem(code) {
   lotDB[code] = (data||[]).map(r => ({
     id:r.id, lot_sw:r.lot_sw, lot_supplier:r.lot_supplier||'',
     stock:parseFloat(r.stock)||0, updated_at:r.updated_at,
+    expiry_date:r.expiry_date||null,
   }));
 }
 
@@ -276,7 +280,7 @@ async function dbLoadItems() {
  *   lotSP   — date string lot supplier
  *   name    — item name (ใช้ตอน insert lot ใหม่)
  */
-async function dbAdjustStockWithLot(code, action, qty, { lotId=null, lotSW=null, lotSP=null, name='' } = {}) {
+async function dbAdjustStockWithLot(code, action, qty, { lotId=null, lotSW=null, lotSP=null, expiry=null, name='' } = {}) {
   const params = {
     p_code:     code,
     p_action:   action,
@@ -309,6 +313,13 @@ async function dbAdjustStockWithLot(code, action, qty, { lotId=null, lotSW=null,
   if (data.lot_id && lotDB[code]) {
     const lot = lotDB[code].find(l => l.id === data.lot_id);
     if (lot && data.new_lot_stock !== undefined) lot.stock = data.new_lot_stock;
+    // อัปเดต expiry ถ้ากรอกมา
+    if (lot && expiry) { lot.expiry_date = expiry; }
+  }
+  // ถ้าเป็น receive + มี expiry → update lots ตรงๆ
+  if ((action==='receive'||action==='return_good') && expiry && data.lot_id) {
+    await sb.from('lots').update({ expiry_date: expiry }).eq('id', data.lot_id);
+  }
     // เพิ่ม lot ใหม่เข้า cache ถ้าเป็น receive
     if (!lot && (action === 'receive' || action === 'return_good') && lotSW) {
       await dbLoadLotsForItem(code);
@@ -395,7 +406,7 @@ function handleScanResult(raw, pg) {
     if (sw) sw.value = parsed.lotSW;
     // autofill lot picker
     const pickerList = document.getElementById(pg+'-lot-picker-list');
-    if (pickerList && (pg==='raw'||pg==='finish'||pg==='matcha')) {
+    if (pickerList && (pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')) {
       buildLotPickerHtml(m.code, pg).then(html => { pickerList.innerHTML = html; });
     }
   }
@@ -710,7 +721,7 @@ function renderForm(pg) {
   // Lot fields
   if (cfg.hasLot) {
     h += '<div class="divider"></div>';
-    if (!isRecv && (pg==='raw'||pg==='finish'||pg==='matcha')) {
+    if (!isRecv && (pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')) {
       // เบิก/คืน raw, finish และ matcha: แสดง lot picker
       h += `<div class="fg">
         <label class="fl">Lot Sawanbondin</label>
@@ -738,6 +749,16 @@ function renderForm(pg) {
           <div class="fhint">วันที่ผลิตของ Supplier</div>
         </div>
       </div>`;
+      // เพิ่มช่องวันหมดอายุสำหรับคลังที่มี hasExpiry
+      if (cfg.hasExpiry) {
+        h += `<div class="lot-single" style="margin-top:8px">
+          <div class="fg">
+            <label class="fl">วันหมดอายุ</label>
+            <input class="fi" id="${pg}-expiry" type="date">
+            <div class="fhint">ไม่บังคับกรอก</div>
+          </div>
+        </div>`;
+      }
     } else {
       h += `<div class="lot-single">
         <div class="fg">
@@ -887,7 +908,7 @@ function selItem(pg, item, code) {
     if(sel){const opt=[...sel.options].find(o=>o.value===locationDB[m.code]);sel.value=opt?locationDB[m.code]:'';}
   }
   const pickerList=document.getElementById(pg+'-lot-picker-list');
-  if(m&&pickerList&&(pg==='raw'||pg==='finish'||pg==='matcha')) {
+  if(m&&pickerList&&(pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')) {
     pickerList.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด Lot...</div>';
     buildLotPickerHtml(m.code,pg).then(html=>{ pickerList.innerHTML=html; });
   }
@@ -944,6 +965,7 @@ async function submitF(pg) {
   const qty    = parseFloat(document.getElementById(pg+'-qty').value);
   const lotSW  = cfg.hasLot ? (document.getElementById(pg+'-lotsw')?.value||'') : '';
   const lotSP  = cfg.lotSupplier ? (document.getElementById(pg+'-lotsp')?.value||'') : '';
+  const expiry = cfg.hasExpiry ? (document.getElementById(pg+'-expiry')?.value||'') : '';
   const note   = document.getElementById(pg+'-note')?.value||document.getElementById(pg+'-improve')?.value||'';
   const loc    = (document.getElementById(pg+'-loc')?.value||'').trim();
   const action = txState[pg].action;
@@ -961,7 +983,7 @@ async function submitF(pg) {
     if (action !== 'return_bad') {
       // หา lotId จาก lotDB cache ถ้าเป็นการเบิก/คืน
       let lotId = null;
-      if ((pg==='raw'||pg==='finish'||pg==='matcha') && lotSW && (action==='withdraw'||action==='return_good')) {
+      if ((pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample') && lotSW && (action==='withdraw'||action==='return_good')) {
         const cached = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
         if (cached) lotId = cached.id;
       }
@@ -969,6 +991,7 @@ async function submitF(pg) {
         lotId,
         lotSW: (cfg.hasLot && lotSW && lotSW.length > 0) ? lotSW : null,
         lotSP: (lotSP && lotSP.length > 0) ? lotSP : null,
+        expiry: (expiry && expiry.length > 0) ? expiry : null,
         name: item,
       });
       if (!rpcResult.ok) { setLoading(pg+'-submit-btn', false); return; }
@@ -1052,7 +1075,7 @@ async function submitBatch(pg){
       // ── RPC เดียว: items.stock + lots.stock พร้อมกัน ──
       if(r.action!=='return_bad'){
         let lotId=null;
-        if((pg==='raw'||pg==='finish'||pg==='matcha')&&r.lotSW&&(r.action==='withdraw'||r.action==='return_good')){
+        if((pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')&&r.lotSW&&(r.action==='withdraw'||r.action==='return_good')){
           const cached=(lotDB[code]||[]).find(l=>l.lot_sw===r.lotSW);
           if(cached)lotId=cached.id;
         }
@@ -1162,7 +1185,7 @@ async function confirmCamScan(){
     document.getElementById('camLotSWInput')?.value || null;
   const lotSP = document.getElementById('camLotSPInput')?.value || null;
     let lotId=null;
-    if((pg==='raw'||pg==='finish'||pg==='matcha')&&lotSW&&(action==='withdraw'||action==='return_good')){
+    if((pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')&&lotSW&&(action==='withdraw'||action==='return_good')){
       const cached=(lotDB[m.code]||[]).find(l=>l.lot_sw===lotSW);
       if(cached)lotId=cached.id;
     }
@@ -1498,7 +1521,7 @@ function renderMasterContent(){
     const sI=st==='out'?'ti-circle-x':st==='low'?'ti-alert-triangle':'ti-check';
     const cls=st==='out'?'out-stock':st==='low'?'low-stock':'';
     const loc=locationDB[m.code]||'';
-    const hasLotPg=(m.pg==='raw'||m.pg==='finish'||m.pg==='matcha');
+    const hasLotPg=(m.pg==='raw'||m.pg==='finish'||m.pg==='matcha'||m.pg==='sample');
     const allLots=hasLotPg?(lotDB[m.code]||[]):[];
     const activeLots=allLots.filter(l=>l.stock>0);
     const zeroLots=allLots.filter(l=>l.stock<=0);
@@ -1506,11 +1529,14 @@ function renderMasterContent(){
       ?[...activeLots,...zeroLots].map(l=>{
           const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):' ?';
           const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
+          const ex=l.expiry_date?new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
           const isEmpty=l.stock<=0;
-          return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}">
+          const isExpired=l.expiry_date&&new Date(l.expiry_date)<new Date();
+          return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}${isExpired?';background:#fdf2f2':''}">
             <span class="lot-date">${sw}${isEmpty?' <span style="font-size:9px;color:var(--red)">หมด</span>':''}</span>
             <span class="lot-stock-val">คงเหลือ ${l.stock}</span>
             ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">Sup: ${sp}</span>`:''}
+            ${ex?`<span style="font-size:10px;color:${isExpired?'var(--red)':'var(--ink4)'};margin-left:8px">${isExpired?'⚠️ หมดอายุ':'หมดอายุ'}: ${ex}</span>`:''}
           </div>`;
         }).join('')
       :'<div class="lot-empty">ยังไม่มี Lot</div>';
@@ -1806,13 +1832,13 @@ async function boot(){
 
   // Preload lots สำหรับ raw และ finish
   try{
-    const lotCodes=masterDB.filter(m=>m.pg==='raw'||m.pg==='finish'||m.pg==='matcha').map(m=>m.code);
+    const lotCodes=masterDB.filter(m=>m.pg==='raw'||m.pg==='finish'||m.pg==='matcha'||m.pg==='sample').map(m=>m.code);
     if(lotCodes.length){
       const{data}=await sb.from('lots').select('*').in('item_code',lotCodes).order('lot_sw',{ascending:true});
       if(data)data.forEach(r=>{
         if(!lotDB[r.item_code])lotDB[r.item_code]=[];
         if(!lotDB[r.item_code].find(l=>l.id===r.id))
-          lotDB[r.item_code].push({id:r.id,lot_sw:r.lot_sw,lot_supplier:r.lot_supplier||'',stock:parseFloat(r.stock)||0,updated_at:r.updated_at});
+          lotDB[r.item_code].push({id:r.id,lot_sw:r.lot_sw,lot_supplier:r.lot_supplier||'',stock:parseFloat(r.stock)||0,updated_at:r.updated_at,expiry_date:r.expiry_date||null});
       });
     }
   }catch(e){console.warn(e);}
