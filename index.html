@@ -295,6 +295,10 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .login-btn:disabled{background:#8e8e93;cursor:not-allowed}
 .login-error{font-size:12px;color:#7a2020;background:#faf0f0;border:1px solid #e0b0b0;border-radius:6px;padding:8px 11px;margin-top:10px;display:none}
 .login-error:not(:empty){display:block}
+.lot-expired{opacity:.6;background:rgba(200,60,60,.08)}
+.cam-lot-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.15);cursor:pointer;transition:all .15s}
+.cam-lot-row:hover{background:rgba(255,255,255,.12)}
+.cam-lot-row.selected{background:rgba(44,180,100,.2);border-color:rgba(44,180,100,.5)}
 #alertPanelWrap{display:none}
 #alertPanelWrap.show{display:block}
 </style>
@@ -424,6 +428,13 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
   <div id="camLotSW" style="display:none;margin-top:6px;padding:4px 10px;background:rgba(44,82,130,.6);border-radius:5px;font-size:11px;color:#fff">
     <i class="ti ti-tag" style="font-size:10px"></i> Lot: <span id="camLotSWVal"></span>
+  </div>
+  <!-- Lot picker popup สำหรับกล้อง -->
+  <div id="camLotPickerCam" style="display:none;margin-top:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px 12px">
+    <div style="font-size:10px;color:rgba(255,255,255,.6);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">
+      <i class="ti ti-layers-subtract" style="font-size:10px"></i> เลือก Lot (ไม่บังคับ)
+    </div>
+    <div id="camLotPickerList" style="display:flex;flex-direction:column;gap:5px;max-height:160px;overflow-y:auto"></div>
   </div>
   <input type="hidden" id="camLotHidden">
 </div>

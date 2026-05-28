@@ -927,20 +927,23 @@ function selRadio(el,gid){
 /* ── LOT PICKER ── */
 async function buildLotPickerHtml(code, pg) {
   await dbLoadLotsForItem(code);
-  // ข้อ 2: แสดงเฉพาะ lot ที่ยังมีสต็อก (stock > 0) ใน picker
-  const lots=(lotDB[code]||[]).filter(l=>l.stock>0);
+  // ข้อ 3: เรียงเก่าก่อน (FIFO) · ข้อ 4: ซ่อน lot หมด
+  const lots = (lotDB[code]||[])
+    .filter(l => l.stock > 0)
+    .sort((a,b) => new Date(a.lot_sw) - new Date(b.lot_sw));
   if(!lots.length) return '<div class="lot-empty">ไม่มี Lot ที่มีสต็อกเหลืออยู่</div>';
   return lots.map(l=>{
-    const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}):'?';
-    // ข้อ 1: แสดง Lot Supplier ถ้ามี
-    const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}):'';
-    return `<div class="lot-select-item" onclick="pickLot(this,'${pg}','${l.lot_sw}')" data-lot="${l.lot_sw}">
+    const sw = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '?';
+    const sp = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+    const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+    const isExpired = l.expiry_date && new Date(l.expiry_date) < new Date();
+    return `<div class="lot-select-item${isExpired?' lot-expired':''}" onclick="pickLot(this,'${pg}','${l.lot_sw}')" data-lot="${l.lot_sw}">
       <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span class="lot-date" title="Lot Sawanbondin">${sw}</span>
-          ${sp?`<span style="font-size:10px;color:var(--ink3)" title="Lot Supplier">Sup: ${sp}</span>`:''}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="lot-date">${sw}</span>
+          ${sp?`<span style="font-size:10px;color:var(--ink3)">Sup: ${sp}</span>`:''}
+          ${ex?`<span style="font-size:10px;color:${isExpired?'var(--red)':'var(--ink4)'}">หมดอายุ: ${ex}</span>`:''}
         </div>
-        ${sp?'':''}
       </div>
       <span class="lot-sel-stock">คงเหลือ ${l.stock}</span>
     </div>`;
@@ -1135,6 +1138,7 @@ function openCamera(pg){
   currentQRPage=pg; lastCamCode='';
   document.getElementById('camResult').textContent='พุ่งกล้องไปที่ QR หรือ Barcode';
   document.getElementById('camResult').className='cam-result';
+  document.getElementById('camLotPickerCam').style.display='none';
   document.getElementById('camOverlay').classList.add('show');
   // autofill แผนกจาก profile
   const deptSel=document.getElementById('camDept');
@@ -1161,10 +1165,53 @@ function openCamera(pg){
           document.getElementById('camLotSW').style.display='none';
           document.getElementById('camLotHidden').value='';
         }
+        // แสดง lot picker ถ้าคลังนี้มี lot และมี lots อยู่
+        const hasLotPg = ['raw','finish','matcha','sample'].includes(m.pg);
+        const lots = hasLotPg ? (lotDB[m.code]||[]).filter(l=>l.stock>0) : [];
+        // เรียงเก่าก่อน (FIFO)
+        lots.sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
+        const picker = document.getElementById('camLotPickerCam');
+        if(hasLotPg && lots.length){
+          picker.style.display='block';
+          document.getElementById('camLotPickerList').innerHTML = lots.map(l=>{
+            const sw = new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+            const sp = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+            const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+            return `<div class="cam-lot-row" onclick="selectCamLot(this,'${l.lot_sw}')" data-lot="${l.lot_sw}">
+              <div style="flex:1">
+                <div style="font-size:12px;font-weight:600;color:#fff">${sw}</div>
+                <div style="font-size:10px;color:rgba(255,255,255,.5)">
+                  ${sp?'Sup: '+sp+' · ':''}คงเหลือ ${l.stock}${ex?' · หมดอายุ: '+ex:''}
+                </div>
+              </div>
+              <i class="ti ti-check" style="display:none;color:#4cd964;font-size:14px"></i>
+            </div>`;
+          }).join('');
+        } else {
+          picker.style.display='none';
+        }
       }
       else{res.className='cam-result err';res.textContent=`ไม่พบรหัส "${rawCode}"`;}
     },()=>{}
   ).catch(()=>{document.getElementById('camResult').textContent='ไม่สามารถเปิดกล้องได้';});
+}
+
+function selectCamLot(el, lotSW) {
+  // toggle select
+  const already = el.classList.contains('selected');
+  document.querySelectorAll('#camLotPickerList .cam-lot-row').forEach(r=>{
+    r.classList.remove('selected');
+    r.querySelector('.ti-check').style.display='none';
+  });
+  if(!already){
+    el.classList.add('selected');
+    el.querySelector('.ti-check').style.display='block';
+    document.getElementById('camLotHidden').value = lotSW;
+    document.getElementById('camLotSWInput').value = lotSW;
+  } else {
+    document.getElementById('camLotHidden').value = '';
+    document.getElementById('camLotSWInput').value = '';
+  }
 }
 async function confirmCamScan(){
   if(!lastCamCode){alert('ยังไม่ได้สแกน');return;}
@@ -1220,6 +1267,8 @@ async function confirmCamScan(){
   document.getElementById('camLotHidden').value='';
   document.getElementById('camLotSWInput').value='';
   document.getElementById('camLotSPInput').value='';
+  document.getElementById('camLotPickerCam').style.display='none';
+  document.getElementById('camLotPickerList').innerHTML='';
 }
 function closeCamera(){
   if(camScanner){camScanner.stop().catch(()=>{});camScanner=null;}
