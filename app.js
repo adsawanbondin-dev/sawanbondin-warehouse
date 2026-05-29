@@ -2142,215 +2142,314 @@ async function renderStockCountPage() {
   const div = document.getElementById('page-stockcount');
   if (!div) return;
 
+  const cfg   = WAREHOUSE_CONFIG[scPg];
+  const hasLotPg = ['raw','finish','matcha','sample'].includes(scPg);
   const items = masterDB.filter(m => m.pg === scPg);
+
+  // โหลด lots สำหรับคลังที่มี lot
+  if (hasLotPg) {
+    const codes = items.map(m => m.code);
+    if (codes.length) {
+      const { data } = await sb.from('lots').select('*').in('item_code', codes).order('lot_sw',{ascending:true});
+      if (data) data.forEach(r => {
+        if (!lotDB[r.item_code]) lotDB[r.item_code] = [];
+        if (!lotDB[r.item_code].find(l => l.id === r.id))
+          lotDB[r.item_code].push({ id:r.id, lot_sw:r.lot_sw, lot_supplier:r.lot_supplier||'', stock:parseFloat(r.stock)||0, expiry_date:r.expiry_date||null });
+      });
+    }
+  }
+
   const filtered = scSearch
     ? items.filter(m => m.name.toLowerCase().includes(scSearch) || m.code.toLowerCase().includes(scSearch))
     : items;
 
-  // สรุป
-  const counted   = filtered.filter(m => scData[m.code] !== undefined).length;
-  const diffItems = filtered.filter(m => scData[m.code] !== undefined && scData[m.code] !== m.stock);
-  const totalDiff = diffItems.reduce((s, m) => s + Math.abs((scData[m.code]||0) - m.stock), 0);
+  // สรุป — นับทั้ง item และ lot rows
+  const counted    = filtered.filter(m => scData[m.code] !== undefined || (hasLotPg&&(lotDB[m.code]||[]).some(l=>scData[m.code+'_lot_'+l.id]!==undefined))).length;
+  const diffItems  = filtered.filter(m => {
+    if (!hasLotPg) return scData[m.code]!==undefined && scData[m.code]!==m.stock;
+    const lots = (lotDB[m.code]||[]);
+    if (lots.length) return lots.some(l=>scData[m.code+'_lot_'+l.id]!==undefined && scData[m.code+'_lot_'+l.id]!==l.stock);
+    return scData[m.code]!==undefined && scData[m.code]!==m.stock;
+  });
+  const totalDiff = diffItems.reduce((s,m) => {
+    if (!hasLotPg) return s + Math.abs((scData[m.code]||0)-m.stock);
+    const lots=(lotDB[m.code]||[]);
+    if(lots.length) return s+lots.reduce((ss,l)=>{
+      const v=scData[m.code+'_lot_'+l.id];
+      return v!==undefined?ss+Math.abs(v-l.stock):ss;
+    },0);
+    return s+Math.abs((scData[m.code]||0)-m.stock);
+  },0);
 
-  // pg tabs
-  const pgTabs = Object.entries(WAREHOUSE_CONFIG).map(([pg, cfg]) =>
+  const pgTabs = Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg]) =>
     `<div class="sc-pg-tab ${pg===scPg?'active':''}" onclick="scSwitchPg('${pg}')">${cfg.label}</div>`
   ).join('');
+
+  // สร้าง table rows — แยก lot แต่ละแถว
+  const tableRows = filtered.map((m,i) => {
+    const lots = hasLotPg ? (lotDB[m.code]||[]) : [];
+    const hasLots = lots.length > 0;
+
+    if (!hasLots) {
+      // รายการปกติ ไม่มี lot
+      const actual  = scData[m.code];
+      const hasVal  = actual !== undefined;
+      const diff    = hasVal ? actual - m.stock : null;
+      const diffCls = diff===null?'':diff>0?'sc-diff-pos':diff<0?'sc-diff-neg':'sc-diff-zero';
+      const diffTxt = diff===null?'—':(diff>0?'+':'')+diff.toLocaleString();
+      const status  = !hasVal?'<span class="sc-status-blank">ยังไม่นับ</span>':diff===0?'<span class="sc-status-ok">✓ ตรงกัน</span>':'<span class="sc-status-diff">ไม่ตรง</span>';
+      return `<tr id="sc-row-${m.code}" ${diff!==null&&diff!==0?'style="background:#fef8f8"':''}>
+        <td style="color:var(--ink4);font-size:11px">${i+1}</td>
+        <td style="font-weight:500;color:var(--ink)">${m.name}</td>
+        <td style="font-family:monospace;font-size:10px;color:var(--ink4)">${m.code}</td>
+        <td style="color:var(--ink4);font-size:10px">—</td>
+        <td style="text-align:right;font-weight:500">${m.stock.toLocaleString()}</td>
+        <td style="text-align:center">
+          <input class="sc-input" type="number" min="0" step="0.01" inputmode="decimal"
+            placeholder="—" value="${hasVal?actual:''}"
+            onchange="scSetVal('${m.code}',this.value)"
+            onkeydown="if(event.key==='Enter'||event.key==='Tab'){event.preventDefault();document.querySelector('[data-sc-next]')?.focus()}"
+            id="sc-input-${m.code}">
+        </td>
+        <td style="text-align:right" class="${diffCls}">${diffTxt}</td>
+        <td>${status}</td>
+        <td><input style="border:none;background:none;outline:none;font-size:11px;color:var(--ink3);width:100px" placeholder="หมายเหตุ..." value="${scData[m.code+'_note']||''}" onchange="scSetNote('${m.code}',this.value)"></td>
+      </tr>`;
+    }
+
+    // รายการที่มี lot — แสดงหัวแถว + แถว lot แต่ละ lot
+    const lotRows = lots.map((l, li) => {
+      const sw     = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '?';
+      const sp     = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+      const ex     = l.expiry_date  ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+      const isExp  = l.expiry_date && new Date(l.expiry_date) < new Date();
+      const key    = m.code+'_lot_'+l.id;
+      const actual = scData[key];
+      const hasVal = actual !== undefined;
+      const diff   = hasVal ? actual - l.stock : null;
+      const diffCls= diff===null?'':diff>0?'sc-diff-pos':diff<0?'sc-diff-neg':'sc-diff-zero';
+      const diffTxt= diff===null?'—':(diff>0?'+':'')+diff.toLocaleString();
+      const status = !hasVal?'<span class="sc-status-blank">ยังไม่นับ</span>':diff===0?'<span class="sc-status-ok">✓ ตรงกัน</span>':'<span class="sc-status-diff">ไม่ตรง</span>';
+      const nextKey = li+1 < lots.length ? m.code+'_lot_'+lots[li+1].id : '';
+      return `<tr id="sc-row-${key}" style="${diff!==null&&diff!==0?'background:#fef8f8':''};border-top:${li===0?'1px solid var(--line)':'none'}">
+        ${li===0?`<td rowspan="${lots.length}" style="color:var(--ink4);font-size:11px;border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${i+1}</td>
+        <td rowspan="${lots.length}" style="font-weight:500;color:var(--ink);border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${m.name}</td>
+        <td rowspan="${lots.length}" style="font-family:monospace;font-size:10px;color:var(--ink4);border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${m.code}</td>`:''}
+        <td style="font-size:10px;padding-left:8px">
+          <div style="font-family:monospace;font-weight:500;color:var(--ink2)">${sw}</div>
+          ${sp?`<div style="color:var(--ink4)">Sup: ${sp}</div>`:''}
+          ${ex?`<div style="color:${isExp?'var(--red)':'var(--ink4)'}">${isExp?'⚠️ ':''}หมดอายุ: ${ex}</div>`:''}
+        </td>
+        <td style="text-align:right;font-weight:500">${l.stock.toLocaleString()}</td>
+        <td style="text-align:center">
+          <input class="sc-input" type="number" min="0" step="0.01" inputmode="decimal"
+            placeholder="—" value="${hasVal?actual:''}"
+            id="sc-input-${key}"
+            onchange="scSetLotVal('${m.code}','${l.id}',this.value,'${nextKey}')"
+            onkeydown="if(event.key==='Enter'||event.key==='Tab'){event.preventDefault();scFocusNext('','${nextKey}')}">
+        </td>
+        <td style="text-align:right" class="${diffCls}" id="sc-diff-${key}">${diffTxt}</td>
+        <td id="sc-status-${key}">${status}</td>
+        <td><input style="border:none;background:none;outline:none;font-size:11px;color:var(--ink3);width:100px" placeholder="หมายเหตุ..." value="${scData[key+'_note']||''}" onchange="scSetNote('${key}',this.value)"></td>
+      </tr>`;
+    }).join('');
+    return lotRows;
+  }).join('');
 
   div.innerHTML = `
     <div class="sc-header">
       <div>
         <div class="sc-title"><i class="ti ti-clipboard-check" style="color:var(--ink3)"></i> ตรวจนับสต็อก</div>
-        <div class="sc-sub">กรอกยอดจริง เทียบกับยอดในระบบ — ไม่ปรับสต็อกอัตโนมัติ</div>
+        <div class="sc-sub">กรอกยอดจริง เทียบกับยอดในระบบ — ${hasLotPg?'แสดงแยกตาม Lot · ':''}ไม่ปรับสต็อกอัตโนมัติ</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn" onclick="scClearAll()"><i class="ti ti-eraser"></i> ล้างทั้งหมด</button>
+        <button class="btn" onclick="scClearAll()"><i class="ti ti-eraser"></i> ล้าง</button>
         <button class="btn" onclick="scExportCSV()"><i class="ti ti-download"></i> Export</button>
-        <button class="btn btn-primary" onclick="scSave()" ${counted===0?'disabled':''}>
+        <button class="btn btn-primary" onclick="scSave()">
           <i class="ti ti-device-floppy"></i> บันทึกผล (${counted})
         </button>
       </div>
     </div>
-
-    <!-- Summary KPI -->
     <div class="sc-summary">
-      <div class="sc-kpi">
-        <div class="sc-kpi-label">รายการทั้งหมด</div>
-        <div class="sc-kpi-val">${items.length}</div>
-      </div>
-      <div class="sc-kpi">
-        <div class="sc-kpi-label">นับแล้ว</div>
-        <div class="sc-kpi-val">${counted}</div>
-      </div>
-      <div class="sc-kpi">
-        <div class="sc-kpi-label">ยอดไม่ตรง</div>
-        <div class="sc-kpi-val" style="color:${diffItems.length>0?'var(--red)':'var(--ink)'}">${diffItems.length}</div>
-      </div>
-      <div class="sc-kpi">
-        <div class="sc-kpi-label">ผลต่างรวม</div>
-        <div class="sc-kpi-val" style="color:${totalDiff>0?'var(--red)':'var(--ink)'}">${totalDiff.toLocaleString()}</div>
-      </div>
+      <div class="sc-kpi"><div class="sc-kpi-label">รายการทั้งหมด</div><div class="sc-kpi-val">${items.length}</div></div>
+      <div class="sc-kpi"><div class="sc-kpi-label">นับแล้ว</div><div class="sc-kpi-val">${counted}</div></div>
+      <div class="sc-kpi"><div class="sc-kpi-label">ยอดไม่ตรง</div><div class="sc-kpi-val" style="color:${diffItems.length>0?'var(--red)':'var(--ink)'}">${diffItems.length}</div></div>
+      <div class="sc-kpi"><div class="sc-kpi-label">ผลต่างรวม</div><div class="sc-kpi-val" style="color:${totalDiff>0?'var(--red)':'var(--ink)'}">${totalDiff.toLocaleString()}</div></div>
     </div>
-
-    <!-- Toolbar -->
     <div class="sc-toolbar">
       <div class="sc-pg-tabs">${pgTabs}</div>
       <div class="sc-search">
         <i class="ti ti-search" style="font-size:12px;color:var(--ink4)"></i>
-        <input placeholder="ค้นหารายการ..." value="${scSearch}"
-          oninput="scSearch=this.value;renderStockCountPage()">
+        <input placeholder="ค้นหารายการ..." value="${scSearch}" oninput="scSearch=this.value;renderStockCountPage()">
       </div>
     </div>
-
-    <!-- Table -->
     <div class="sc-table-wrap">
       <table class="sc-table">
         <thead>
           <tr>
-            <th style="width:32px">#</th>
+            <th style="width:28px">#</th>
             <th>รายการ</th>
             <th>รหัส</th>
+            <th style="width:110px">${hasLotPg?'Lot SW':'—'}</th>
             <th style="text-align:right">ยอดในระบบ</th>
-            <th style="text-align:center">ยอดจริง (กรอก)</th>
+            <th style="text-align:center;width:100px">ยอดจริง</th>
             <th style="text-align:right">ผลต่าง</th>
             <th>สถานะ</th>
             <th>หมายเหตุ</th>
           </tr>
         </thead>
-        <tbody>
-          ${filtered.length ? filtered.map((m, i) => {
-            const actual   = scData[m.code];
-            const hasVal   = actual !== undefined;
-            const diff     = hasVal ? actual - m.stock : null;
-            const diffCls  = diff === null ? '' : diff > 0 ? 'sc-diff-pos' : diff < 0 ? 'sc-diff-neg' : 'sc-diff-zero';
-            const diffTxt  = diff === null ? '—' : (diff > 0 ? '+' : '') + diff.toLocaleString();
-            const status   = !hasVal ? '<span class="sc-status-blank">ยังไม่นับ</span>'
-                           : diff === 0 ? '<span class="sc-status-ok">✓ ตรงกัน</span>'
-                           : '<span class="sc-status-diff">ไม่ตรง</span>';
-            const note     = scData[m.code + '_note'] || '';
-            return `<tr id="sc-row-${m.code}" ${diff !== null && diff !== 0 ? 'style="background:#fef8f8"' : ''}>
-              <td style="color:var(--ink4);font-size:11px">${i+1}</td>
-              <td style="font-weight:500;color:var(--ink)">${m.name}</td>
-              <td style="font-family:monospace;font-size:10px;color:var(--ink4)">${m.code}</td>
-              <td style="text-align:right;font-weight:500">${m.stock.toLocaleString()}</td>
-              <td style="text-align:center">
-                <input class="sc-input" type="number" min="0" step="0.01" inputmode="decimal"
-                  placeholder="—" value="${hasVal ? actual : ''}"
-                  onchange="scSetVal('${m.code}', this.value)"
-                  onkeydown="if(event.key==='Enter'||event.key==='Tab'){event.preventDefault();scFocusNext('${m.code}','${filtered[i+1]?.code||''}')}"
-                  id="sc-input-${m.code}">
-              </td>
-              <td style="text-align:right" class="${diffCls}">${diffTxt}</td>
-              <td>${status}</td>
-              <td>
-                <input style="border:none;background:none;outline:none;font-size:11px;color:var(--ink3);width:120px"
-                  placeholder="หมายเหตุ..." value="${note}"
-                  onchange="scSetNote('${m.code}', this.value)">
-              </td>
-            </tr>`;
-          }).join('') : `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--ink4)">ไม่พบรายการ</td></tr>`}
-        </tbody>
+        <tbody>${tableRows}</tbody>
       </table>
       <div class="sc-footer">
-        <div style="font-size:11px;color:var(--ink4)">
-          ${counted > 0 ? `นับแล้ว ${counted}/${filtered.length} รายการ · ไม่ตรง ${diffItems.length} รายการ` : `กรอกยอดจริงในช่องด้านบน · Tab หรือ Enter เพื่อไปรายการถัดไป`}
-        </div>
-        <div style="font-size:11px;color:var(--ink4)">
-          ผู้ตรวจ: ${window._operatorName || '—'} · ${new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'})}
-        </div>
+        <div style="font-size:11px;color:var(--ink4)">${counted>0?`นับแล้ว ${counted}/${filtered.length} · ไม่ตรง ${diffItems.length} รายการ`:'กรอกยอดจริงในช่องด้านบน · Tab หรือ Enter ไปรายการถัดไป'}</div>
+        <div style="font-size:11px;color:var(--ink4)">ผู้ตรวจ: ${window._operatorName||'—'} · ${new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'})}</div>
       </div>
     </div>`;
 }
 
-function scSwitchPg(pg) {
-  scPg = pg;
-  scData = {};
-  renderStockCountPage();
-}
-
-function scSetVal(code, val) {
-  const n = parseFloat(val);
-  if (val === '' || isNaN(n)) { delete scData[code]; }
-  else { scData[code] = n; }
-  // อัปเดต diff + status แบบ inline ไม่ re-render ทั้งหมด
-  const m = masterDB.find(x => x.code === code);
-  if (!m) return;
-  const row = document.getElementById('sc-row-' + code);
-  if (!row) return;
-  const actual  = scData[code];
-  const hasVal  = actual !== undefined;
-  const diff    = hasVal ? actual - m.stock : null;
-  const diffCls = diff === null ? '' : diff > 0 ? 'sc-diff-pos' : diff < 0 ? 'sc-diff-neg' : 'sc-diff-zero';
-  const diffTxt = diff === null ? '—' : (diff > 0 ? '+' : '') + diff.toLocaleString();
-  const status  = !hasVal ? '<span class="sc-status-blank">ยังไม่นับ</span>'
-                : diff === 0 ? '<span class="sc-status-ok">✓ ตรงกัน</span>'
-                : '<span class="sc-status-diff">ไม่ตรง</span>';
-  row.cells[5].className = diffCls;
-  row.cells[5].textContent = diffTxt;
-  row.cells[6].innerHTML = status;
-  row.style.background = diff !== null && diff !== 0 ? '#fef8f8' : '';
-  // อัปเดต KPI
-  renderScKpi();
-}
-
-function scSetNote(code, val) {
-  scData[code + '_note'] = val;
-}
-
-function scFocusNext(currentCode, nextCode) {
-  if (nextCode) {
-    const el = document.getElementById('sc-input-' + nextCode);
-    if (el) { el.focus(); el.select(); }
-  }
-}
-
-function renderScKpi() {
-  const items    = masterDB.filter(m => m.pg === scPg);
-  const counted  = items.filter(m => scData[m.code] !== undefined).length;
-  const diffItems = items.filter(m => scData[m.code] !== undefined && scData[m.code] !== m.stock);
-  const totalDiff = diffItems.reduce((s, m) => s + Math.abs((scData[m.code]||0) - m.stock), 0);
-  const kpis = document.querySelectorAll('.sc-kpi .sc-kpi-val');
-  if (kpis.length >= 4) {
-    kpis[1].textContent = counted;
-    kpis[2].textContent = diffItems.length;
-    kpis[2].style.color = diffItems.length > 0 ? 'var(--red)' : 'var(--ink)';
-    kpis[3].textContent = totalDiff.toLocaleString();
-    kpis[3].style.color = totalDiff > 0 ? 'var(--red)' : 'var(--ink)';
-  }
-}
-
-function scClearAll() {
-  if (!confirm('ล้างข้อมูลที่กรอกทั้งหมด?')) return;
-  scData = {};
-  renderStockCountPage();
-}
 
 async function scSave() {
-  const items = masterDB.filter(m => m.pg === scPg && scData[m.code] !== undefined);
-  if (!items.length) { showToast('กรุณากรอกยอดจริงก่อน', 'err'); return; }
+  const cfg      = WAREHOUSE_CONFIG[scPg];
+  const hasLotPg = ['raw','finish','matcha','sample'].includes(scPg);
+  const items    = masterDB.filter(m => m.pg === scPg);
+  const rows     = [];
 
-  const rows = items.map(m => ({
-    item_code:    m.code,
-    item_name:    m.name,
-    pg:           m.pg,
-    system_stock: m.stock,
-    actual_stock: scData[m.code],
-    note:         scData[m.code + '_note'] || '',
-    counted_by:   window._operatorName || '',
-  }));
+  items.forEach(m => {
+    const lots = hasLotPg ? (lotDB[m.code]||[]) : [];
+    if (lots.length) {
+      // บันทึกแยกตาม lot
+      lots.forEach(l => {
+        const key = m.code + '_lot_' + l.id;
+        if (scData[key] === undefined) return;
+        const sw = l.lot_sw || '';
+        rows.push({
+          item_code:    m.code,
+          item_name:    m.name + (sw ? ` [Lot ${new Date(sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'})}]` : ''),
+          pg:           m.pg,
+          system_stock: l.stock,
+          actual_stock: scData[key],
+          note:         scData[key+'_note'] || '',
+          counted_by:   window._operatorName || '',
+        });
+      });
+    } else {
+      if (scData[m.code] === undefined) return;
+      rows.push({
+        item_code:    m.code,
+        item_name:    m.name,
+        pg:           m.pg,
+        system_stock: m.stock,
+        actual_stock: scData[m.code],
+        note:         scData[m.code+'_note'] || '',
+        counted_by:   window._operatorName || '',
+      });
+    }
+  });
+
+  if (!rows.length) { showToast('กรุณากรอกยอดจริงก่อน', 'err'); return; }
 
   const btn = document.querySelector('#page-stockcount .btn-primary');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> กำลังบันทึก...'; }
 
   const ok = await dbSaveStockCount(rows);
-
   if (ok) {
-    showToast(`บันทึกผลตรวจนับ ${rows.length} รายการสำเร็จ`);
+    showToast(`บันทึกผลตรวจนับ ${rows.length} แถวสำเร็จ`);
     scData = {};
     renderStockCountPage();
   } else {
     showToast('บันทึกไม่สำเร็จ', 'err');
     if (btn) { btn.disabled = false; btn.innerHTML = `<i class="ti ti-device-floppy"></i> บันทึกผล`; }
+  }
+}
+
+function scSetLotVal(itemCode, lotId, val, nextKey) {
+  const key = itemCode + '_lot_' + lotId;
+  const lot = (lotDB[itemCode]||[]).find(l => String(l.id) === String(lotId));
+  if (!lot) return;
+  const n = parseFloat(val);
+  if (val === '' || isNaN(n)) { delete scData[key]; }
+  else { scData[key] = n; }
+  const hasVal = scData[key] !== undefined;
+  const diff   = hasVal ? scData[key] - lot.stock : null;
+  const diffCls= diff===null?'':diff>0?'sc-diff-pos':diff<0?'sc-diff-neg':'sc-diff-zero';
+  const diffTxt= diff===null?'—':(diff>0?'+':'')+diff.toLocaleString();
+  const status = !hasVal?'<span class="sc-status-blank">ยังไม่นับ</span>'
+               : diff===0?'<span class="sc-status-ok">✓ ตรงกัน</span>'
+               : '<span class="sc-status-diff">ไม่ตรง</span>';
+  const row = document.getElementById('sc-row-'+key);
+  const diffEl = document.getElementById('sc-diff-'+key);
+  const statusEl = document.getElementById('sc-status-'+key);
+  if (row) row.style.background = diff!==null&&diff!==0 ? '#fef8f8' : '';
+  if (diffEl) { diffEl.className = diffCls; diffEl.textContent = diffTxt; }
+  if (statusEl) statusEl.innerHTML = status;
+  renderScKpi();
+}
+
+function scSetVal(code, val) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  const n = parseFloat(val);
+  if (val === '' || isNaN(n)) { delete scData[code]; }
+  else { scData[code] = n; }
+  const actual = scData[code];
+  const hasVal = actual !== undefined;
+  const diff   = hasVal ? actual - m.stock : null;
+  const diffCls= diff===null?'':diff>0?'sc-diff-pos':diff<0?'sc-diff-neg':'sc-diff-zero';
+  const diffTxt= diff===null?'—':(diff>0?'+':'')+diff.toLocaleString();
+  const status = !hasVal?'<span class="sc-status-blank">ยังไม่นับ</span>'
+               : diff===0?'<span class="sc-status-ok">✓ ตรงกัน</span>'
+               : '<span class="sc-status-diff">ไม่ตรง</span>';
+  const row = document.getElementById('sc-row-'+code);
+  if (row) {
+    row.cells[6].className = diffCls; row.cells[6].textContent = diffTxt;
+    row.cells[7].innerHTML = status;
+    row.style.background = diff!==null&&diff!==0 ? '#fef8f8' : '';
+  }
+  renderScKpi();
+}
+
+function scSetNote(code, val) { scData[code+'_note'] = val; }
+
+function scFocusNext(cur, nextCode) {
+  if (nextCode) {
+    const el = document.getElementById('sc-input-'+nextCode);
+    if (el) { el.focus(); el.select(); }
+  }
+}
+
+function scSwitchPg(pg) { scPg = pg; scData = {}; renderStockCountPage(); }
+
+function scClearAll() {
+  if (!confirm('ล้างข้อมูลที่กรอกทั้งหมด?')) return;
+  scData = {}; renderStockCountPage();
+}
+
+function renderScKpi() {
+  const hasLotPg = ['raw','finish','matcha','sample'].includes(scPg);
+  const items = masterDB.filter(m => m.pg === scPg);
+  let counted = 0, diffs = 0, totalDiff = 0;
+  items.forEach(m => {
+    const lots = hasLotPg ? (lotDB[m.code]||[]) : [];
+    if (lots.length) {
+      lots.forEach(l => {
+        const k = m.code+'_lot_'+l.id;
+        if (scData[k] !== undefined) {
+          counted++;
+          const d = scData[k] - l.stock;
+          if (d !== 0) { diffs++; totalDiff += Math.abs(d); }
+        }
+      });
+    } else if (scData[m.code] !== undefined) {
+      counted++;
+      const d = scData[m.code] - m.stock;
+      if (d !== 0) { diffs++; totalDiff += Math.abs(d); }
+    }
+  });
+  const kpis = document.querySelectorAll('.sc-kpi .sc-kpi-val');
+  if (kpis.length >= 4) {
+    kpis[1].textContent = counted;
+    kpis[2].textContent = diffs; kpis[2].style.color = diffs>0?'var(--red)':'var(--ink)';
+    kpis[3].textContent = totalDiff.toLocaleString(); kpis[3].style.color = totalDiff>0?'var(--red)':'var(--ink)';
   }
 }
 
