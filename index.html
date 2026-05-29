@@ -120,6 +120,10 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .dept-ware{background:#e8eef8;color:#2d4a7a}
 .dept-pack{background:#f0e8f8;color:#5a2d8a}
 .dept-tea{background:#f8f0e0;color:#7a4f1e}
+/* dept button default = เทา, active = สีเด่น */
+.radio-opt{border-color:var(--line);background:var(--surface);color:var(--ink3)}
+.radio-opt.sel{border-color:var(--ink);background:var(--ink);color:#fff}
+.radio-opt:not(.sel):hover{border-color:var(--line2);background:var(--s2);color:var(--ink2)}
 
 /* ══ DROPDOWN ══ */
 .item-wrap{position:relative}
@@ -299,6 +303,36 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .cam-lot-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.15);cursor:pointer;transition:all .15s}
 .cam-lot-row:hover{background:rgba(255,255,255,.12)}
 .cam-lot-row.selected{background:rgba(44,180,100,.2);border-color:rgba(44,180,100,.5)}
+/* ══ STOCK COUNT ══ */
+.sc-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.sc-title{font-size:18px;font-weight:600;color:var(--ink);letter-spacing:-.3px}
+.sc-sub{font-size:12px;color:var(--ink4);margin-top:3px}
+.sc-toolbar{background:var(--surface);border:1px solid var(--line);border-radius:var(--rlg);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sc-pg-tabs{display:flex;gap:5px;flex-wrap:wrap}
+.sc-pg-tab{padding:5px 12px;border-radius:20px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:11px;font-weight:500;color:var(--ink3);transition:all .12s;white-space:nowrap}
+.sc-pg-tab:hover{border-color:var(--line2);color:var(--ink2)}
+.sc-pg-tab.active{background:var(--ink);border-color:var(--ink);color:#fff}
+.sc-search{display:flex;align-items:center;gap:7px;background:var(--s2);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;flex:1;min-width:180px}
+.sc-search input{border:none;background:none;outline:none;font-size:12px;color:var(--ink);width:100%}
+.sc-table-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--rlg);overflow:hidden}
+.sc-table{width:100%;border-collapse:collapse}
+.sc-table th{text-align:left;padding:10px 13px;font-size:9px;color:var(--ink4);font-weight:600;border-bottom:1px solid var(--line);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;background:var(--s2)}
+.sc-table td{padding:9px 13px;border-bottom:1px solid #f8f8f6;vertical-align:middle;font-size:12px}
+.sc-table tr:last-child td{border-bottom:none}
+.sc-table tr:hover td{background:var(--s2)}
+.sc-input{width:90px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;font-weight:500;color:var(--ink);text-align:center;outline:none;font-family:inherit}
+.sc-input:focus{border-color:var(--ink);box-shadow:0 0 0 2px rgba(28,28,30,.08)}
+.sc-diff-pos{font-weight:600;color:var(--grn)}
+.sc-diff-neg{font-weight:600;color:var(--red)}
+.sc-diff-zero{color:var(--ink4)}
+.sc-status-ok{font-size:10px;padding:2px 7px;border-radius:4px;background:var(--grn-bg);color:var(--grn);font-weight:500}
+.sc-status-diff{font-size:10px;padding:2px 7px;border-radius:4px;background:#fdf2f2;color:var(--red);font-weight:500}
+.sc-status-blank{font-size:10px;padding:2px 7px;border-radius:4px;background:var(--s3);color:var(--ink4)}
+.sc-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.sc-kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.sc-kpi-label{font-size:10px;color:var(--ink4);margin-bottom:6px}
+.sc-kpi-val{font-size:20px;font-weight:600;color:var(--ink);letter-spacing:-.3px}
+.sc-footer{padding:12px 16px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 #alertPanelWrap{display:none}
 #alertPanelWrap.show{display:block}
 </style>
@@ -335,6 +369,11 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
     <span class="topbar-title">Sawanbondin</span>
     <span class="topbar-sub">ระบบจัดการคลัง</span>
   </div>
+  <div id="alertBar" style="display:none;align-items:center;gap:8px;background:#fff3cd;border:1px solid #f0c060;border-radius:6px;padding:5px 12px;font-size:11px;color:#854f0b;max-width:400px;cursor:pointer" onclick="openAlertPanel()">
+    <i class="ti ti-alert-triangle" style="font-size:13px;flex-shrink:0"></i>
+    <span id="alertBarText"></span>
+  </div>
+  <div id="offlineIndicator" style="display:none;align-items:center;gap:5px;background:#fff3cd;border:1px solid #f0c060;border-radius:6px;padding:4px 10px;font-size:11px;color:#854f0b"></div>
   <div class="topbar-right">
     <a href="sawanbondin_qr_print.html" target="_blank" class="topbar-link">
       <i class="ti ti-printer" style="font-size:13px"></i> พิมพ์
@@ -376,7 +415,10 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div class="nav-item" onclick="switchPage('packaging')" data-page="packaging">Packaging</div>
   <div class="nav-item" onclick="switchPage('equip')"     data-page="equip">อุปกรณ์</div>
   <div class="nav-item" onclick="switchPage('finish')"    data-page="finish">สินค้าสำเร็จรูป</div>
-  <div class="nav-item" onclick="switchPage('sample')"    data-page="sample">ชาตัวอย่าง</div>
+  <div class="nav-item" onclick="switchPage('sample')" "    data-page="sample">ชาตัวอย่าง</div>
+  <div class="nav-item" onclick="switchPage('stockcount')" data-page="stockcount" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
+    <i class="ti ti-clipboard-check"></i> ตรวจนับ
+  </div>
 
 </nav>
 
@@ -390,6 +432,7 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div id="page-equip"       class="page-hidden"></div>
   <div id="page-finish"      class="page-hidden"></div>
   <div id="page-sample"      class="page-hidden"></div>
+  <div id="page-stockcount"  class="page-hidden"></div>
 </div>
 
 <!-- CAMERA OVERLAY -->
