@@ -569,7 +569,8 @@ function loadBatchLS() {
 function switchPage(p) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelector(`[data-page="${p}"]`)?.classList.add('active');
-  ['master',...WAREHOUSE_PAGES].forEach(pg => {
+  // รวมทุกหน้าเพื่อให้ซ่อนครบ
+  ['master', ...WAREHOUSE_PAGES, 'stockcount', 'dashboard'].forEach(pg => {
     const el = document.getElementById('page-'+pg);
     if (el) el.className = pg===p ? 'page-visible' : 'page-hidden';
   });
@@ -2544,7 +2545,9 @@ switchPage = async function(p) {
   if (p === 'stockcount') {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.querySelector('[data-page="stockcount"]')?.classList.add('active');
-    [...WAREHOUSE_PAGES, 'master', 'stockcount'].forEach(pg => {
+    // ซ่อนทุกหน้ารวมถึง dashboard
+    const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard'];
+    allPages.forEach(pg => {
       const el = document.getElementById('page-' + pg);
       if (el) el.className = pg === p ? 'page-visible' : 'page-hidden';
     });
