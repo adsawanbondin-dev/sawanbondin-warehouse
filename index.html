@@ -334,43 +334,37 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .sc-kpi-val{font-size:20px;font-weight:600;color:var(--ink);letter-spacing:-.3px}
 .sc-footer{padding:12px 16px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
 /* ══ DASHBOARD ══ */
-.db-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:18px}
-.db-kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--rlg);padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
-.db-kpi-label{font-size:10px;color:var(--ink4);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;display:flex;align-items:center;gap:5px}
-.db-kpi-val{font-size:28px;font-weight:600;color:var(--ink);letter-spacing:-.5px;line-height:1}
-.db-kpi-sub{font-size:11px;color:var(--ink4);margin-top:5px}
-.db-kpi-warn{color:var(--red)}
-.db-kpi-amber{color:var(--warn)}
-.db-section{background:var(--surface);border:1px solid var(--line);border-radius:var(--rlg);margin-bottom:14px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)}
-.db-section-header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
-.db-section-title{font-size:12px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:7px}
-.db-section-title i{font-size:14px;color:var(--ink3)}
-.db-two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.db-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px;margin-bottom:16px}
+.db-kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.db-kpi-label{font-size:10px;color:var(--ink4);font-weight:500;margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.db-kpi-label i{font-size:12px}
+.db-kpi-val{font-size:24px;font-weight:500;color:var(--ink);letter-spacing:-.4px;line-height:1}
+.db-kpi-sub{font-size:10px;color:var(--ink4);margin-top:5px}
+.db-kpi-warn{color:#9a5a00}
+.db-kpi-amber{color:#8a4f0b}
+.db-section{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+.db-section-header{padding:11px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;background:var(--s2)}
+.db-section-title{font-size:11px;font-weight:600;color:var(--ink2);display:flex;align-items:center;gap:6px;letter-spacing:-.1px}
+.db-section-title i{font-size:13px;color:var(--ink3)}
+.db-two{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 @media(max-width:860px){.db-two{grid-template-columns:1fr}}
-.db-table{width:100%;border-collapse:collapse;font-size:12px}
-.db-table th{padding:9px 13px;font-size:9px;color:var(--ink4);font-weight:600;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--line);text-align:left;background:var(--s2)}
-.db-table td{padding:9px 13px;border-bottom:1px solid #f8f8f6;color:var(--ink2);vertical-align:middle}
+.db-table{width:100%;border-collapse:collapse}
+.db-table th{padding:8px 12px;font-size:9px;color:var(--ink4);font-weight:600;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.db-table td{padding:9px 12px;border-bottom:1px solid #f8f8f6;color:var(--ink2);vertical-align:middle;font-size:11px}
 .db-table tr:last-child td{border-bottom:none}
 .db-table tr:hover td{background:var(--s2)}
-.db-bar-wrap{width:80px;height:5px;background:var(--line);border-radius:3px;overflow:hidden;display:inline-block}
-.db-bar-fill{height:100%;border-radius:3px}
-.db-bar-ok{background:var(--grn-mid)}.db-bar-low{background:#e6a817}.db-bar-out{background:#e24b4a}
-.db-wh-row{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--line)}
-.db-wh-row:last-child{border-bottom:none}
-.db-wh-name{font-size:12px;font-weight:500;color:var(--ink);min-width:120px}
-.db-wh-stats{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.db-wh-stat{font-size:11px;color:var(--ink3)}
+.db-bar-wrap{height:4px;background:var(--line);border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle}
+.db-bar-fill{height:100%;border-radius:2px}
+.db-bar-ok{background:#52a870}.db-bar-low{background:#d4920a}.db-bar-out{background:#c04040}
 .db-tag{font-size:10px;padding:2px 7px;border-radius:4px;font-weight:500}
-.db-tag-ok{background:var(--grn-bg);color:var(--grn)}
-.db-tag-warn{background:var(--warn-bg);color:var(--warn)}
-.db-tag-err{background:var(--red-bg);color:var(--red)}
+.db-tag-ok{background:#edf5f0;color:#2d6a4f}
+.db-tag-warn{background:#fef3e2;color:#854f0b}
+.db-tag-err{background:#faf0f0;color:#7a2020}
 .db-tag-gray{background:var(--s3);color:var(--ink3)}
-.db-lot-item{display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--line);font-size:11px}
-.db-lot-item:last-child{border-bottom:none}
-.db-day-badge{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:500}
-.db-day-urgent{background:#fdf2f2;color:var(--red)}
-.db-day-soon{background:var(--warn-bg);color:var(--warn)}
-.db-day-ok{background:var(--s3);color:var(--ink3)}
+.db-day-badge{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:500;white-space:nowrap}
+.db-day-urgent{background:#faf0f0;color:#7a2020}
+.db-day-soon{background:#fef3e2;color:#854f0b}
+.db-day-ok{background:#edf5f0;color:#2d6a4f}
 #alertPanelWrap{display:none}
 #alertPanelWrap.show{display:block}
 </style>
@@ -407,11 +401,7 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
     <span class="topbar-title">Sawanbondin</span>
     <span class="topbar-sub">ระบบจัดการคลัง</span>
   </div>
-  <div id="alertBar" style="display:none;align-items:center;gap:8px;background:#fff3cd;border:1px solid #f0c060;border-radius:6px;padding:5px 12px;font-size:11px;color:#854f0b;max-width:400px;cursor:pointer" onclick="openAlertPanel()">
-    <i class="ti ti-alert-triangle" style="font-size:13px;flex-shrink:0"></i>
-    <span id="alertBarText"></span>
-  </div>
-  <div id="offlineIndicator" style="display:none;align-items:center;gap:5px;background:#fff3cd;border:1px solid #f0c060;border-radius:6px;padding:4px 10px;font-size:11px;color:#854f0b"></div>
+  <div id="offlineIndicator" style="display:none;align-items:center;gap:5px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:#e0e0e0"></div>
   <div class="topbar-right">
     <a href="sawanbondin_qr_print.html" target="_blank" class="topbar-link">
       <i class="ti ti-printer" style="font-size:13px"></i> พิมพ์

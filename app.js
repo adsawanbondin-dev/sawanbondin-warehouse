@@ -473,8 +473,8 @@ function stockStatus(m) {
 function getAlertItems(pg) {
   return masterDB.filter(m => {
     if (pg && m.pg!==pg) return false;
-    if (m.min<=0 && m.max<=0) return false;
-    return m.stock <= m.min;
+    if (m.min <= 0) return false;           // ไม่นับถ้าไม่ได้ตั้ง Min
+    return m.stock < m.min;                  // ต่ำกว่า Min (ไม่รวม stock === min)
   });
 }
 function checkAlerts() {
@@ -2501,7 +2501,7 @@ async function renderDashboardPage() {
 
   const today    = new Date().toISOString().slice(0,10);
   const day30ago = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
-  const day90fwd = new Date(Date.now()+90*86400000).toISOString().slice(0,10);
+  const day90fwd = new Date(Date.now()+60*86400000).toISOString().slice(0,10);
 
   // โหลดพร้อมกัน
   const [{ data:txToday }, { data:tx30 }, { data:expiryLots }, { data:scHistory }] = await Promise.all([
@@ -2517,12 +2517,12 @@ async function renderDashboardPage() {
   const todayRec   = (txToday||[]).filter(t=>t.action_type==='receive');
   const todayWith  = (txToday||[]).filter(t=>t.action_type==='withdraw');
   const totalStock = masterDB.reduce((s,m)=>s+m.stock,0);
-  const lowItems   = masterDB.filter(m=>m.min>0 && m.stock>0 && m.stock<m.min);
+  const lowItems   = masterDB.filter(m=>m.min>0 && m.stock>0 && m.stock<m.min);  // ต่ำกว่า min
   const outItems   = masterDB.filter(m=>m.min>0 && m.stock===0);
   const allAlerts  = [...outItems,...lowItems];
   const expPast    = (expiryLots||[]).filter(l=>new Date(l.expiry_date)<now);
   const exp30      = (expiryLots||[]).filter(l=>{const d=new Date(l.expiry_date);return d>=now&&d<=new Date(Date.now()+30*86400000);});
-  const exp90      = (expiryLots||[]).filter(l=>new Date(l.expiry_date)>new Date(Date.now()+30*86400000));
+  const exp90      = (expiryLots||[]).filter(l=>new Date(l.expiry_date)>new Date(Date.now()+30*86400000) && new Date(l.expiry_date)<=new Date(Date.now()+60*86400000));
 
   // ── ยอดแต่ละคลัง ──
   const whRows = Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg])=>{
@@ -2740,7 +2740,7 @@ async function renderDashboardPage() {
       </div>
       <div class="db-section">
         <div class="db-section-header">
-          <div class="db-section-title"><i class="ti ti-clock-exclamation" style="color:var(--red)"></i> Lot ใกล้หมดอายุ (90 วัน)</div>
+          <div class="db-section-title"><i class="ti ti-clock-exclamation" style="color:var(--red)"></i> Lot ใกล้หมดอายุ (60 วัน)</div>
           <span style="font-size:10px;color:var(--ink4)">${expPast.length} หมดแล้ว · ${exp30.length} ใน 30 วัน · ${exp90.length} ใน 90 วัน</span>
         </div>
         <table class="db-table">
