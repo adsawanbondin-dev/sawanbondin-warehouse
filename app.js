@@ -2497,171 +2497,166 @@ switchPage = async function(p) {
 async function renderDashboardPage() {
   const div = document.getElementById('page-dashboard');
   if (!div) return;
-  div.innerHTML = `<div style="padding:20px;color:var(--ink4);text-align:center"><i class="ti ti-loader" style="font-size:24px"></i><br>กำลังโหลด...</div>`;
+  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:22px"></i><br>กำลังโหลดข้อมูล...</div>`;
 
-  // ── โหลดข้อมูล ──
-  const today = new Date().toISOString().slice(0,10);
-  const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
-  const day30ago  = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  const today    = new Date().toISOString().slice(0,10);
+  const day30ago = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  const day90fwd = new Date(Date.now()+90*86400000).toISOString().slice(0,10);
 
-  // transactions วันนี้
-  const { data: txToday } = await sb.from('transactions')
-    .select('action_type,quantity,pg,item_name,operator_name,department,created_at')
-    .gte('created_at', today+'T00:00:00+00:00')
-    .order('created_at', { ascending: false });
+  // โหลดพร้อมกัน
+  const [{ data:txToday }, { data:tx30 }, { data:expiryLots }, { data:scHistory }] = await Promise.all([
+    sb.from('transactions').select('action_type,quantity,pg,item_name,item_code,operator_name,department,created_at').gte('created_at',today+'T00:00:00+00:00').order('created_at',{ascending:false}),
+    sb.from('transactions').select('action_type,quantity,pg,created_at').gte('created_at',day30ago+'T00:00:00+00:00'),
+    sb.from('lots').select('item_code,item_name,lot_sw,expiry_date,stock').gt('stock',0).not('expiry_date','is',null).lte('expiry_date',day90fwd).order('expiry_date',{ascending:true}),
+    sb.from('stock_counts').select('*').order('counted_at',{ascending:false}).limit(50),
+  ]);
 
-  // transactions ย้อนหลัง 30 วัน (สำหรับ trend)
-  const { data: tx30 } = await sb.from('transactions')
-    .select('action_type,quantity,created_at')
-    .gte('created_at', day30ago+'T00:00:00+00:00')
-    .order('created_at', { ascending: true });
+  const now = new Date();
 
-  // lots ใกล้หมดอายุ (ภายใน 90 วัน)
-  const day90 = new Date(Date.now()+90*86400000).toISOString().slice(0,10);
-  const { data: expiryLots } = await sb.from('lots')
-    .select('item_code,item_name,lot_sw,expiry_date,stock')
-    .gt('stock', 0)
-    .not('expiry_date', 'is', null)
-    .lte('expiry_date', day90)
-    .order('expiry_date', { ascending: true });
-
-  // ประวัติตรวจนับล่าสุด
-  const { data: scHistory } = await sb.from('stock_counts')
-    .select('item_code,item_name,pg,system_stock,actual_stock,difference,counted_by,counted_at')
-    .order('counted_at', { ascending: false })
-    .limit(30);
-
-  // ── คำนวณ KPI ──
-  const todayRec  = (txToday||[]).filter(t=>t.action_type==='receive');
-  const todayWith = (txToday||[]).filter(t=>t.action_type==='withdraw');
+  // ── KPI ──
+  const todayRec   = (txToday||[]).filter(t=>t.action_type==='receive');
+  const todayWith  = (txToday||[]).filter(t=>t.action_type==='withdraw');
   const totalStock = masterDB.reduce((s,m)=>s+m.stock,0);
-  const lowItems   = masterDB.filter(m=>m.min_stock>0 && m.stock<m.min_stock);
-  const outItems   = masterDB.filter(m=>m.min_stock>0 && m.stock===0);
-  const expNow     = (expiryLots||[]).filter(l=>new Date(l.expiry_date)<new Date());
-  const exp30      = (expiryLots||[]).filter(l=>{const d=new Date(l.expiry_date);return d>=new Date()&&d<=new Date(Date.now()+30*86400000);});
+  const lowItems   = masterDB.filter(m=>m.min>0 && m.stock>0 && m.stock<m.min);
+  const outItems   = masterDB.filter(m=>m.min>0 && m.stock===0);
+  const allAlerts  = [...outItems,...lowItems];
+  const expPast    = (expiryLots||[]).filter(l=>new Date(l.expiry_date)<now);
+  const exp30      = (expiryLots||[]).filter(l=>{const d=new Date(l.expiry_date);return d>=now&&d<=new Date(Date.now()+30*86400000);});
   const exp90      = (expiryLots||[]).filter(l=>new Date(l.expiry_date)>new Date(Date.now()+30*86400000));
 
-  // ── ยอดรวมแต่ละคลัง ──
+  // ── ยอดแต่ละคลัง ──
   const whRows = Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg])=>{
     const items  = masterDB.filter(m=>m.pg===pg);
     const total  = items.reduce((s,m)=>s+m.stock,0);
-    const low    = items.filter(m=>m.min_stock>0&&m.stock<m.min_stock).length;
-    const out    = items.filter(m=>m.min_stock>0&&m.stock===0).length;
-    const maxS   = items.reduce((s,m)=>s+(m.max_stock||0),0);
-    const pct    = maxS>0?Math.min(100,Math.round(total/maxS*100)):0;
-    const barCls = out>0?'db-bar-out':low>0?'db-bar-low':'db-bar-ok';
-    const tag    = out>0?`<span class="db-tag db-tag-err">${out} หมด</span>`:low>0?`<span class="db-tag db-tag-warn">${low} ต่ำ</span>`:`<span class="db-tag db-tag-ok">ปกติ</span>`;
-    return `<div class="db-wh-row">
-      <div class="db-wh-name">${cfg.label}</div>
-      <div class="db-wh-stats">
-        <span class="db-wh-stat">${items.length} รายการ</span>
-        <div class="db-bar-wrap"><div class="db-bar-fill ${barCls}" style="width:${pct}%"></div></div>
-        <span style="font-size:13px;font-weight:600;color:var(--ink);min-width:60px;text-align:right">${total.toLocaleString()}</span>
-        ${tag}
-      </div>
-    </div>`;
+    const low    = items.filter(m=>m.min>0&&m.stock>0&&m.stock<m.min);
+    const out    = items.filter(m=>m.min>0&&m.stock===0);
+    const maxSum = items.reduce((s,m)=>s+m.max,0);
+    const pct    = maxSum>0?Math.min(100,Math.round(total/maxSum*100)):null;
+    const barCls = out.length>0?'db-bar-out':low.length>0?'db-bar-low':'db-bar-ok';
+    const tag    = out.length>0
+      ?`<span class="db-tag db-tag-err">${out.length} หมด</span>`
+      :low.length>0
+      ?`<span class="db-tag db-tag-warn">${low.length} ต่ำ</span>`
+      :`<span class="db-tag db-tag-ok">ปกติ</span>`;
+    const recToday  = (txToday||[]).filter(t=>t.pg===pg&&t.action_type==='receive').reduce((s,t)=>s+t.quantity,0);
+    const withToday = (txToday||[]).filter(t=>t.pg===pg&&t.action_type==='withdraw').reduce((s,t)=>s+t.quantity,0);
+    return `<tr>
+      <td style="font-weight:500;color:var(--ink)">${cfg.label}</td>
+      <td style="color:var(--ink4);font-size:10px;font-family:monospace">${items.length} รายการ</td>
+      <td style="text-align:right;font-weight:700;font-size:14px;letter-spacing:-.3px;color:var(--ink)">${total.toLocaleString()}</td>
+      <td>${pct!==null?`<div class="db-bar-wrap" style="width:70px"><div class="db-bar-fill ${barCls}" style="width:${pct}%"></div></div>`:''}</td>
+      <td style="text-align:right;color:var(--grn);font-size:11px">+${recToday||0}</td>
+      <td style="text-align:right;color:var(--warn);font-size:11px">-${withToday||0}</td>
+      <td>${tag}</td>
+    </tr>`;
   }).join('');
 
-  // ── รายการวันนี้ (top 10) ──
-  const txRows = (txToday||[]).slice(0,10).map(t=>{
-    const act = t.action_type==='receive'?'รับเข้า':t.action_type==='withdraw'?'เบิก':t.action_type==='return_good'?'คืนดี':'คืนเสีย';
-    const dot = t.action_type==='receive'?'var(--grn)':t.action_type==='withdraw'?'var(--warn)':'var(--ink3)';
+  // ── รายการรับเข้าวันนี้ ──
+  const recRows = todayRec.slice(0,20).map(t=>{
     const time = new Date(t.created_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
     return `<tr>
-      <td style="color:var(--ink4);white-space:nowrap">${time}</td>
-      <td><span style="display:inline-flex;align-items:center;gap:5px;font-size:11px"><span style="width:6px;height:6px;border-radius:50%;background:${dot};display:inline-block;flex-shrink:0"></span>${act}</span></td>
-      <td style="font-weight:500;color:var(--ink);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.item_name}</td>
-      <td style="text-align:right;font-weight:500">${t.quantity}</td>
-      <td style="color:var(--ink3)">${t.operator_name||'—'}</td>
-      <td style="color:var(--ink4);font-size:10px">${(WAREHOUSE_CONFIG[t.pg]?.label)||t.pg}</td>
+      <td style="color:var(--ink4);font-size:10px;white-space:nowrap">${time}</td>
+      <td style="font-weight:500;color:var(--ink);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.item_name}</td>
+      <td style="text-align:right;font-weight:600;color:var(--grn)">${t.quantity}</td>
+      <td style="color:var(--ink3);font-size:10px">${t.operator_name||'—'}</td>
+      <td style="color:var(--ink4);font-size:10px">${WAREHOUSE_CONFIG[t.pg]?.label||t.pg}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--ink4)">ยังไม่มีรายการวันนี้</td></tr>`;
+  }).join('') || `<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--ink4)">ยังไม่มีรายการ</td></tr>`;
 
-  // ── Low stock table ──
-  const lowRows = lowItems.slice(0,15).map(m=>{
-    const pct = m.max_stock>0?Math.min(100,Math.round(m.stock/m.max_stock*100)):0;
-    const cfg = WAREHOUSE_CONFIG[m.pg];
+  // ── รายการเบิกวันนี้ ──
+  const withRows = todayWith.slice(0,20).map(t=>{
+    const time = new Date(t.created_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
     return `<tr>
-      <td style="font-weight:500;color:var(--ink);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</td>
-      <td style="color:var(--ink4);font-size:10px">${cfg?.label||m.pg}</td>
-      <td style="text-align:right;font-weight:600;color:${m.stock===0?'var(--red)':'var(--warn)'}">${m.stock}</td>
-      <td style="color:var(--ink4)">${m.min_stock}</td>
-      <td><div class="db-bar-wrap"><div class="db-bar-fill ${m.stock===0?'db-bar-out':'db-bar-low'}" style="width:${pct}%"></div></div></td>
+      <td style="color:var(--ink4);font-size:10px;white-space:nowrap">${time}</td>
+      <td style="font-weight:500;color:var(--ink);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.item_name}</td>
+      <td style="text-align:right;font-weight:600;color:var(--amb)">${t.quantity}</td>
+      <td style="color:var(--ink3);font-size:10px">${t.operator_name||'—'}</td>
+      <td style="color:var(--ink4);font-size:10px">${WAREHOUSE_CONFIG[t.pg]?.label||t.pg}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--ink4)">ไม่มีสต็อกต่ำ ✓</td></tr>`;
+  }).join('') || `<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--ink4)">ยังไม่มีรายการ</td></tr>`;
 
-  // ── Lot expiry ──
-  const lotRows = (expiryLots||[]).slice(0,15).map(l=>{
+  // ── สต็อกต่ำ+หมด ──
+  const lowRows = allAlerts.slice(0,25).map(m=>{
+    const pct = m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):0;
+    const barCls = m.stock===0?'db-bar-out':'db-bar-low';
+    const tag = m.stock===0
+      ?`<span class="db-tag db-tag-err">หมด</span>`
+      :`<span class="db-tag db-tag-warn">ต่ำ</span>`;
+    return `<tr>
+      <td style="font-weight:500;color:var(--ink);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</td>
+      <td style="color:var(--ink4);font-size:10px">${WAREHOUSE_CONFIG[m.pg]?.label||m.pg}</td>
+      <td style="text-align:right;font-weight:700;color:${m.stock===0?'var(--red)':'var(--warn)'}">${m.stock}</td>
+      <td style="text-align:right;color:var(--ink4);font-size:11px">${m.min}</td>
+      <td><div class="db-bar-wrap" style="width:60px"><div class="db-bar-fill ${barCls}" style="width:${pct}%"></div></div></td>
+      <td>${tag}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--grn)">✓ ไม่มีสต็อกต่ำ</td></tr>`;
+
+  // ── Lot หมดอายุ ──
+  const lotRows = (expiryLots||[]).slice(0,20).map(l=>{
     const ex   = new Date(l.expiry_date);
-    const now  = new Date();
     const days = Math.ceil((ex-now)/(1000*60*60*24));
     const cls  = days<0?'db-day-urgent':days<=30?'db-day-soon':'db-day-ok';
-    const label= days<0?`หมดอายุแล้ว ${Math.abs(days)} วัน`:days===0?'หมดอายุวันนี้':`อีก ${days} วัน`;
+    const label= days<0?`หมดแล้ว ${Math.abs(days)} วัน`:days===0?'หมดวันนี้':`อีก ${days} วัน`;
     const sw   = l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}):'—';
-    return `<div class="db-lot-item">
-      <div style="flex:1;min-width:0">
-        <div style="font-weight:500;color:var(--ink);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.item_name}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-top:2px">Lot ${sw} · คงเหลือ ${l.stock}</div>
-      </div>
-      <span class="db-day-badge ${cls}">${label}</span>
-    </div>`;
-  }).join('') || `<div style="padding:20px;text-align:center;color:var(--ink4);font-size:12px">ไม่มี Lot ใกล้หมดอายุ ✓</div>`;
+    const exStr= ex.toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'});
+    return `<tr>
+      <td style="font-weight:500;color:var(--ink);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.item_name}</td>
+      <td style="font-family:monospace;font-size:10px;color:var(--ink3)">${sw}</td>
+      <td style="font-size:10px;color:var(--ink4)">${exStr}</td>
+      <td style="text-align:right;font-weight:500">${l.stock}</td>
+      <td><span class="db-day-badge ${cls}">${label}</span></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--grn)">✓ ไม่มี Lot ใกล้หมดอายุ</td></tr>`;
 
-  // ── Stock count history ──
-  const scRows = (scHistory||[]).slice(0,10).map(r=>{
-    const diff = parseFloat(r.difference)||0;
-    const diffCls = diff>0?'sc-diff-pos':diff<0?'sc-diff-neg':'sc-diff-zero';
-    const diffTxt = diff===0?'—':(diff>0?'+':'')+diff;
+  // ── ประวัติตรวจนับ ──
+  const scRows = (scHistory||[]).slice(0,20).map(r=>{
+    const diff   = parseFloat(r.difference)||0;
+    const diffCls= diff>0?'sc-diff-pos':diff<0?'sc-diff-neg':'sc-diff-zero';
+    const diffTxt= diff===0?'—':(diff>0?'+':'')+diff;
     const at = new Date(r.counted_at).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'});
     return `<tr>
-      <td style="color:var(--ink4);white-space:nowrap;font-size:10px">${at}</td>
-      <td style="font-weight:500;color:var(--ink);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.item_name}</td>
-      <td style="color:var(--ink4);font-size:10px">${(WAREHOUSE_CONFIG[r.pg]?.label)||r.pg}</td>
+      <td style="color:var(--ink4);font-size:10px;white-space:nowrap">${at}</td>
+      <td style="font-weight:500;color:var(--ink);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.item_name}</td>
+      <td style="color:var(--ink4);font-size:10px">${WAREHOUSE_CONFIG[r.pg]?.label||r.pg}</td>
       <td style="text-align:right">${r.system_stock}</td>
       <td style="text-align:right;font-weight:600">${r.actual_stock}</td>
-      <td style="text-align:right" class="${diffCls}">${diffTxt}</td>
+      <td style="text-align:right;font-weight:600" class="${diffCls}">${diffTxt}</td>
       <td style="color:var(--ink3);font-size:10px">${r.counted_by||'—'}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--ink4)">ยังไม่มีประวัติตรวจนับ</td></tr>`;
+  }).join('') || `<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--ink4)">ยังไม่มีประวัติตรวจนับ</td></tr>`;
 
-  // ── 7-day activity mini chart ──
-  const days7 = Array.from({length:7},(_,i)=>{
-    const d = new Date(Date.now()-(6-i)*86400000);
-    return d.toISOString().slice(0,10);
-  });
-  const dayLabels = days7.map(d=>new Date(d).toLocaleDateString('th-TH',{weekday:'short'}));
-  const dayRec  = days7.map(d=>(tx30||[]).filter(t=>t.created_at.slice(0,10)===d&&t.action_type==='receive').reduce((s,t)=>s+t.quantity,0));
-  const dayWith = days7.map(d=>(tx30||[]).filter(t=>t.created_at.slice(0,10)===d&&t.action_type==='withdraw').reduce((s,t)=>s+t.quantity,0));
-  const maxBar  = Math.max(...dayRec,...dayWith,1);
-  const barChart= days7.map((_,i)=>`
-    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1">
-      <div style="display:flex;align-items:flex-end;gap:2px;height:50px">
-        <div style="width:10px;background:var(--grn-mid);border-radius:3px 3px 0 0;height:${Math.round(dayRec[i]/maxBar*50)}px" title="รับเข้า ${dayRec[i]}"></div>
-        <div style="width:10px;background:#e6a817;border-radius:3px 3px 0 0;height:${Math.round(dayWith[i]/maxBar*50)}px" title="เบิก ${dayWith[i]}"></div>
-      </div>
-      <div style="font-size:9px;color:var(--ink4)">${dayLabels[i]}</div>
-    </div>`).join('');
+  // ── 30-day summary by pg ──
+  const pgSummary = Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg])=>{
+    const r30 = (tx30||[]).filter(t=>t.pg===pg&&t.action_type==='receive').reduce((s,t)=>s+t.quantity,0);
+    const w30 = (tx30||[]).filter(t=>t.pg===pg&&t.action_type==='withdraw').reduce((s,t)=>s+t.quantity,0);
+    return `<tr>
+      <td style="font-weight:500;color:var(--ink)">${cfg.label}</td>
+      <td style="text-align:right;color:var(--grn);font-weight:500">${r30.toLocaleString()}</td>
+      <td style="text-align:right;color:var(--amb);font-weight:500">${w30.toLocaleString()}</td>
+      <td style="text-align:right;font-weight:600;color:${r30-w30>=0?'var(--grn)':'var(--red)'}">${(r30-w30)>=0?'+':''}${(r30-w30).toLocaleString()}</td>
+    </tr>`;
+  }).join('');
 
-  // ── Render ──
   div.innerHTML = `
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:18px;font-weight:600;color:var(--ink);letter-spacing:-.3px">
+        <div style="font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-.2px">
           <i class="ti ti-chart-bar" style="color:var(--ink3)"></i> Dashboard
         </div>
-        <div style="font-size:12px;color:var(--ink4);margin-top:3px">
-          ${new Date().toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · อ่านอย่างเดียว
+        <div style="font-size:11px;color:var(--ink4);margin-top:2px">
+          ${new Date().toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
         </div>
       </div>
       <button class="btn" onclick="renderDashboardPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
     </div>
 
     <!-- KPI row -->
-    <div class="db-grid">
+    <div class="db-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:14px">
       <div class="db-kpi">
-        <div class="db-kpi-label"><i class="ti ti-database"></i> สต็อกรวมทั้งหมด</div>
+        <div class="db-kpi-label"><i class="ti ti-database"></i> สต็อกรวม</div>
         <div class="db-kpi-val">${totalStock.toLocaleString()}</div>
-        <div class="db-kpi-sub">${masterDB.length} รายการ · ${Object.keys(WAREHOUSE_CONFIG).length} คลัง</div>
+        <div class="db-kpi-sub">${masterDB.length} รายการ</div>
       </div>
       <div class="db-kpi">
         <div class="db-kpi-label"><i class="ti ti-package-import"></i> รับเข้าวันนี้</div>
@@ -2674,86 +2669,100 @@ async function renderDashboardPage() {
         <div class="db-kpi-sub">${todayWith.length} รายการ</div>
       </div>
       <div class="db-kpi">
-        <div class="db-kpi-label"><i class="ti ti-alert-triangle"></i> สต็อกต่ำ / หมด</div>
-        <div class="db-kpi-val ${lowItems.length>0?'db-kpi-amber':''}">${lowItems.length}</div>
-        <div class="db-kpi-sub">${outItems.length} รายการหมดสต็อก</div>
+        <div class="db-kpi-label"><i class="ti ti-alert-triangle"></i> สต็อกต่ำ/หมด</div>
+        <div class="db-kpi-val ${allAlerts.length>0?'db-kpi-amber':''}">${allAlerts.length}</div>
+        <div class="db-kpi-sub">${outItems.length} หมด · ${lowItems.length} ต่ำ</div>
       </div>
       <div class="db-kpi">
         <div class="db-kpi-label"><i class="ti ti-clock-exclamation"></i> Lot ใกล้หมดอายุ</div>
-        <div class="db-kpi-val ${expNow.length>0?'db-kpi-warn':exp30.length>0?'db-kpi-amber':''}">${(expiryLots||[]).length}</div>
-        <div class="db-kpi-sub">${expNow.length} หมดแล้ว · ${exp30.length} ภายใน 30 วัน</div>
+        <div class="db-kpi-val ${expPast.length>0?'db-kpi-warn':exp30.length>0?'db-kpi-amber':''}">${(expiryLots||[]).length}</div>
+        <div class="db-kpi-sub">${expPast.length} หมดแล้ว · ${exp30.length} ใน 30 วัน</div>
       </div>
     </div>
 
-    <!-- ยอดแต่ละคลัง + mini chart -->
-    <div class="db-two">
+    <!-- แถวที่ 1: ยอดคลัง + activity 30 วัน -->
+    <div class="db-two" style="margin-bottom:14px">
       <div class="db-section">
         <div class="db-section-header">
           <div class="db-section-title"><i class="ti ti-building-warehouse"></i> ยอดสต็อกแต่ละคลัง</div>
         </div>
-        ${whRows}
-      </div>
-      <div class="db-section">
-        <div class="db-section-header">
-          <div class="db-section-title"><i class="ti ti-chart-bar"></i> กิจกรรม 7 วันที่ผ่านมา</div>
-          <div style="display:flex;align-items:center;gap:10px;font-size:10px;color:var(--ink4)">
-            <span><span style="display:inline-block;width:8px;height:8px;background:var(--grn-mid);border-radius:2px;margin-right:3px"></span>รับเข้า</span>
-            <span><span style="display:inline-block;width:8px;height:8px;background:#e6a817;border-radius:2px;margin-right:3px"></span>เบิก</span>
-          </div>
-        </div>
-        <div style="padding:16px;display:flex;align-items:flex-end;gap:0;justify-content:space-around">${barChart}</div>
-        <div style="padding:0 16px 14px;display:flex;gap:16px">
-          <div style="font-size:11px;color:var(--ink3)">รับเข้า 7 วัน: <strong style="color:var(--ink)">${dayRec.reduce((a,b)=>a+b,0).toLocaleString()}</strong></div>
-          <div style="font-size:11px;color:var(--ink3)">เบิก 7 วัน: <strong style="color:var(--ink)">${dayWith.reduce((a,b)=>a+b,0).toLocaleString()}</strong></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- รายการวันนี้ + สต็อกต่ำ -->
-    <div class="db-two">
-      <div class="db-section">
-        <div class="db-section-header">
-          <div class="db-section-title"><i class="ti ti-history"></i> รายการวันนี้</div>
-          <span style="font-size:10px;color:var(--ink4)">${(txToday||[]).length} รายการ</span>
-        </div>
         <table class="db-table">
-          <thead><tr><th>เวลา</th><th>ประเภท</th><th>รายการ</th><th style="text-align:right">จำนวน</th><th>ผู้ทำ</th><th>คลัง</th></tr></thead>
-          <tbody>${txRows}</tbody>
+          <thead><tr><th>คลัง</th><th>รายการ</th><th style="text-align:right">ยอดรวม</th><th>ระดับ</th><th style="text-align:right">รับวันนี้</th><th style="text-align:right">เบิกวันนี้</th><th>สถานะ</th></tr></thead>
+          <tbody>${whRows}</tbody>
         </table>
       </div>
       <div class="db-section">
         <div class="db-section-header">
-          <div class="db-section-title"><i class="ti ti-alert-triangle" style="color:var(--warn)"></i> สต็อกต่ำกว่า Min</div>
-          <span style="font-size:10px;color:${lowItems.length>0?'var(--warn)':'var(--ink4)'}">${lowItems.length} รายการ</span>
+          <div class="db-section-title"><i class="ti ti-calendar-stats"></i> สรุป 30 วัน (รับเข้า / เบิก)</div>
         </div>
         <table class="db-table">
-          <thead><tr><th>รายการ</th><th>คลัง</th><th style="text-align:right">คงเหลือ</th><th>Min</th><th>สถานะ</th></tr></thead>
+          <thead><tr><th>คลัง</th><th style="text-align:right">รับเข้า</th><th style="text-align:right">เบิก</th><th style="text-align:right">สุทธิ</th></tr></thead>
+          <tbody>${pgSummary}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- แถวที่ 2: รับเข้า + เบิกวันนี้ -->
+    <div class="db-two" style="margin-bottom:14px">
+      <div class="db-section">
+        <div class="db-section-header">
+          <div class="db-section-title"><i class="ti ti-package-import" style="color:var(--grn)"></i> รับเข้าวันนี้</div>
+          <span style="font-size:10px;color:var(--ink4)">${todayRec.length} รายการ · ${todayRec.reduce((s,t)=>s+t.quantity,0).toLocaleString()} หน่วย</span>
+        </div>
+        <table class="db-table">
+          <thead><tr><th>เวลา</th><th>รายการ</th><th style="text-align:right">จำนวน</th><th>ผู้ทำ</th><th>คลัง</th></tr></thead>
+          <tbody>${recRows}</tbody>
+        </table>
+      </div>
+      <div class="db-section">
+        <div class="db-section-header">
+          <div class="db-section-title"><i class="ti ti-package-export" style="color:var(--amb)"></i> เบิกวันนี้</div>
+          <span style="font-size:10px;color:var(--ink4)">${todayWith.length} รายการ · ${todayWith.reduce((s,t)=>s+t.quantity,0).toLocaleString()} หน่วย</span>
+        </div>
+        <table class="db-table">
+          <thead><tr><th>เวลา</th><th>รายการ</th><th style="text-align:right">จำนวน</th><th>ผู้ทำ</th><th>คลัง</th></tr></thead>
+          <tbody>${withRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- แถวที่ 3: สต็อกต่ำ + Lot หมดอายุ -->
+    <div class="db-two" style="margin-bottom:14px">
+      <div class="db-section">
+        <div class="db-section-header">
+          <div class="db-section-title"><i class="ti ti-alert-triangle" style="color:var(--warn)"></i> สต็อกต่ำ / หมด</div>
+          <span style="font-size:10px;color:${allAlerts.length>0?'var(--warn)':'var(--ink4)'}">${allAlerts.length} รายการ</span>
+        </div>
+        <table class="db-table">
+          <thead><tr><th>รายการ</th><th>คลัง</th><th style="text-align:right">คงเหลือ</th><th style="text-align:right">Min</th><th>ระดับ</th><th>สถานะ</th></tr></thead>
           <tbody>${lowRows}</tbody>
         </table>
       </div>
-    </div>
-
-    <!-- Lot หมดอายุ + ประวัติตรวจนับ -->
-    <div class="db-two">
       <div class="db-section">
         <div class="db-section-header">
-          <div class="db-section-title"><i class="ti ti-clock-exclamation" style="color:var(--red)"></i> Lot ใกล้หมดอายุ</div>
-          <span style="font-size:10px;color:var(--ink4)">${(expiryLots||[]).length} Lot</span>
-        </div>
-        ${lotRows}
-      </div>
-      <div class="db-section">
-        <div class="db-section-header">
-          <div class="db-section-title"><i class="ti ti-clipboard-check"></i> ประวัติตรวจนับล่าสุด</div>
-          <span style="font-size:10px;color:var(--ink4)">${(scHistory||[]).length} รายการ</span>
+          <div class="db-section-title"><i class="ti ti-clock-exclamation" style="color:var(--red)"></i> Lot ใกล้หมดอายุ (90 วัน)</div>
+          <span style="font-size:10px;color:var(--ink4)">${expPast.length} หมดแล้ว · ${exp30.length} ใน 30 วัน · ${exp90.length} ใน 90 วัน</span>
         </div>
         <table class="db-table">
-          <thead><tr><th>วันที่</th><th>รายการ</th><th>คลัง</th><th style="text-align:right">ระบบ</th><th style="text-align:right">จริง</th><th style="text-align:right">ต่าง</th><th>ผู้ตรวจ</th></tr></thead>
-          <tbody>${scRows}</tbody>
+          <thead><tr><th>รายการ</th><th>Lot SW</th><th>หมดอายุ</th><th style="text-align:right">คงเหลือ</th><th>สถานะ</th></tr></thead>
+          <tbody>${lotRows}</tbody>
         </table>
       </div>
+    </div>
+
+    <!-- แถวที่ 4: ประวัติตรวจนับ -->
+    <div class="db-section">
+      <div class="db-section-header">
+        <div class="db-section-title"><i class="ti ti-clipboard-check"></i> ประวัติตรวจนับล่าสุด</div>
+        <span style="font-size:10px;color:var(--ink4)">${(scHistory||[]).length} รายการ</span>
+      </div>
+      <table class="db-table">
+        <thead><tr><th>วันที่</th><th>รายการ</th><th>คลัง</th><th style="text-align:right">ยอดระบบ</th><th style="text-align:right">ยอดจริง</th><th style="text-align:right">ผลต่าง</th><th>ผู้ตรวจ</th></tr></thead>
+        <tbody>${scRows}</tbody>
+      </table>
     </div>`;
 }
+
 
 /* ── Override switchPage เพิ่ม dashboard ── */
 const _dbOrigSwitch = switchPage;
