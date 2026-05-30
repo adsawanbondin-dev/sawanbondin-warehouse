@@ -1242,39 +1242,66 @@ async function confirmCamScan(){
   if(!lastCamCode){alert('ยังไม่ได้สแกน');return;}
   const action=document.getElementById('camAction').value;
   const qty=parseFloat(document.getElementById('camQty').value||1);
-  const lotHidden=document.getElementById('camLotHidden')?.value||'';
   const dept=document.getElementById('camDept')?.value||(window._operatorDept||'คลัง');
   if(!qty||qty<=0){alert('กรุณาระบุจำนวน');return;}
   const parsed=parseScanCode(lastCamCode);
   const m=masterDB.find(x=>x.code===parsed.itemCode);
   if(!m){alert('ไม่พบรหัสในระบบ');return;}
   const pg=m.pg;
+  const hasLotPg=['raw','finish','matcha','sample'].includes(pg);
 
   if(action!=='return_bad'){
-    const lotSW = parsed.lotSW || lotHidden ||
-    document.getElementById('camLotSWInput')?.value || null;
-  const lotSP = document.getElementById('camLotSPInput')?.value || null;
-    let lotId=null;
-    if((pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')&&lotSW&&(action==='withdraw'||action==='return_good')){
+    // ดึง lot SW จากทุกแหล่ง — picker > hidden > input > QR
+    const pickerSelected = document.querySelector('#camLotPickerList .cam-lot-row.selected');
+    const lotSW = pickerSelected?.dataset?.lot
+      || document.getElementById('camLotHidden')?.value
+      || document.getElementById('camLotSWInput')?.value
+      || parsed.lotSW
+      || null;
+    const lotSP = document.getElementById('camLotSPInput')?.value || null;
+
+    // หา lotId จาก cache หรือโหลดใหม่
+    let lotId = null;
+    if(hasLotPg && lotSW && (action==='withdraw'||action==='return_good')){
+      // โหลด lots ใหม่ให้แน่ใจว่าข้อมูลล่าสุด
+      await dbLoadLotsForItem(m.code);
       const cached=(lotDB[m.code]||[]).find(l=>l.lot_sw===lotSW);
-      if(cached)lotId=cached.id;
+      if(cached) lotId=cached.id;
+      else {
+        showToast(`ไม่พบ Lot ${lotSW} กรุณาตรวจสอบ`, 'err');
+        return;
+      }
     }
+
     const res=await dbAdjustStockWithLot(m.code,action,qty,{
       lotId,
-      lotSW:(action==='receive'||action==='return_good')?lotSW:null,
+      lotSW:(action==='receive')?lotSW:null,
       lotSP:(lotSP&&lotSP.length>0)?lotSP:null,
       name:m.name,
     });
-    if(!res.ok)return;
+    if(!res.ok) return;
     if(res.new_stock!==undefined) m.stock=res.new_stock;
+
+    // sync lot cache
+    if(res.lot_id && lotDB[m.code]){
+      const lot=lotDB[m.code].find(l=>l.id===res.lot_id);
+      if(lot && res.new_lot_stock!==undefined) lot.stock=res.new_lot_stock;
+    }
   }
 
   await dbUpsertItem(m);
+
+  // ดึง lotSW จริงที่ใช้บันทึก เพื่อใส่ใน rec
+  const pickerSelected2 = document.querySelector('#camLotPickerList .cam-lot-row.selected');
+  const recLotSW = pickerSelected2?.dataset?.lot
+    || document.getElementById('camLotHidden')?.value
+    || parsed.lotSW || '-';
+
   const rec={
-    time:dateToday(),timeDetail:timeNow(),type:action,typeLabel:ACTION_LABELS[action],
-    name:window._operatorName||'(กล้องสแกน)',dept,
-    item:m.name,code:m.code,qty,
-    lotSW:parsed.lotSW||'-',pg,via:'camera',
+    time:dateToday(), timeDetail:timeNow(), type:action, typeLabel:ACTION_LABELS[action],
+    name:window._operatorName||'(กล้องสแกน)', dept,
+    item:m.name, code:m.code, qty,
+    lotSW:recLotSW, pg, via:'camera',
     oldStock:action!=='return_bad'?m.stock+((action==='withdraw'?1:-1)*qty):null,
     newStock:action!=='return_bad'?m.stock:null,
   };
