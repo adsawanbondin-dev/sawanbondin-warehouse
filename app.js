@@ -2038,103 +2038,141 @@ async function boot(){
   WAREHOUSE_PAGES.forEach(pg=>renderBatchCard(pg));
   banner.remove();
 
-  // ── Realtime: sync ทันทีเมื่อ items เปลี่ยนใน DB ──
-  sb.channel('items-changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, payload => {
-      const row = payload.new || payload.old;
-      if (!row) return;
-      if (payload.eventType === 'DELETE' || row.is_active === false) {
-        masterDB = masterDB.filter(m => m.code !== (row.code || payload.old?.code));
-      } else if (payload.eventType === 'INSERT') {
-        if (!masterDB.find(m => m.code === row.code)) {
-          masterDB.push({
-            code:row.code, name:row.name, pg:row.pg||'', subcat:row.subcat||'',
-            stock:parseFloat(row.stock)||0, min:parseFloat(row.min_stock)||0,
-            max:parseFloat(row.max_stock)||0, seq:row.seq||0,
-          });
-        }
-      } else if (payload.eventType === 'UPDATE') {
-        const m = masterDB.find(x => x.code === row.code);
-        if (m) {
-          m.stock = parseFloat(row.stock)||0;
-          m.min   = parseFloat(row.min_stock)||0;
-          m.max   = parseFloat(row.max_stock)||0;
-          m.name  = row.name || m.name;
-          if (row.note) locationDB[row.code] = row.note;
-        }
-      }
+  // ── Realtime channels ──
+  let _realtimeDebounce = null;
+  function _scheduleRerender(reason) {
+    // debounce 400ms กันการ re-render ซ้ำซ้อน
+    clearTimeout(_realtimeDebounce);
+    _realtimeDebounce = setTimeout(() => {
       checkAlerts();
       if (curPage === 'master') renderMasterContent();
-      else renderWarehousePage(curPage);
-    })
-    .subscribe();
+      else if (WAREHOUSE_PAGES.includes(curPage)) renderWarehousePage(curPage);
+      else if (curPage === 'dashboard') renderDashboardPage();
+    }, 400);
+  }
 
-  // ── Realtime: sync transactions ──
-  sb.channel('tx-changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, async payload => {
-      const pg = payload.new?.pg || payload.old?.pg;
-      if (!pg || !WAREHOUSE_PAGES.includes(pg)) return;
-      // reload ประวัติของคลังที่เปลี่ยน
-      const recs = await dbLoadTransactions(pg);
-      if (recs) { txState[pg].records = recs; }
-      if (curPage === pg) renderHistory(pg);
-    })
-    .subscribe();
-
-  // ── Realtime: sync lots ──
-  sb.channel('lots-changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'lots' }, payload => {
-      const row = payload.new || payload.old;
-      if (!row?.item_code) return;
-      const code = row.item_code;
-      if (payload.eventType === 'DELETE') {
-        // ลบออกจาก cache
-        if (lotDB[code]) lotDB[code] = lotDB[code].filter(l => l.id !== payload.old.id);
-      } else if (payload.eventType === 'INSERT') {
-        if (!lotDB[code]) lotDB[code] = [];
-        if (!lotDB[code].find(l => l.id === row.id)) {
-          lotDB[code].push({ id:row.id, lot_sw:row.lot_sw, lot_supplier:row.lot_supplier||'', stock:parseFloat(row.stock)||0, updated_at:row.updated_at });
-        }
-      } else if (payload.eventType === 'UPDATE') {
-        if (lotDB[code]) {
-          const lot = lotDB[code].find(l => l.id === row.id);
-          if (lot) { lot.stock = parseFloat(row.stock)||0; lot.updated_at = row.updated_at; }
-        }
+  // items channel
+  const itemsChannel = sb.channel('items-changes');
+  itemsChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, payload => {
+    const row = payload.new || payload.old;
+    if (!row) return;
+    if (payload.eventType === 'DELETE' || row.is_active === false) {
+      masterDB = masterDB.filter(m => m.code !== (row.code || payload.old?.code));
+    } else if (payload.eventType === 'INSERT') {
+      if (!masterDB.find(m => m.code === row.code)) {
+        masterDB.push({
+          code:row.code, name:row.name, pg:row.pg||'', subcat:row.subcat||'',
+          stock:parseFloat(row.stock)||0, min:parseFloat(row.min_stock)||0,
+          max:parseFloat(row.max_stock)||0, seq:row.seq||0,
+        });
       }
-      // re-render ถ้ากำลังดู master และมี lot expand เปิดอยู่
-      const subEl = document.getElementById(`lot_sub_${code}`);
-      if (subEl && subEl.style.display !== 'none') {
-        // reload lot sub display
-        const lots = lotDB[code] || [];
-        const allLots = lots;
-        const activeLots = allLots.filter(l=>l.stock>0);
-        const zeroLots   = allLots.filter(l=>l.stock<=0);
-        subEl.innerHTML = allLots.length
-          ? [...activeLots,...zeroLots].map(l=>{
-              const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'?';
-              const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
-              const isEmpty=l.stock<=0;
-              return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}">
-                <span class="lot-date">${sw}${isEmpty?' <span style="font-size:9px;color:var(--red)">หมด</span>':''}</span>
-                <span class="lot-stock-val" style="${isEmpty?'color:var(--ink3)':''}">คงเหลือ ${l.stock}</span>
-                ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">Sup: ${sp}</span>`:''}
-              </div>`;
-            }).join('')
-          : '<div class="lot-empty">ยังไม่มี Lot</div>';
+    } else if (payload.eventType === 'UPDATE') {
+      const m = masterDB.find(x => x.code === row.code);
+      if (m) {
+        m.stock = parseFloat(row.stock)||0;
+        m.min   = parseFloat(row.min_stock)||0;
+        m.max   = parseFloat(row.max_stock)||0;
+        m.name  = row.name || m.name;
+        if (row.note) locationDB[row.code] = row.note;
       }
-    })
-    .subscribe();
-
-  // ── Auto-refresh ทุก 5 นาที (fallback) ──
-  setInterval(async () => {
-    await dbLoadItems();
-    checkAlerts();
-    if (curPage === 'master') renderMasterContent();
-    else {
-      const recs = await dbLoadTransactions(curPage);
-      if (recs) { txState[curPage].records = recs; renderHistory(curPage); }
     }
-  }, 5 * 60 * 1000);
+    _scheduleRerender('items');
+  }).subscribe(status => {
+    if (status === 'CHANNEL_ERROR') console.warn('items-changes channel error');
+  });
+
+  // transactions channel
+  let _txDebounce = {};
+  const txChannel = sb.channel('tx-changes');
+  txChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions' }, async payload => {
+    const pg = payload.new?.pg;
+    if (!pg || !WAREHOUSE_PAGES.includes(pg)) return;
+    // debounce per pg
+    clearTimeout(_txDebounce[pg]);
+    _txDebounce[pg] = setTimeout(async () => {
+      const recs = await dbLoadTransactions(pg);
+      if (recs) txState[pg].records = recs;
+      if (curPage === pg) renderHistory(pg);
+    }, 600);
+  }).subscribe();
+
+  // lots channel
+  const lotsChannel = sb.channel('lots-changes');
+  lotsChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'lots' }, payload => {
+    const row = payload.new || payload.old;
+    if (!row?.item_code) return;
+    const code = row.item_code;
+    if (payload.eventType === 'DELETE') {
+      if (lotDB[code]) lotDB[code] = lotDB[code].filter(l => l.id !== payload.old.id);
+    } else if (payload.eventType === 'INSERT') {
+      if (!lotDB[code]) lotDB[code] = [];
+      if (!lotDB[code].find(l => l.id === row.id)) {
+        lotDB[code].push({
+          id:row.id, lot_sw:row.lot_sw, lot_supplier:row.lot_supplier||'',
+          stock:parseFloat(row.stock)||0, updated_at:row.updated_at,
+          expiry_date:row.expiry_date||null,
+        });
+      }
+    } else if (payload.eventType === 'UPDATE') {
+      if (lotDB[code]) {
+        const lot = lotDB[code].find(l => l.id === row.id);
+        if (lot) {
+          lot.stock = parseFloat(row.stock)||0;
+          lot.updated_at = row.updated_at;
+          if (row.expiry_date) lot.expiry_date = row.expiry_date;
+        }
+      }
+    }
+    // อัปเดต lot sub ที่เปิดอยู่เท่านั้น ไม่ re-render ทั้งหน้า
+    const subEl = document.getElementById(`lot_sub_${code}`);
+    if (subEl && subEl.style.display !== 'none') {
+      const lots = (lotDB[code]||[]);
+      const active = lots.filter(l=>l.stock>0);
+      const zero   = lots.filter(l=>l.stock<=0);
+      subEl.innerHTML = lots.length
+        ? [...active,...zero].map(l=>{
+            const sw = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '?';
+            const sp = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+            const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+            const isEmpty = l.stock <= 0;
+            const isExp   = l.expiry_date && new Date(l.expiry_date) < new Date();
+            return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}${isExp?';background:#fdf2f2':''}">
+              <span class="lot-date">${sw}${isEmpty?' <span style="font-size:9px;color:var(--red)">หมด</span>':''}</span>
+              <span class="lot-stock-val">คงเหลือ ${l.stock}</span>
+              ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">Sup: ${sp}</span>`:''}
+              ${ex?`<span style="font-size:10px;color:${isExp?'var(--red)':'var(--ink4)'};margin-left:8px">${isExp?'⚠️ หมดอายุ':'หมดอายุ'}: ${ex}</span>`:''}
+            </div>`;
+          }).join('')
+        : '<div class="lot-empty">ยังไม่มี Lot</div>';
+    }
+  }).subscribe();
+
+  // ── Auto-refresh ทุก 10 นาที (fallback เท่านั้น ไม่ใช่ realtime หลัก) ──
+  let _autoRefreshTimer = null;
+  function scheduleAutoRefresh() {
+    clearTimeout(_autoRefreshTimer);
+    _autoRefreshTimer = setTimeout(async () => {
+      await dbLoadItems();
+      checkAlerts();
+      if (curPage === 'master') renderMasterContent();
+      else if (WAREHOUSE_PAGES.includes(curPage)) {
+        const recs = await dbLoadTransactions(curPage);
+        if (recs) { txState[curPage].records = recs; renderHistory(curPage); }
+      }
+      scheduleAutoRefresh(); // วนซ้ำ
+    }, 10 * 60 * 1000);
+  }
+  scheduleAutoRefresh();
+
+  // หยุด auto-refresh เมื่อ tab ไม่ active เพื่อลด noise
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      clearTimeout(_autoRefreshTimer);
+    } else {
+      // กลับมา active — refresh ทันทีครั้งเดียว แล้ววน schedule ใหม่
+      dbLoadItems().then(() => { checkAlerts(); scheduleAutoRefresh(); });
+    }
+  });
 }
 
 // Start with auth
