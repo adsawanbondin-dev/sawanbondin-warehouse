@@ -2565,13 +2565,14 @@ switchPage = async function(p) {
 async function renderDashboardPage(dbDateFrom, dbDateTo) {
   const div = document.getElementById('page-dashboard');
   if (!div) return;
-  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:22px"></i><br>กำลังโหลด...</div>`;
+  div.innerHTML = `<div style="padding:32px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i><br><span style="font-size:12px;margin-top:8px;display:block">กำลังโหลด...</span></div>`;
 
   const today    = new Date().toISOString().slice(0,10);
   const day30ago = new Date(Date.now()-30*86400000).toISOString().slice(0,10);
   const day60fwd = new Date(Date.now()+60*86400000).toISOString().slice(0,10);
   const dateFrom = dbDateFrom || today;
   const dateTo   = dbDateTo   || today;
+  const isToday  = dateFrom === dateTo && dateFrom === today;
 
   const [{ data:txDay }, { data:tx30 }, { data:expiryLots }, { data:scHistory }] = await Promise.all([
     sb.from('transactions').select('action_type,quantity,pg,item_name,operator_name,created_at')
@@ -2583,15 +2584,10 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
     sb.from('lots').select('item_code,item_name,lot_sw,expiry_date,stock')
       .gt('stock',0).not('expiry_date','is',null)
       .lte('expiry_date',day60fwd).order('expiry_date',{ascending:true}),
-    sb.from('stock_counts').select('*').order('counted_at',{ascending:false}).limit(30),
+    sb.from('stock_counts').select('*').order('counted_at',{ascending:false}).limit(20),
   ]);
 
-  const now      = new Date();
-  const isToday  = dateFrom === dateTo && dateFrom === today;
-  const dateLabel= dateFrom===dateTo
-    ? new Date(dateFrom).toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'})
-    : `${new Date(dateFrom).toLocaleDateString('th-TH',{day:'numeric',month:'short'})} – ${new Date(dateTo).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'})}`;
-
+  const now       = new Date();
   const recItems  = (txDay||[]).filter(t=>t.action_type==='receive');
   const withItems = (txDay||[]).filter(t=>t.action_type==='withdraw');
   const totalStock= masterDB.reduce((s,m)=>s+m.stock,0);
@@ -2600,242 +2596,291 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
   const allAlerts = [...outItems,...lowItems];
   const expPast   = (expiryLots||[]).filter(l=>new Date(l.expiry_date)<now);
   const exp30     = (expiryLots||[]).filter(l=>{const d=new Date(l.expiry_date);return d>=now&&d<=new Date(Date.now()+30*86400000);});
-  const exp60     = (expiryLots||[]).filter(l=>new Date(l.expiry_date)>new Date(Date.now()+30*86400000));
 
-  // ── date picker rows ──
-  const datePicker = `
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <span style="font-size:11px;color:var(--ink4)">ดูรายการ:</span>
-      <button class="btn btn-sm ${isToday?'btn-primary':''}" onclick="renderDashboardPage()">วันนี้</button>
-      <button class="btn btn-sm" onclick="renderDashboardPage('${new Date(Date.now()-86400000).toISOString().slice(0,10)}','${new Date(Date.now()-86400000).toISOString().slice(0,10)}')">เมื่อวาน</button>
-      <button class="btn btn-sm" onclick="renderDashboardPage('${new Date(Date.now()-7*86400000).toISOString().slice(0,10)}','${today}')">7 วัน</button>
-      <button class="btn btn-sm" onclick="renderDashboardPage('${day30ago}','${today}')">30 วัน</button>
-      <div style="display:flex;align-items:center;gap:5px">
-        <input type="date" class="fi" style="width:130px;font-size:11px;padding:4px 8px" id="db-from" value="${dateFrom}">
-        <span style="color:var(--ink4);font-size:11px">–</span>
-        <input type="date" class="fi" style="width:130px;font-size:11px;padding:4px 8px" id="db-to" value="${dateTo}">
-        <button class="btn btn-sm" onclick="renderDashboardPage(document.getElementById('db-from').value,document.getElementById('db-to').value)">ดู</button>
+  const dateLabel = dateFrom===dateTo
+    ? new Date(dateFrom).toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'})
+    : `${new Date(dateFrom).toLocaleDateString('th-TH',{day:'numeric',month:'short'})} – ${new Date(dateTo).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'})}`;
+
+  // ── mini bar chart (7 วัน) ──
+  const days7 = Array.from({length:7},(_,i)=>new Date(Date.now()-(6-i)*86400000).toISOString().slice(0,10));
+  const dayRec  = days7.map(d=>(tx30||[]).filter(t=>t.created_at.slice(0,10)===d&&t.action_type==='receive').reduce((s,t)=>s+t.quantity,0));
+  const dayWith = days7.map(d=>(tx30||[]).filter(t=>t.created_at.slice(0,10)===d&&t.action_type==='withdraw').reduce((s,t)=>s+t.quantity,0));
+  const maxBar  = Math.max(...dayRec,...dayWith,1);
+  const dayNames= days7.map(d=>new Date(d).toLocaleDateString('th-TH',{weekday:'short'}));
+  const barChart= days7.map((_,i)=>`
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1">
+      <div style="display:flex;align-items:flex-end;gap:2px;height:56px">
+        <div title="รับเข้า ${dayRec[i]}" style="width:9px;border-radius:3px 3px 0 0;background:#7BAE95;height:${Math.max(2,Math.round(dayRec[i]/maxBar*56))}px;transition:height .3s"></div>
+        <div title="เบิก ${dayWith[i]}" style="width:9px;border-radius:3px 3px 0 0;background:#D4A96A;height:${Math.max(2,Math.round(dayWith[i]/maxBar*56))}px;transition:height .3s"></div>
+      </div>
+      <div style="font-size:9px;color:var(--ink4)">${dayNames[i]}</div>
+    </div>`).join('');
+
+  // ── warehouse donut data ──
+  const whColors = ['#7BAE95','#A8C5DA','#D4A96A','#B5B5D4','#C4A882','#8DB8A8','#C9A8B8'];
+  const whData   = Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg],i)=>{
+    const total = masterDB.filter(m=>m.pg===pg).reduce((s,m)=>s+m.stock,0);
+    return {pg,label:cfg.label,total,color:whColors[i]};
+  }).filter(w=>w.total>0);
+  const grandTotal = whData.reduce((s,w)=>s+w.total,0)||1;
+  // SVG donut
+  let angle = -90, r=40, cx=55, cy=55, strokeW=14;
+  const donutPaths = whData.map(w=>{
+    const pct   = w.total/grandTotal;
+    const deg   = pct*360;
+    const a1    = angle*Math.PI/180;
+    const a2    = (angle+deg)*Math.PI/180;
+    const x1    = cx+r*Math.cos(a1), y1=cy+r*Math.sin(a1);
+    const x2    = cx+r*Math.cos(a2), y2=cy+r*Math.sin(a2);
+    const large = deg>180?1:0;
+    const path  = deg>359.9
+      ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${w.color}" stroke-width="${strokeW}"/>`
+      : `<path d="M${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${large},1 ${x2.toFixed(1)},${y2.toFixed(1)}" fill="none" stroke="${w.color}" stroke-width="${strokeW}" stroke-linecap="round"/>`;
+    angle += deg;
+    return path;
+  }).join('');
+
+  const donutLegend = whData.map(w=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f5f5f3">
+      <div style="display:flex;align-items:center;gap:7px">
+        <div style="width:8px;height:8px;border-radius:2px;background:${w.color};flex-shrink:0"></div>
+        <span style="font-size:11px;color:var(--ink2)">${w.label}</span>
+      </div>
+      <span style="font-size:12px;font-weight:600;color:var(--ink)">${w.total.toLocaleString()}</span>
+    </div>`).join('');
+
+  // ── activity feed ──
+  const recentTx = (txDay||[]).slice(0,12).map(t=>{
+    const time = new Date(t.created_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+    const isRec = t.action_type==='receive';
+    const dotColor = isRec?'#7BAE95':'#D4A96A';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f8f8f6">
+      <div style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.item_name}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:1px">${t.operator_name||'—'} · ${WAREHOUSE_CONFIG[t.pg]?.label||t.pg}</div>
+      </div>
+      <div style="flex-shrink:0;text-align:right">
+        <div style="font-size:12px;font-weight:600;color:${isRec?'#3A7D52':'#92600A'}">${isRec?'+':'-'}${t.quantity}</div>
+        <div style="font-size:9px;color:var(--ink4)">${time}</div>
       </div>
     </div>`;
+  }).join('') || `<div style="padding:20px;text-align:center;color:var(--ink4);font-size:12px">ไม่มีรายการ</div>`;
 
-  // ── warehouse summary rows ──
-  const whRows = Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg])=>{
-    const items  = masterDB.filter(m=>m.pg===pg);
-    const total  = items.reduce((s,m)=>s+m.stock,0);
-    const low    = items.filter(m=>m.min>0&&m.stock>0&&m.stock<m.min);
-    const out    = items.filter(m=>m.min>0&&m.stock===0);
-    const maxSum = items.reduce((s,m)=>s+m.max,0);
-    const pct    = maxSum>0?Math.min(100,Math.round(total/maxSum*100)):null;
-    const barCls = out.length>0?'db-bar-out':low.length>0?'db-bar-low':'db-bar-ok';
-    const tag    = out.length>0?`<span class="db-tag db-tag-err">${out.length} หมด</span>`:low.length>0?`<span class="db-tag db-tag-warn">${low.length} ต่ำ</span>`:`<span class="db-tag db-tag-ok">ปกติ</span>`;
-    const r = (txDay||[]).filter(t=>t.pg===pg&&t.action_type==='receive').reduce((s,t)=>s+t.quantity,0);
-    const w = (txDay||[]).filter(t=>t.pg===pg&&t.action_type==='withdraw').reduce((s,t)=>s+t.quantity,0);
-    return `<tr>
-      <td style="font-weight:500">${cfg.label}</td>
-      <td style="color:var(--ink4);font-size:10px">${items.length}</td>
-      <td style="text-align:right;font-weight:700;font-size:13px">${total.toLocaleString()}</td>
-      <td>${pct!==null?`<div class="db-bar-wrap" style="width:60px"><div class="db-bar-fill ${barCls}" style="width:${pct}%"></div></div>`:''}</td>
-      <td style="text-align:right;color:var(--grn);font-size:11px">+${r||0}</td>
-      <td style="text-align:right;color:var(--amb);font-size:11px">-${w||0}</td>
-      <td>${tag}</td>
-    </tr>`;
-  }).join('');
-
-  // ── transaction rows ──
-  const mkTxRows = (rows) => rows.slice(0,30).map(t=>{
-    const time = new Date(t.created_at).toLocaleString('th-TH',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-    const isRec = t.action_type==='receive';
-    return `<tr>
-      <td style="color:var(--ink4);font-size:10px;white-space:nowrap">${time}</td>
-      <td style="font-weight:500;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.item_name}</td>
-      <td style="text-align:right;font-weight:600;color:${isRec?'var(--grn)':'var(--amb)'}">${isRec?'+':'-'}${t.quantity}</td>
-      <td style="color:var(--ink3);font-size:10px">${t.operator_name||'—'}</td>
-      <td style="color:var(--ink4);font-size:10px">${WAREHOUSE_CONFIG[t.pg]?.label||t.pg}</td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--ink4)">ไม่มีรายการ</td></tr>`;
-
-  // ── low stock rows ──
-  const lowRows = allAlerts.slice(0,30).map(m=>{
-    const pct = m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):0;
+  // ── low stock tags ──
+  const lowTags = allAlerts.slice(0,20).map(m=>{
     const isOut = m.stock===0;
-    return `<tr>
-      <td style="font-weight:500;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</td>
-      <td style="color:var(--ink4);font-size:10px">${WAREHOUSE_CONFIG[m.pg]?.label||m.pg}</td>
-      <td style="text-align:right;font-weight:700;color:${isOut?'var(--red)':'#9a5a00'}">${m.stock}</td>
-      <td style="color:var(--ink4);font-size:11px">${m.min}</td>
-      <td><div class="db-bar-wrap" style="width:50px"><div class="db-bar-fill ${isOut?'db-bar-out':'db-bar-low'}" style="width:${pct}%"></div></div></td>
-      <td>${isOut?'<span class="db-tag db-tag-err">หมด</span>':'<span class="db-tag db-tag-warn">ต่ำ</span>'}</td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--grn)">✓ ไม่มีสต็อกต่ำ</td></tr>`;
+    const pct   = m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):0;
+    return `<div style="padding:9px 14px;border-bottom:1px solid #f8f8f6;display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:2px">${WAREHOUSE_CONFIG[m.pg]?.label||m.pg}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <div style="width:40px;height:3px;background:#efefed;border-radius:2px;overflow:hidden"><div style="height:100%;background:${isOut?'#C47A7A':'#C4A06A'};width:${pct}%;border-radius:2px"></div></div>
+        <span style="font-size:12px;font-weight:700;color:${isOut?'#A33030':'#92600A'};min-width:28px;text-align:right">${m.stock}</span>
+        <span style="font-size:10px;padding:2px 7px;border-radius:5px;font-weight:500;background:${isOut?'#FDF2F2':'#FEF5E7'};color:${isOut?'#A33030':'#92600A'}">${isOut?'หมด':'ต่ำ'}</span>
+      </div>
+    </div>`;
+  }).join('') || `<div style="padding:20px;text-align:center;color:#7BAE95;font-size:12px">✓ ทุกรายการปกติ</div>`;
 
-  // ── lot rows ──
-  const lotRows = (expiryLots||[]).map(l=>{
+  // ── lot expiry tags ──
+  const lotTags = (expiryLots||[]).slice(0,12).map(l=>{
     const ex   = new Date(l.expiry_date);
     const days = Math.ceil((ex-now)/(1000*60*60*24));
-    const cls  = days<0?'db-day-urgent':days<=30?'db-day-soon':'db-day-ok';
-    const label= days<0?`หมดแล้ว ${Math.abs(days)} วัน`:days===0?'หมดวันนี้':`อีก ${days} วัน`;
+    const bg   = days<0?'#FDF2F2':days<=30?'#FEF5E7':'#EDF5EF';
+    const col  = days<0?'#A33030':days<=30?'#92600A':'#3A7D52';
+    const label= days<0?`หมดแล้ว`:days===0?'วันนี้':`${days} วัน`;
     const sw   = l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}):'—';
-    return `<tr>
-      <td style="font-weight:500;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.item_name}</td>
-      <td style="font-family:monospace;font-size:10px;color:var(--ink3)">${sw}</td>
-      <td style="text-align:right;font-weight:500">${l.stock}</td>
-      <td><span class="db-day-badge ${cls}">${label}</span></td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--grn)">✓ ไม่มี Lot ใกล้หมดอายุ</td></tr>`;
+    return `<div style="padding:9px 14px;border-bottom:1px solid #f8f8f6;display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.item_name}</div>
+        <div style="font-size:10px;color:var(--ink4);font-family:monospace;margin-top:2px">Lot ${sw} · เหลือ ${l.stock}</div>
+      </div>
+      <span style="font-size:10px;padding:3px 8px;border-radius:5px;font-weight:600;background:${bg};color:${col};white-space:nowrap;flex-shrink:0">${label}</span>
+    </div>`;
+  }).join('') || `<div style="padding:20px;text-align:center;color:#7BAE95;font-size:12px">✓ ไม่มี Lot ใกล้หมดอายุ</div>`;
 
-  // ── stock count history rows ──
-  const scRows = (scHistory||[]).slice(0,15).map(r=>{
-    const diff=parseFloat(r.difference)||0;
-    const cls=diff>0?'sc-diff-pos':diff<0?'sc-diff-neg':'sc-diff-zero';
-    const at=new Date(r.counted_at).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'});
-    return `<tr>
-      <td style="color:var(--ink4);font-size:10px;white-space:nowrap">${at}</td>
-      <td style="font-weight:500;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.item_name}</td>
-      <td style="color:var(--ink4);font-size:10px">${WAREHOUSE_CONFIG[r.pg]?.label||r.pg}</td>
-      <td style="text-align:right">${r.system_stock}</td>
-      <td style="text-align:right;font-weight:600">${r.actual_stock}</td>
-      <td style="text-align:right;font-weight:600" class="${cls}">${diff===0?'—':(diff>0?'+':'')+diff}</td>
-      <td style="color:var(--ink3);font-size:10px">${r.counted_by||'—'}</td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--ink4)">ยังไม่มีประวัติ</td></tr>`;
-
-  // ── 30d summary ──
-  const sum30 = Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg])=>{
-    const r=(tx30||[]).filter(t=>t.pg===pg&&t.action_type==='receive').reduce((s,t)=>s+t.quantity,0);
-    const w=(tx30||[]).filter(t=>t.pg===pg&&t.action_type==='withdraw').reduce((s,t)=>s+t.quantity,0);
-    return `<tr>
-      <td style="font-weight:500">${cfg.label}</td>
-      <td style="text-align:right;color:var(--grn);font-weight:500">${r.toLocaleString()}</td>
-      <td style="text-align:right;color:var(--amb);font-weight:500">${w.toLocaleString()}</td>
-      <td style="text-align:right;font-weight:600;color:${r-w>=0?'var(--grn)':'var(--red)'}">${r-w>=0?'+':''}${(r-w).toLocaleString()}</td>
-    </tr>`;
-  }).join('');
-
-  // ── stock detail by warehouse (accordion) ──
-  const stockDetail = Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg])=>{
-    const items = masterDB.filter(m=>m.pg===pg);
+  // ── warehouse accordion ──
+  const whAccordion = Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg],wi)=>{
+    const items  = masterDB.filter(m=>m.pg===pg);
     if(!items.length) return '';
-    const total = items.reduce((s,m)=>s+m.stock,0);
-    const low   = items.filter(m=>m.min>0&&m.stock>0&&m.stock<m.min).length;
-    const out   = items.filter(m=>m.min>0&&m.stock===0).length;
-    const tag   = out>0?`<span class="db-tag db-tag-err">${out} หมด</span>`:low>0?`<span class="db-tag db-tag-warn">${low} ต่ำ</span>`:`<span class="db-tag db-tag-ok">ปกติ</span>`;
-    const subcats = {};
-    items.forEach(m=>{ const c=m.subcat||'ทั่วไป'; if(!subcats[c])subcats[c]=[]; subcats[c].push(m); });
-    const detailRows = Object.entries(subcats).map(([cat,mitems])=>`
-      <div style="border-top:1px solid var(--line)">
-        <div style="padding:5px 14px;background:var(--s2);font-size:9px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.4px;display:flex;justify-content:space-between">
-          <span>${cat}</span><span>${mitems.length} รายการ · ${mitems.reduce((s,m)=>s+m.stock,0).toLocaleString()}</span>
-        </div>
+    const total  = items.reduce((s,m)=>s+m.stock,0);
+    const low    = items.filter(m=>m.min>0&&m.stock>0&&m.stock<m.min).length;
+    const out    = items.filter(m=>m.min>0&&m.stock===0).length;
+    const tagBg  = out>0?'#FDF2F2':low>0?'#FEF5E7':'#EDF5EF';
+    const tagCol = out>0?'#A33030':low>0?'#92600A':'#3A7D52';
+    const tagTxt = out>0?`${out} หมด`:low>0?`${low} ต่ำ`:'ปกติ';
+    const subcats= {};
+    items.forEach(m=>{const c=m.subcat||'ทั่วไป';if(!subcats[c])subcats[c]=[];subcats[c].push(m);});
+    const rows = Object.entries(subcats).map(([cat,mitems])=>`
+      <div style="padding:4px 16px 4px 32px;background:#fafaf8;border-top:1px solid #f5f5f3">
+        <div style="font-size:9px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.4px;padding:5px 0 4px;display:flex;justify-content:space-between">
+          <span>${cat}</span><span>${mitems.reduce((s,m)=>s+m.stock,0).toLocaleString()}</span></div>
         ${mitems.map(m=>{
-          const st=m.min>0&&m.stock===0?'out':m.min>0&&m.stock<m.min?'low':'ok';
-          const sc=st==='out'?'color:var(--red);font-weight:700':st==='low'?'color:#9a5a00;font-weight:600':'font-weight:500';
+          const isOut=m.stock===0&&m.min>0,isLow=m.stock>0&&m.min>0&&m.stock<m.min;
           const pct=m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):null;
-          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 14px;border-bottom:1px solid #f8f8f6">
-            <div style="flex:1;min-width:0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
-            <div style="font-family:monospace;font-size:9px;color:var(--ink4);flex-shrink:0">${m.code}</div>
-            ${pct!==null?`<div class="db-bar-wrap" style="width:40px;flex-shrink:0"><div class="db-bar-fill ${st==='out'?'db-bar-out':st==='low'?'db-bar-low':'db-bar-ok'}" style="width:${pct}%"></div></div>`:''}
-            <div style="${sc};font-size:12px;min-width:40px;text-align:right;flex-shrink:0">${m.stock.toLocaleString()}</div>
-            ${st!=='ok'?`<span class="db-tag ${st==='out'?'db-tag-err':'db-tag-warn'}" style="flex-shrink:0">${st==='out'?'หมด':'ต่ำ'}</span>`:'<div style="width:28px"></div>'}
+          return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f8f8f6">
+            <div style="flex:1;font-size:11px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
+            ${pct!==null?`<div style="width:36px;height:3px;background:#efefed;border-radius:2px;overflow:hidden;flex-shrink:0"><div style="height:100%;background:${isOut?'#C47A7A':isLow?'#C4A06A':'#7BAE95'};width:${pct}%;border-radius:2px"></div></div>`:''}
+            <div style="font-size:12px;font-weight:600;color:${isOut?'#A33030':isLow?'#92600A':'var(--ink)'};min-width:36px;text-align:right;flex-shrink:0">${m.stock.toLocaleString()}</div>
           </div>`;
         }).join('')}
       </div>`).join('');
-    return `
-    <div style="border-top:1px solid var(--line)">
-      <div onclick="dbToggleWh('dbwh-${pg}')"
-        style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;transition:background .1s"
-        onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
-        <div style="display:flex;align-items:center;gap:10px">
-          <i class="ti ti-chevron-right" id="dbwh-chev-${pg}" style="font-size:12px;color:var(--ink4);transition:transform .2s"></i>
-          <span style="font-size:12px;font-weight:600;color:var(--ink)">${cfg.label}</span>
+    return `<div style="border-top:1px solid #ebebea">
+      <div onclick="dbToggleWh('dbwh-${pg}')" style="padding:11px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:background .1s" onmouseover="this.style.background='#f8f8f6'" onmouseout="this.style.background=''">
+        <div style="display:flex;align-items:center;gap:9px">
+          <i class="ti ti-chevron-right" id="dbwh-chev-${pg}" style="font-size:11px;color:var(--ink4);transition:transform .2s;flex-shrink:0"></i>
+          <div style="width:8px;height:8px;border-radius:2px;background:${whColors[wi]};flex-shrink:0"></div>
+          <span style="font-size:12px;font-weight:500;color:var(--ink)">${cfg.label}</span>
           <span style="font-size:10px;color:var(--ink4)">${items.length} รายการ</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:13px;font-weight:700;color:var(--ink)">${total.toLocaleString()}</span>
-          ${tag}
+          <span style="font-size:10px;padding:2px 8px;border-radius:5px;font-weight:500;background:${tagBg};color:${tagCol}">${tagTxt}</span>
         </div>
       </div>
-      <div id="dbwh-${pg}" style="display:none">${detailRows}</div>
+      <div id="dbwh-${pg}" style="display:none">${rows}</div>
     </div>`;
   }).join('');
 
+  // ── date picker ──
+  const datePicker=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    <button class="btn btn-sm${isToday?' btn-primary':''}" onclick="renderDashboardPage()">วันนี้</button>
+    <button class="btn btn-sm" onclick="renderDashboardPage('${new Date(Date.now()-86400000).toISOString().slice(0,10)}','${new Date(Date.now()-86400000).toISOString().slice(0,10)}')">เมื่อวาน</button>
+    <button class="btn btn-sm" onclick="renderDashboardPage('${new Date(Date.now()-7*86400000).toISOString().slice(0,10)}','${today}')">7 วัน</button>
+    <button class="btn btn-sm" onclick="renderDashboardPage('${day30ago}','${today}')">30 วัน</button>
+    <input type="date" class="fi" style="width:130px;font-size:11px;padding:5px 8px" id="db-from" value="${dateFrom}">
+    <span style="color:var(--ink4);font-size:11px">–</span>
+    <input type="date" class="fi" style="width:130px;font-size:11px;padding:5px 8px" id="db-to" value="${dateTo}">
+    <button class="btn btn-sm" onclick="renderDashboardPage(document.getElementById('db-from').value,document.getElementById('db-to').value)">ดู</button>
+  </div>`;
+
   // ── RENDER ──
   div.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <div>
-        <div style="font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-.2px"><i class="ti ti-chart-bar" style="color:var(--ink3)"></i> Dashboard</div>
-        <div style="font-size:11px;color:var(--ink4);margin-top:2px">${new Date().toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
-      </div>
-      <button class="btn btn-sm" onclick="renderDashboardPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-    </div>
+<div style="padding:0 0 32px">
 
-    <!-- KPI -->
-    <div class="db-grid" style="margin-bottom:14px">
-      <div class="db-kpi"><div class="db-kpi-label"><i class="ti ti-database"></i> สต็อกรวม</div><div class="db-kpi-val">${totalStock.toLocaleString()}</div><div class="db-kpi-sub">${masterDB.length} รายการ</div></div>
-      <div class="db-kpi"><div class="db-kpi-label"><i class="ti ti-package-import"></i> รับเข้า</div><div class="db-kpi-val">${recItems.reduce((s,t)=>s+t.quantity,0).toLocaleString()}</div><div class="db-kpi-sub">${recItems.length} รายการ</div></div>
-      <div class="db-kpi"><div class="db-kpi-label"><i class="ti ti-package-export"></i> เบิก</div><div class="db-kpi-val">${withItems.reduce((s,t)=>s+t.quantity,0).toLocaleString()}</div><div class="db-kpi-sub">${withItems.length} รายการ</div></div>
-      <div class="db-kpi"><div class="db-kpi-label"><i class="ti ti-alert-triangle"></i> สต็อกต่ำ/หมด</div><div class="db-kpi-val ${allAlerts.length>0?'db-kpi-amber':''}">${allAlerts.length}</div><div class="db-kpi-sub">${outItems.length} หมด · ${lowItems.length} ต่ำ</div></div>
-      <div class="db-kpi"><div class="db-kpi-label"><i class="ti ti-clock-exclamation"></i> Lot ใกล้หมดอายุ</div><div class="db-kpi-val ${expPast.length>0?'db-kpi-warn':exp30.length>0?'db-kpi-amber':''}">${(expiryLots||[]).length}</div><div class="db-kpi-sub">${expPast.length} หมดแล้ว · ${exp30.length} ใน 30 วัน</div></div>
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-size:20px;font-weight:600;color:var(--ink);letter-spacing:-.4px">Dashboard</div>
+      <div style="font-size:12px;color:var(--ink4);margin-top:2px">${new Date().toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
     </div>
+    <button class="btn btn-sm" onclick="renderDashboardPage(document.getElementById&&document.getElementById('db-from')?.value,document.getElementById&&document.getElementById('db-to')?.value)"><i class="ti ti-refresh"></i> รีเฟรช</button>
+  </div>
 
-    <!-- แถว 1: ยอดคลัง + 30d summary -->
-    <div class="db-two" style="margin-bottom:12px">
-      <div class="db-section">
-        <div class="db-section-header"><div class="db-section-title"><i class="ti ti-building-warehouse"></i> ยอดแต่ละคลัง</div></div>
-        <table class="db-table"><thead><tr><th>คลัง</th><th>รายการ</th><th style="text-align:right">ยอดรวม</th><th>ระดับ</th><th style="text-align:right">รับ</th><th style="text-align:right">เบิก</th><th>สถานะ</th></tr></thead><tbody>${whRows}</tbody></table>
-      </div>
-      <div class="db-section">
-        <div class="db-section-header"><div class="db-section-title"><i class="ti ti-calendar-stats"></i> สรุป 30 วัน</div></div>
-        <table class="db-table"><thead><tr><th>คลัง</th><th style="text-align:right">รับเข้า</th><th style="text-align:right">เบิก</th><th style="text-align:right">สุทธิ</th></tr></thead><tbody>${sum30}</tbody></table>
-      </div>
-    </div>
+  <!-- KPI row -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:20px">
+    ${[
+      {icon:'ti-database',     label:'สต็อกรวม',     val:totalStock.toLocaleString(),  sub:`${masterDB.length} รายการ`,     col:'var(--ink)'},
+      {icon:'ti-package-import',label:'รับเข้า',      val:recItems.reduce((s,t)=>s+t.quantity,0).toLocaleString(), sub:`${recItems.length} รายการ`,col:'#3A7D52'},
+      {icon:'ti-package-export',label:'เบิกออก',      val:withItems.reduce((s,t)=>s+t.quantity,0).toLocaleString(), sub:`${withItems.length} รายการ`,col:'#92600A'},
+      {icon:'ti-alert-triangle',label:'สต็อกต่ำ/หมด', val:allAlerts.length, sub:`${outItems.length} หมด · ${lowItems.length} ต่ำ`, col:allAlerts.length>0?'#92600A':'var(--ink)'},
+      {icon:'ti-clock-exclamation',label:'Lot หมดอายุใกล้',val:(expiryLots||[]).length,sub:`${expPast.length} หมดแล้ว · ${exp30.length} ≤30 วัน`,col:expPast.length>0?'#A33030':exp30.length>0?'#92600A':'var(--ink)'},
+    ].map(k=>`<div style="background:#fff;border:1px solid #ebebea;border-radius:14px;padding:16px 18px">
+      <div style="font-size:10px;color:var(--ink4);margin-bottom:10px;display:flex;align-items:center;gap:5px"><i class="ti ${k.icon}" style="font-size:13px"></i>${k.label}</div>
+      <div style="font-size:26px;font-weight:500;color:${k.col};letter-spacing:-.5px;line-height:1">${k.val}</div>
+      <div style="font-size:10px;color:var(--ink4);margin-top:6px">${k.sub}</div>
+    </div>`).join('')}
+  </div>
 
-    <!-- แถว 2: รับเข้า + เบิก พร้อม date picker -->
-    <div class="db-section" style="margin-bottom:12px">
-      <div class="db-section-header">
-        <div class="db-section-title"><i class="ti ti-history"></i> รายการ — ${dateLabel}</div>
-        ${datePicker}
-      </div>
-      <div class="db-two" style="margin:0;gap:0">
-        <div style="border-right:1px solid var(--line)">
-          <div style="padding:8px 13px;background:var(--s2);font-size:10px;font-weight:600;color:var(--grn);display:flex;justify-content:space-between"><span>รับเข้า</span><span>${recItems.length} รายการ · ${recItems.reduce((s,t)=>s+t.quantity,0).toLocaleString()}</span></div>
-          <table class="db-table"><thead><tr><th>เวลา</th><th>รายการ</th><th style="text-align:right">จำนวน</th><th>ผู้ทำ</th><th>คลัง</th></tr></thead><tbody>${mkTxRows(recItems)}</tbody></table>
-        </div>
-        <div>
-          <div style="padding:8px 13px;background:var(--s2);font-size:10px;font-weight:600;color:var(--amb);display:flex;justify-content:space-between"><span>เบิก</span><span>${withItems.length} รายการ · ${withItems.reduce((s,t)=>s+t.quantity,0).toLocaleString()}</span></div>
-          <table class="db-table"><thead><tr><th>เวลา</th><th>รายการ</th><th style="text-align:right">จำนวน</th><th>ผู้ทำ</th><th>คลัง</th></tr></thead><tbody>${mkTxRows(withItems)}</tbody></table>
-        </div>
+  <!-- Row 1: Donut + Bar chart -->
+  <div style="display:grid;grid-template-columns:300px 1fr;gap:12px;margin-bottom:12px">
+    <div style="background:#fff;border:1px solid #ebebea;border-radius:14px;padding:16px 18px">
+      <div style="font-size:11px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px">สรุปคลังทั้งหมด</div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <svg width="110" height="110" viewBox="0 0 110 110" style="flex-shrink:0">
+          ${donutPaths}
+          <text x="55" y="50" text-anchor="middle" style="font-size:18px;font-weight:600;fill:#1c1c1e">${totalStock.toLocaleString()}</text>
+          <text x="55" y="66" text-anchor="middle" style="font-size:10px;fill:#aeaeb2">รวม</text>
+        </svg>
+        <div style="flex:1">${donutLegend}</div>
       </div>
     </div>
-
-    <!-- แถว 3: สต็อกต่ำ + Lot หมดอายุ -->
-    <div class="db-two" style="margin-bottom:12px">
-      <div class="db-section">
-        <div class="db-section-header"><div class="db-section-title"><i class="ti ti-alert-triangle" style="color:var(--warn)"></i> สต็อกต่ำ/หมด</div><span style="font-size:10px;color:var(--ink4)">${allAlerts.length} รายการ</span></div>
-        <table class="db-table"><thead><tr><th>รายการ</th><th>คลัง</th><th style="text-align:right">คงเหลือ</th><th>Min</th><th>ระดับ</th><th>สถานะ</th></tr></thead><tbody>${lowRows}</tbody></table>
-      </div>
-      <div class="db-section">
-        <div class="db-section-header"><div class="db-section-title"><i class="ti ti-clock-exclamation" style="color:var(--red)"></i> Lot ใกล้หมดอายุ (60 วัน)</div><span style="font-size:10px;color:var(--ink4)">${expPast.length} หมดแล้ว · ${exp30.length} ใน 30 วัน</span></div>
-        <table class="db-table"><thead><tr><th>รายการ</th><th>Lot SW</th><th style="text-align:right">คงเหลือ</th><th>สถานะ</th></tr></thead><tbody>${lotRows}</tbody></table>
-      </div>
-    </div>
-
-    <!-- แถว 4: ยอดคงเหลือ accordion -->
-    <div class="db-section" style="margin-bottom:12px">
-      <div class="db-section-header">
-        <div class="db-section-title"><i class="ti ti-list-details"></i> ยอดคงเหลือแยกคลัง</div>
-        <div style="display:flex;gap:5px">
-          <button class="btn btn-sm" onclick="dbExpandAll(true)">ขยายทั้งหมด</button>
-          <button class="btn btn-sm" onclick="dbExpandAll(false)">ยุบทั้งหมด</button>
+    <div style="background:#fff;border:1px solid #ebebea;border-radius:14px;padding:16px 18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.5px">กิจกรรม 7 วัน</div>
+        <div style="display:flex;gap:10px;font-size:10px;color:var(--ink4)">
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#7BAE95;margin-right:4px"></span>รับเข้า</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#D4A96A;margin-right:4px"></span>เบิก</span>
         </div>
       </div>
-      ${stockDetail}
+      <div style="display:flex;align-items:flex-end;gap:0;justify-content:space-around;padding:0 4px">${barChart}</div>
+      <div style="display:flex;gap:16px;margin-top:10px;padding-top:10px;border-top:1px solid #f5f5f3">
+        <div style="font-size:11px;color:var(--ink4)">รับ 7 วัน: <strong style="color:#3A7D52">${dayRec.reduce((a,b)=>a+b,0).toLocaleString()}</strong></div>
+        <div style="font-size:11px;color:var(--ink4)">เบิก 7 วัน: <strong style="color:#92600A">${dayWith.reduce((a,b)=>a+b,0).toLocaleString()}</strong></div>
+      </div>
     </div>
+  </div>
 
-    <!-- แถว 5: ประวัติตรวจนับ -->
-    <div class="db-section">
-      <div class="db-section-header"><div class="db-section-title"><i class="ti ti-clipboard-check"></i> ประวัติตรวจนับล่าสุด</div><span style="font-size:10px;color:var(--ink4)">${(scHistory||[]).length} รายการ</span></div>
-      <table class="db-table"><thead><tr><th>วันที่</th><th>รายการ</th><th>คลัง</th><th style="text-align:right">ระบบ</th><th style="text-align:right">จริง</th><th style="text-align:right">ต่าง</th><th>ผู้ตรวจ</th></tr></thead><tbody>${scRows}</tbody></table>
-    </div>`;
+  <!-- Row 2: รายการ + สต็อกต่ำ + Lot -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+    <div style="background:#fff;border:1px solid #ebebea;border-radius:14px;overflow:hidden">
+      <div style="padding:13px 16px;border-bottom:1px solid #ebebea;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:12px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px"><i class="ti ti-history" style="font-size:13px;color:var(--ink3)"></i> รายการ</div>
+        <div style="display:flex;gap:5px">${['วันนี้','เมื่อวาน','7วัน','30วัน'].map((l,i)=>{
+          const froms=[today,new Date(Date.now()-86400000).toISOString().slice(0,10),new Date(Date.now()-7*86400000).toISOString().slice(0,10),day30ago];
+          const tos=[today,new Date(Date.now()-86400000).toISOString().slice(0,10),today,today];
+          const act=dateFrom===froms[i]&&dateTo===tos[i];
+          return `<button onclick="renderDashboardPage('${froms[i]}','${tos[i]}')" style="font-size:10px;padding:3px 8px;border-radius:8px;border:1px solid ${act?'var(--ink)':'#ebebea'};background:${act?'var(--ink)':'#fff'};color:${act?'#fff':'var(--ink3)'};cursor:pointer">${l}</button>`;
+        }).join('')}</div>
+      </div>
+      <div style="max-height:300px;overflow-y:auto;padding:0 2px">${recentTx}</div>
+    </div>
+    <div style="background:#fff;border:1px solid #ebebea;border-radius:14px;overflow:hidden">
+      <div style="padding:13px 16px;border-bottom:1px solid #ebebea;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:12px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px"><i class="ti ti-alert-triangle" style="font-size:13px;color:#C4A06A"></i> สต็อกต่ำ/หมด</div>
+        <span style="font-size:10px;padding:2px 8px;border-radius:5px;background:${allAlerts.length>0?'#FEF5E7':'#EDF5EF'};color:${allAlerts.length>0?'#92600A':'#3A7D52'};font-weight:500">${allAlerts.length} รายการ</span>
+      </div>
+      <div style="max-height:300px;overflow-y:auto">${lowTags}</div>
+    </div>
+    <div style="background:#fff;border:1px solid #ebebea;border-radius:14px;overflow:hidden">
+      <div style="padding:13px 16px;border-bottom:1px solid #ebebea;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:12px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px"><i class="ti ti-clock-exclamation" style="font-size:13px;color:#C47A7A"></i> Lot ใกล้หมดอายุ</div>
+        <span style="font-size:10px;color:var(--ink4)">${expPast.length} หมดแล้ว · ${exp30.length} ≤30 วัน</span>
+      </div>
+      <div style="max-height:300px;overflow-y:auto">${lotTags}</div>
+    </div>
+  </div>
+
+  <!-- Row 3: ยอดคงเหลือแยกคลัง accordion -->
+  <div style="background:#fff;border:1px solid #ebebea;border-radius:14px;overflow:hidden;margin-bottom:12px">
+    <div style="padding:13px 16px;border-bottom:1px solid #ebebea;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:12px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px"><i class="ti ti-list-details" style="font-size:13px;color:var(--ink3)"></i> ยอดคงเหลือแยกคลัง</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="dbExpandAll(true)">ขยายทั้งหมด</button>
+        <button class="btn btn-sm" onclick="dbExpandAll(false)">ยุบทั้งหมด</button>
+      </div>
+    </div>
+    ${whAccordion}
+  </div>
+
+  <!-- Row 4: ประวัติตรวจนับ -->
+  <div style="background:#fff;border:1px solid #ebebea;border-radius:14px;overflow:hidden">
+    <div style="padding:13px 16px;border-bottom:1px solid #ebebea;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:12px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px"><i class="ti ti-clipboard-check" style="font-size:13px;color:var(--ink3)"></i> ประวัติตรวจนับล่าสุด</div>
+      <span style="font-size:10px;color:var(--ink4)">${(scHistory||[]).length} รายการ</span>
+    </div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>${['วันที่','รายการ','คลัง','ยอดระบบ','ยอดจริง','ผลต่าง','ผู้ตรวจ'].map((h,i)=>`<th style="padding:8px 13px;font-size:9px;color:var(--ink4);font-weight:600;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #ebebea;text-align:${i>=3&&i<=5?'right':'left'}">${h}</th>`).join('')}</tr></thead>
+      <tbody>${(scHistory||[]).slice(0,15).map(r=>{
+        const diff=parseFloat(r.difference)||0;
+        const col=diff>0?'#3A7D52':diff<0?'#A33030':'var(--ink4)';
+        const at=new Date(r.counted_at).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'});
+        return `<tr style="border-bottom:1px solid #f8f8f6">
+          <td style="padding:9px 13px;font-size:10px;color:var(--ink4);white-space:nowrap">${at}</td>
+          <td style="padding:9px 13px;font-size:11px;font-weight:500;color:var(--ink);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.item_name}</td>
+          <td style="padding:9px 13px;font-size:10px;color:var(--ink4)">${WAREHOUSE_CONFIG[r.pg]?.label||r.pg}</td>
+          <td style="padding:9px 13px;font-size:11px;text-align:right">${r.system_stock}</td>
+          <td style="padding:9px 13px;font-size:11px;font-weight:600;text-align:right">${r.actual_stock}</td>
+          <td style="padding:9px 13px;font-size:11px;font-weight:700;text-align:right;color:${col}">${diff===0?'—':(diff>0?'+':'')+diff}</td>
+          <td style="padding:9px 13px;font-size:10px;color:var(--ink3)">${r.counted_by||'—'}</td>
+        </tr>`;
+      }).join('')||`<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--ink4);font-size:12px">ยังไม่มีประวัติ</td></tr>`}</tbody>
+    </table>
+  </div>
+
+</div>`;
 }
 
 
