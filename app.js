@@ -2701,7 +2701,7 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
     </div>`;
   }).join('') || `<div style="padding:20px;text-align:center;color:#7BAE95;font-size:12px">✓ ไม่มี Lot ใกล้หมดอายุ</div>`;
 
-  // ── warehouse accordion ──
+  // ── warehouse accordion — compact master style ──
   const whAccordion = Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg],wi)=>{
     const items  = masterDB.filter(m=>m.pg===pg);
     if(!items.length) return '';
@@ -2711,39 +2711,49 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
     const tagBg  = out>0?'#FDF2F2':low>0?'#FEF5E7':'#EDF5EF';
     const tagCol = out>0?'#A33030':low>0?'#92600A':'#3A7D52';
     const tagTxt = out>0?`${out} หมด`:low>0?`${low} ต่ำ`:'ปกติ';
-    const subcats= {};
+    const subcats={};
     items.forEach(m=>{const c=m.subcat||'ทั่วไป';if(!subcats[c])subcats[c]=[];subcats[c].push(m);});
-    const rows = Object.entries(subcats).map(([cat,mitems])=>`
-      <div style="padding:4px 16px 4px 32px;background:#fafaf8;border-top:1px solid #f5f5f3">
-        <div style="font-size:9px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.4px;padding:5px 0 4px;display:flex;justify-content:space-between">
-          <span>${cat}</span><span>${mitems.reduce((s,m)=>s+m.stock,0).toLocaleString()}</span></div>
+    const rows=Object.entries(subcats).map(([cat,mitems])=>`
+      <div style="background:#fafaf8">
+        <div style="padding:4px 16px 3px 36px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f0f0ee">
+          <span style="font-size:9px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.5px">${cat}</span>
+          <span style="font-size:10px;color:var(--ink4)">${mitems.length} · ${mitems.reduce((s,m)=>s+m.stock,0).toLocaleString()}</span>
+        </div>
         ${mitems.map(m=>{
           const isOut=m.stock===0&&m.min>0,isLow=m.stock>0&&m.min>0&&m.stock<m.min;
           const pct=m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):null;
-          return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f8f8f6">
-            <div style="flex:1;font-size:11px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
-            ${pct!==null?`<div style="width:36px;height:3px;background:#efefed;border-radius:2px;overflow:hidden;flex-shrink:0"><div style="height:100%;background:${isOut?'#C47A7A':isLow?'#C4A06A':'#7BAE95'};width:${pct}%;border-radius:2px"></div></div>`:''}
-            <div style="font-size:12px;font-weight:600;color:${isOut?'#A33030':isLow?'#92600A':'var(--ink)'};min-width:36px;text-align:right;flex-shrink:0">${m.stock.toLocaleString()}</div>
+          const barC=isOut?'#C47A7A':isLow?'#C4A06A':'#7BAE95';
+          const sCol=isOut?'#A33030':isLow?'#92600A':'var(--ink2)';
+          const badge=isOut?'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#FDF2F2;color:#A33030;font-weight:500">หมด</span>'
+                     :isLow?'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#FEF5E7;color:#92600A;font-weight:500">ต่ำ</span>':'';
+          return`<div style="display:flex;align-items:center;gap:8px;padding:6px 14px 6px 36px;border-top:1px solid #f8f8f6;transition:background .1s" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:11px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
+              <div style="font-size:9px;color:var(--ink4);font-family:monospace;margin-top:1px">${m.code}</div>
+            </div>
+            ${pct!==null?`<div style="width:44px;height:3px;background:#efefed;border-radius:2px;overflow:hidden;flex-shrink:0"><div style="height:100%;background:${barC};width:${pct}%;border-radius:2px"></div></div>`:'<div style="width:44px"></div>'}
+            ${m.min>0?`<span style="font-size:9px;color:var(--ink4);white-space:nowrap;flex-shrink:0">Min ${m.min}</span>`:'<span style="width:32px"></span>'}
+            <div style="font-size:13px;font-weight:600;color:${sCol};min-width:40px;text-align:right;flex-shrink:0">${m.stock.toLocaleString()}</div>
+            <div style="width:32px;text-align:right;flex-shrink:0">${badge}</div>
           </div>`;
         }).join('')}
       </div>`).join('');
-    return `<div style="border-top:1px solid #ebebea">
-      <div onclick="dbToggleWh('dbwh-${pg}')" style="padding:11px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:background .1s" onmouseover="this.style.background='#f8f8f6'" onmouseout="this.style.background=''">
+    return`<div style="border-top:1px solid #ebebea">
+      <div onclick="dbToggleWh('dbwh-${pg}')" style="padding:11px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:background .1s;user-select:none" onmouseover="this.style.background='#f8f8f6'" onmouseout="this.style.background=''">
         <div style="display:flex;align-items:center;gap:9px">
           <i class="ti ti-chevron-right" id="dbwh-chev-${pg}" style="font-size:11px;color:var(--ink4);transition:transform .2s;flex-shrink:0"></i>
           <div style="width:8px;height:8px;border-radius:2px;background:${whColors[wi]};flex-shrink:0"></div>
-          <span style="font-size:12px;font-weight:500;color:var(--ink)">${cfg.label}</span>
+          <span style="font-size:12px;font-weight:600;color:var(--ink)">${cfg.label}</span>
           <span style="font-size:10px;color:var(--ink4)">${items.length} รายการ</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:13px;font-weight:700;color:var(--ink)">${total.toLocaleString()}</span>
+          <span style="font-size:14px;font-weight:700;color:var(--ink)">${total.toLocaleString()}</span>
           <span style="font-size:10px;padding:2px 8px;border-radius:5px;font-weight:500;background:${tagBg};color:${tagCol}">${tagTxt}</span>
         </div>
       </div>
       <div id="dbwh-${pg}" style="display:none">${rows}</div>
     </div>`;
   }).join('');
-
   // ── date picker ──
   const datePicker=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
     <button class="btn btn-sm${isToday?' btn-primary':''}" onclick="renderDashboardPage()">วันนี้</button>
