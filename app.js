@@ -2701,57 +2701,82 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
     </div>`;
   }).join('') || `<div style="padding:20px;text-align:center;color:#7BAE95;font-size:12px">✓ ไม่มี Lot ใกล้หมดอายุ</div>`;
 
-  // ── warehouse accordion — compact master style ──
+  // ── warehouse accordion — master-style grid ──
+  // state สำหรับ search ยอดคงเหลือ
+  const dbWhSearch = window._dbWhSearch || '';
+
   const whAccordion = Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg],wi)=>{
-    const items  = masterDB.filter(m=>m.pg===pg);
-    if(!items.length) return '';
-    const total  = items.reduce((s,m)=>s+m.stock,0);
-    const low    = items.filter(m=>m.min>0&&m.stock>0&&m.stock<m.min).length;
-    const out    = items.filter(m=>m.min>0&&m.stock===0).length;
+    const allItems = masterDB.filter(m=>m.pg===pg);
+    if(!allItems.length) return '';
+    const items = dbWhSearch
+      ? allItems.filter(m=>m.name.toLowerCase().includes(dbWhSearch)||m.code.toLowerCase().includes(dbWhSearch))
+      : allItems;
+    const total  = allItems.reduce((s,m)=>s+m.stock,0);
+    const low    = allItems.filter(m=>m.min>0&&m.stock>0&&m.stock<m.min).length;
+    const out    = allItems.filter(m=>m.min>0&&m.stock===0).length;
     const tagBg  = out>0?'#FDF2F2':low>0?'#FEF5E7':'#EDF5EF';
     const tagCol = out>0?'#A33030':low>0?'#92600A':'#3A7D52';
     const tagTxt = out>0?`${out} หมด`:low>0?`${low} ต่ำ`:'ปกติ';
+
     const subcats={};
     items.forEach(m=>{const c=m.subcat||'ทั่วไป';if(!subcats[c])subcats[c]=[];subcats[c].push(m);});
+    const openByDefault = !!dbWhSearch;
+
     const rows=Object.entries(subcats).map(([cat,mitems])=>`
-      <div style="background:#fafaf8">
-        <div style="padding:4px 16px 3px 36px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f0f0ee">
-          <span style="font-size:9px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.5px">${cat}</span>
-          <span style="font-size:10px;color:var(--ink4)">${mitems.length} · ${mitems.reduce((s,m)=>s+m.stock,0).toLocaleString()}</span>
+      <div style="background:#fafaf8;border-top:1px solid #f0f0ee">
+        <div style="display:grid;grid-template-columns:1fr 40px;padding:4px 16px 3px 36px;gap:8px">
+          <span style="font-size:9px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.5px;align-self:center">${cat}</span>
+          <span style="font-size:10px;color:var(--ink4);text-align:right">${mitems.reduce((s,m)=>s+m.stock,0).toLocaleString()}</span>
+        </div>
+        <!-- header row -->
+        <div style="display:grid;grid-template-columns:1fr 44px 52px 56px 36px;gap:8px;padding:3px 14px 3px 36px;border-top:1px solid #efefed">
+          <span style="font-size:9px;color:var(--ink4)">รายการ</span>
+          <span style="font-size:9px;color:var(--ink4);text-align:center">ระดับ</span>
+          <span style="font-size:9px;color:var(--ink4);text-align:right">Min</span>
+          <span style="font-size:9px;color:var(--ink4);text-align:right">คงเหลือ</span>
+          <span></span>
         </div>
         ${mitems.map(m=>{
           const isOut=m.stock===0&&m.min>0,isLow=m.stock>0&&m.min>0&&m.stock<m.min;
           const pct=m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):null;
           const barC=isOut?'#C47A7A':isLow?'#C4A06A':'#7BAE95';
-          const sCol=isOut?'#A33030':isLow?'#92600A':'var(--ink2)';
+          const sCol=isOut?'#A33030':isLow?'#92600A':'var(--ink)';
           const badge=isOut?'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#FDF2F2;color:#A33030;font-weight:500">หมด</span>'
                      :isLow?'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#FEF5E7;color:#92600A;font-weight:500">ต่ำ</span>':'';
-          return`<div style="display:flex;align-items:center;gap:8px;padding:6px 14px 6px 36px;border-top:1px solid #f8f8f6;transition:background .1s" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">
-            <div style="flex:1;min-width:0">
+          return`<div style="display:grid;grid-template-columns:1fr 44px 52px 56px 36px;gap:8px;align-items:center;padding:6px 14px 6px 36px;border-top:1px solid #f8f8f6;transition:background .1s" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">
+            <div style="min-width:0">
               <div style="font-size:11px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
               <div style="font-size:9px;color:var(--ink4);font-family:monospace;margin-top:1px">${m.code}</div>
             </div>
-            ${pct!==null?`<div style="width:44px;height:3px;background:#efefed;border-radius:2px;overflow:hidden;flex-shrink:0"><div style="height:100%;background:${barC};width:${pct}%;border-radius:2px"></div></div>`:'<div style="width:44px"></div>'}
-            ${m.min>0?`<span style="font-size:9px;color:var(--ink4);white-space:nowrap;flex-shrink:0">Min ${m.min}</span>`:'<span style="width:32px"></span>'}
-            <div style="font-size:13px;font-weight:600;color:${sCol};min-width:40px;text-align:right;flex-shrink:0">${m.stock.toLocaleString()}</div>
-            <div style="width:32px;text-align:right;flex-shrink:0">${badge}</div>
+            <div style="text-align:center">
+              ${pct!==null?`<div style="width:36px;height:4px;background:#efefed;border-radius:2px;overflow:hidden;margin:0 auto"><div style="height:100%;background:${barC};width:${pct}%;border-radius:2px"></div></div>`:''}
+            </div>
+            <div style="font-size:10px;color:var(--ink4);text-align:right">${m.min>0?m.min:'—'}</div>
+            <div style="font-size:13px;font-weight:600;color:${sCol};text-align:right">${m.stock.toLocaleString()}</div>
+            <div style="text-align:right">${badge}</div>
           </div>`;
         }).join('')}
       </div>`).join('');
+
+    if(!rows.trim()) return '';
+
     return`<div style="border-top:1px solid #ebebea">
-      <div onclick="dbToggleWh('dbwh-${pg}')" style="padding:11px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:background .1s;user-select:none" onmouseover="this.style.background='#f8f8f6'" onmouseout="this.style.background=''">
+      <div onclick="dbToggleWh('dbwh-${pg}',${openByDefault?'true':undefined})"
+        id="dbwh-hdr-${pg}"
+        style="padding:11px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:background .1s;user-select:none"
+        onmouseover="this.style.background='#f8f8f6'" onmouseout="this.style.background=''">
         <div style="display:flex;align-items:center;gap:9px">
-          <i class="ti ti-chevron-right" id="dbwh-chev-${pg}" style="font-size:11px;color:var(--ink4);transition:transform .2s;flex-shrink:0"></i>
+          <i class="ti ti-chevron-right" id="dbwh-chev-${pg}" style="font-size:11px;color:var(--ink4);transition:transform .2s;flex-shrink:0;${openByDefault?'transform:rotate(90deg)':''}"></i>
           <div style="width:8px;height:8px;border-radius:2px;background:${whColors[wi]};flex-shrink:0"></div>
           <span style="font-size:12px;font-weight:600;color:var(--ink)">${cfg.label}</span>
-          <span style="font-size:10px;color:var(--ink4)">${items.length} รายการ</span>
+          <span style="font-size:10px;color:var(--ink4)">${items.length}${dbWhSearch?`/${allItems.length}`:''} รายการ</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:14px;font-weight:700;color:var(--ink)">${total.toLocaleString()}</span>
           <span style="font-size:10px;padding:2px 8px;border-radius:5px;font-weight:500;background:${tagBg};color:${tagCol}">${tagTxt}</span>
         </div>
       </div>
-      <div id="dbwh-${pg}" style="display:none">${rows}</div>
+      <div id="dbwh-${pg}" style="display:${openByDefault?'block':'none'}">${rows}</div>
     </div>`;
   }).join('');
   // ── date picker ──
@@ -2855,9 +2880,16 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
 
   <!-- Row 3: ยอดคงเหลือแยกคลัง accordion -->
   <div style="background:#fff;border:1px solid #ebebea;border-radius:14px;overflow:hidden;margin-bottom:12px">
-    <div style="padding:13px 16px;border-bottom:1px solid #ebebea;display:flex;align-items:center;justify-content:space-between">
+    <div style="padding:13px 16px;border-bottom:1px solid #ebebea;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div style="font-size:12px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px"><i class="ti ti-list-details" style="font-size:13px;color:var(--ink3)"></i> ยอดคงเหลือแยกคลัง</div>
-      <div style="display:flex;gap:6px">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;min-width:180px">
+          <i class="ti ti-search" style="font-size:12px;color:var(--ink4)"></i>
+          <input placeholder="ค้นหารายการ..." id="db-wh-search"
+            style="border:none;background:none;outline:none;font-size:12px;color:var(--ink);width:100%"
+            value="${window._dbWhSearch||''}"
+            oninput="window._dbWhSearch=this.value.toLowerCase();renderDashboardPage(document.getElementById('db-from')?.value,document.getElementById('db-to')?.value)">
+        </div>
         <button class="btn btn-sm" onclick="dbExpandAll(true)">ขยายทั้งหมด</button>
         <button class="btn btn-sm" onclick="dbExpandAll(false)">ยุบทั้งหมด</button>
       </div>
@@ -2899,13 +2931,13 @@ function dbScrollTo(id) {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function dbToggleWh(id) {
+function dbToggleWh(id, forceOpen) {
   const body = document.getElementById(id);
   const chev = document.getElementById(id.replace('dbwh-','dbwh-chev-'));
   if (!body) return;
-  const open = body.style.display !== 'none';
-  body.style.display = open ? 'none' : 'block';
-  if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
+  const open = forceOpen !== undefined ? forceOpen : body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(90deg)' : '';
 }
 
 function dbExpandAll(expand) {
