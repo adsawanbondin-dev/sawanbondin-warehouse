@@ -2818,7 +2818,74 @@ async function renderDashboardPage() {
       </div>
     </div>
 
-    <!-- แถวที่ 4: ประวัติตรวจนับ -->
+    <!-- แถวที่ 4: ยอดคงเหลือทั้งหมดแยกคลัง -->
+    <div class="db-section" style="margin-bottom:12px">
+      <div class="db-section-header">
+        <div class="db-section-title"><i class="ti ti-list-details"></i> ยอดคงเหลือทั้งหมด — แยกตามคลังและหมวดหมู่</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${Object.keys(WAREHOUSE_CONFIG).map(pg=>
+            `<button onclick="dbScrollTo('db-wh-${pg}')"
+              style="font-size:10px;padding:3px 9px;border-radius:10px;border:1px solid var(--line);background:var(--s2);cursor:pointer;color:var(--ink3);white-space:nowrap">
+              ${WAREHOUSE_CONFIG[pg].label}
+            </button>`
+          ).join('')}
+        </div>
+      </div>
+      ${Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg])=>{
+        const items = masterDB.filter(m=>m.pg===pg&&m.stock>=0);
+        if(!items.length) return '';
+        // จัดกลุ่มตาม subcat
+        const subcats = {};
+        items.forEach(m=>{
+          const cat = m.subcat||'—';
+          if(!subcats[cat]) subcats[cat]=[];
+          subcats[cat].push(m);
+        });
+        const total = items.reduce((s,m)=>s+m.stock,0);
+        const low   = items.filter(m=>m.min>0&&m.stock<m.min).length;
+        const out   = items.filter(m=>m.min>0&&m.stock===0).length;
+        return `
+        <div id="db-wh-${pg}" style="border-top:2px solid var(--line);scroll-margin-top:100px">
+          <div style="padding:10px 15px;background:var(--s2);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+            <div style="font-size:12px;font-weight:600;color:var(--ink)">${cfg.label}</div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:11px;color:var(--ink4)">${items.length} รายการ</span>
+              <span style="font-size:13px;font-weight:600;color:var(--ink)">${total.toLocaleString()}</span>
+              ${out>0?`<span class="db-tag db-tag-err">${out} หมด</span>`:
+                low>0?`<span class="db-tag db-tag-warn">${low} ต่ำ</span>`:
+                `<span class="db-tag db-tag-ok">ปกติ</span>`}
+            </div>
+          </div>
+          ${Object.entries(subcats).map(([cat,mitems])=>`
+          <div style="border-bottom:1px solid var(--line)">
+            <div style="padding:6px 15px;background:#fafaf8;font-size:10px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;justify-content:space-between">
+              <span>${cat}</span>
+              <span style="font-weight:500;color:var(--ink3)">${mitems.length} รายการ · รวม ${mitems.reduce((s,m)=>s+m.stock,0).toLocaleString()}</span>
+            </div>
+            <table class="db-table" style="margin:0">
+              <tbody>
+                ${mitems.map(m=>{
+                  const st = m.min>0&&m.stock===0?'out':m.min>0&&m.stock<m.min?'low':'ok';
+                  const stockColor = st==='out'?'color:var(--red);font-weight:700':st==='low'?'color:#9a5a00;font-weight:600':'color:var(--ink);font-weight:500';
+                  const pct = m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):null;
+                  const barCls = st==='out'?'db-bar-out':st==='low'?'db-bar-low':'db-bar-ok';
+                  return `<tr>
+                    <td style="font-size:11px;color:var(--ink);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:7px 15px">${m.name}</td>
+                    <td style="font-family:monospace;font-size:9px;color:var(--ink4);white-space:nowrap;padding:7px 8px">${m.code}</td>
+                    ${pct!==null?`<td style="padding:7px 8px"><div class="db-bar-wrap" style="width:50px"><div class="db-bar-fill ${barCls}" style="width:${pct}%"></div></div></td>`:`<td style="padding:7px 8px"></td>`}
+                    <td style="text-align:right;${stockColor};padding:7px 12px;font-size:12px">${m.stock.toLocaleString()}</td>
+                    ${m.min>0?`<td style="font-size:10px;color:var(--ink4);white-space:nowrap;padding:7px 12px">Min ${m.min} · Max ${m.max}</td>`:`<td style="padding:7px 8px"></td>`}
+                    <td style="padding:7px 12px">${st==='out'?'<span class="db-tag db-tag-err">หมด</span>':st==='low'?'<span class="db-tag db-tag-warn">ต่ำ</span>':''}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>`).join('')}
+        </div>`;
+      }).join('')}
+    </div>
+
+    <!-- แถวที่ 5: ประวัติตรวจนับ -->
     <div class="db-section">
       <div class="db-section-header">
         <div class="db-section-title"><i class="ti ti-clipboard-check"></i> ประวัติตรวจนับล่าสุด</div>
@@ -2831,6 +2898,11 @@ async function renderDashboardPage() {
     </div>`;
 }
 
+
+function dbScrollTo(id) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 /* ── Override switchPage เพิ่ม dashboard ── */
 const _dbOrigSwitch = switchPage;
