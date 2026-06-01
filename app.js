@@ -2801,7 +2801,10 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
       <div style="font-size:20px;font-weight:600;color:var(--ink);letter-spacing:-.4px">Dashboard</div>
       <div style="font-size:12px;color:var(--ink4);margin-top:2px">${new Date().toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
     </div>
-    <button class="btn btn-sm" onclick="renderDashboardPage(document.getElementById&&document.getElementById('db-from')?.value,document.getElementById&&document.getElementById('db-to')?.value)"><i class="ti ti-refresh"></i> รีเฟรช</button>
+    <div style="display:flex;gap:7px">
+      <button class="btn btn-sm" onclick="dbExportPNG()"><i class="ti ti-photo-down"></i> Export PNG</button>
+      <button class="btn btn-sm" onclick="dbExportPDF()"><i class="ti ti-file-type-pdf"></i> Export PDF</button>
+    </div>
   </div>
 
   <!-- KPI row -->
@@ -2929,6 +2932,85 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
 function dbScrollTo(id) {
   const el = document.getElementById(id);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function dbExportPNG() {
+  const div = document.getElementById('page-dashboard');
+  if (!div) return;
+  showToast('กำลังสร้างภาพ...');
+  try {
+    // โหลด html2canvas แบบ dynamic
+    if (!window.html2canvas) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+    const date = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
+    const canvas = await window.html2canvas(div, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#f7f7f5',
+      scrollX: 0,
+      scrollY: -window.scrollY,
+      windowWidth: div.scrollWidth,
+      windowHeight: div.scrollHeight,
+    });
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = `Sawanbondin_Dashboard_${date}.png`;
+    a.click();
+    showToast('Export PNG สำเร็จ ✓');
+  } catch(e) {
+    showToast('Export ไม่สำเร็จ: ' + e.message, 'err');
+  }
+}
+
+async function dbExportPDF() {
+  const div = document.getElementById('page-dashboard');
+  if (!div) return;
+  showToast('กำลังสร้าง PDF...');
+  try {
+    if (!window.html2canvas) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+    if (!window.jspdf) {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+    const date = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
+    const canvas = await window.html2canvas(div, {
+      scale: 1.5,
+      useCORS: true,
+      backgroundColor: '#f7f7f5',
+      scrollX: 0,
+      scrollY: -window.scrollY,
+      windowWidth: div.scrollWidth,
+      windowHeight: div.scrollHeight,
+    });
+    const { jsPDF } = window.jspdf;
+    const imgW  = canvas.width;
+    const imgH  = canvas.height;
+    const pdfW  = 210; // A4 mm
+    const pdfH  = Math.round(imgH * pdfW / imgW);
+    const pdf   = new jsPDF({ orientation: pdfH > pdfW ? 'p' : 'l', unit: 'mm', format: [pdfW, pdfH] });
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, pdfH);
+    pdf.save(`Sawanbondin_Dashboard_${date}.pdf`);
+    showToast('Export PDF สำเร็จ ✓');
+  } catch(e) {
+    showToast('Export ไม่สำเร็จ: ' + e.message, 'err');
+  }
 }
 
 function dbToggleWh(id, forceOpen) {
