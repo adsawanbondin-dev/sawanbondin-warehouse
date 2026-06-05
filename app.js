@@ -2644,7 +2644,7 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
     <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f5f5f3">
       <div style="display:flex;align-items:center;gap:7px">
         <div style="width:8px;height:8px;border-radius:2px;background:${w.color};flex-shrink:0"></div>
-        <span style="font-size:11px;color:var(--ink2)">${w.label}</span>
+        <span style="font-size:13px;color:var(--ink2)">${w.label}</span>
       </div>
       <span style="font-size:12px;font-weight:600;color:var(--ink)">${w.total.toLocaleString()}</span>
     </div>`).join('');
@@ -2657,12 +2657,12 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f8f8f6">
       <div style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0"></div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:11px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.item_name}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-top:1px">${t.operator_name||'—'} · ${WAREHOUSE_CONFIG[t.pg]?.label||t.pg}</div>
+        <div style="font-size:13px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.item_name}</div>
+        <div style="font-size:11px;color:var(--ink4);margin-top:1px">${t.operator_name||'—'} · ${WAREHOUSE_CONFIG[t.pg]?.label||t.pg}</div>
       </div>
       <div style="flex-shrink:0;text-align:right">
-        <div style="font-size:12px;font-weight:600;color:${isRec?'#3A7D52':'#92600A'}">${isRec?'+':'-'}${t.quantity}</div>
-        <div style="font-size:9px;color:var(--ink4)">${time}</div>
+        <div style="font-size:13px;font-weight:600;color:${isRec?'#3A7D52':'#92600A'}">${isRec?'+':'-'}${t.quantity}</div>
+        <div style="font-size:10px;color:var(--ink4)">${time}</div>
       </div>
     </div>`;
   }).join('') || `<div style="padding:20px;text-align:center;color:var(--ink4);font-size:12px">ไม่มีรายการ</div>`;
@@ -2673,13 +2673,13 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
     const pct   = m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):0;
     return `<div style="padding:9px 14px;border-bottom:1px solid #f8f8f6;display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:11px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-top:2px">${WAREHOUSE_CONFIG[m.pg]?.label||m.pg}</div>
+        <div style="font-size:13px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
+        <div style="font-size:11px;color:var(--ink4);margin-top:2px">${WAREHOUSE_CONFIG[m.pg]?.label||m.pg}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         <div style="width:40px;height:3px;background:#efefed;border-radius:2px;overflow:hidden"><div style="height:100%;background:${isOut?'#C47A7A':'#C4A06A'};width:${pct}%;border-radius:2px"></div></div>
-        <span style="font-size:12px;font-weight:700;color:${isOut?'#A33030':'#92600A'};min-width:28px;text-align:right">${m.stock}</span>
-        <span style="font-size:10px;padding:2px 7px;border-radius:5px;font-weight:500;background:${isOut?'#FDF2F2':'#FEF5E7'};color:${isOut?'#A33030':'#92600A'}">${isOut?'หมด':'ต่ำ'}</span>
+        <span style="font-size:13px;font-weight:700;color:${isOut?'#A33030':'#92600A'};min-width:28px;text-align:right">${m.stock}</span>
+        <span style="font-size:11px;padding:2px 7px;border-radius:5px;font-weight:500;background:${isOut?'#FDF2F2':'#FEF5E7'};color:${isOut?'#A33030':'#92600A'}">${isOut?'หมด':'ต่ำ'}</span>
       </div>
     </div>`;
   }).join('') || `<div style="padding:20px;text-align:center;color:#7BAE95;font-size:12px">✓ ทุกรายการปกติ</div>`;
@@ -2694,10 +2694,10 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
     const sw   = l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}):'—';
     return `<div style="padding:9px 14px;border-bottom:1px solid #f8f8f6;display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:11px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.item_name}</div>
-        <div style="font-size:10px;color:var(--ink4);font-family:monospace;margin-top:2px">Lot ${sw} · เหลือ ${l.stock}</div>
+        <div style="font-size:13px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.item_name}</div>
+        <div style="font-size:11px;color:var(--ink4);font-family:monospace;margin-top:2px">Lot ${sw} · เหลือ ${l.stock}</div>
       </div>
-      <span style="font-size:10px;padding:3px 8px;border-radius:5px;font-weight:600;background:${bg};color:${col};white-space:nowrap;flex-shrink:0">${label}</span>
+      <span style="font-size:11px;padding:3px 8px;border-radius:5px;font-weight:600;background:${bg};color:${col};white-space:nowrap;flex-shrink:0">${label}</span>
     </div>`;
   }).join('') || `<div style="padding:20px;text-align:center;color:#7BAE95;font-size:12px">✓ ไม่มี Lot ใกล้หมดอายุ</div>`;
 
@@ -2725,15 +2725,15 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
     const rows=Object.entries(subcats).map(([cat,mitems])=>`
       <div style="background:#fafaf8;border-top:1px solid #f0f0ee">
         <div style="display:grid;grid-template-columns:1fr 40px;padding:4px 16px 3px 36px;gap:8px">
-          <span style="font-size:9px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.5px;align-self:center">${cat}</span>
-          <span style="font-size:10px;color:var(--ink4);text-align:right">${mitems.reduce((s,m)=>s+m.stock,0).toLocaleString()}</span>
+          <span style="font-size:10px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.5px;align-self:center">${cat}</span>
+          <span style="font-size:11px;color:var(--ink4);text-align:right">${mitems.reduce((s,m)=>s+m.stock,0).toLocaleString()}</span>
         </div>
         <!-- header row -->
         <div style="display:grid;grid-template-columns:1fr 44px 52px 56px 36px;gap:8px;padding:3px 14px 3px 36px;border-top:1px solid #efefed">
-          <span style="font-size:9px;color:var(--ink4)">รายการ</span>
-          <span style="font-size:9px;color:var(--ink4);text-align:center">ระดับ</span>
-          <span style="font-size:9px;color:var(--ink4);text-align:right">Min</span>
-          <span style="font-size:9px;color:var(--ink4);text-align:right">คงเหลือ</span>
+          <span style="font-size:10px;color:var(--ink4)">รายการ</span>
+          <span style="font-size:10px;color:var(--ink4);text-align:center">ระดับ</span>
+          <span style="font-size:10px;color:var(--ink4);text-align:right">Min</span>
+          <span style="font-size:10px;color:var(--ink4);text-align:right">คงเหลือ</span>
           <span></span>
         </div>
         ${mitems.map(m=>{
@@ -2741,17 +2741,17 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
           const pct=m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):null;
           const barC=isOut?'#C47A7A':isLow?'#C4A06A':'#7BAE95';
           const sCol=isOut?'#A33030':isLow?'#92600A':'var(--ink)';
-          const badge=isOut?'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#FDF2F2;color:#A33030;font-weight:500">หมด</span>'
-                     :isLow?'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#FEF5E7;color:#92600A;font-weight:500">ต่ำ</span>':'';
+          const badge=isOut?'<span style="font-size:10px;padding:1px 5px;border-radius:4px;background:#FDF2F2;color:#A33030;font-weight:500">หมด</span>'
+                     :isLow?'<span style="font-size:10px;padding:1px 5px;border-radius:4px;background:#FEF5E7;color:#92600A;font-weight:500">ต่ำ</span>':'';
           return`<div style="display:grid;grid-template-columns:1fr 44px 52px 56px 36px;gap:8px;align-items:center;padding:6px 14px 6px 36px;border-top:1px solid #f8f8f6;transition:background .1s" onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">
             <div style="min-width:0">
-              <div style="font-size:11px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
-              <div style="font-size:9px;color:var(--ink4);font-family:monospace;margin-top:1px">${m.code}</div>
+              <div style="font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
+              <div style="font-size:10px;color:var(--ink4);font-family:monospace;margin-top:1px">${m.code}</div>
             </div>
             <div style="text-align:center">
               ${pct!==null?`<div style="width:36px;height:4px;background:#efefed;border-radius:2px;overflow:hidden;margin:0 auto"><div style="height:100%;background:${barC};width:${pct}%;border-radius:2px"></div></div>`:''}
             </div>
-            <div style="font-size:10px;color:var(--ink4);text-align:right">${m.min>0?m.min:'—'}</div>
+            <div style="font-size:11px;color:var(--ink4);text-align:right">${m.min>0?m.min:'—'}</div>
             <div style="font-size:13px;font-weight:600;color:${sCol};text-align:right">${m.stock.toLocaleString()}</div>
             <div style="text-align:right">${badge}</div>
           </div>`;
@@ -2768,8 +2768,8 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
         <div style="display:flex;align-items:center;gap:9px">
           <i class="ti ti-chevron-right" id="dbwh-chev-${pg}" style="font-size:11px;color:var(--ink4);transition:transform .2s;flex-shrink:0;${openByDefault?'transform:rotate(90deg)':''}"></i>
           <div style="width:8px;height:8px;border-radius:2px;background:${whColors[wi]};flex-shrink:0"></div>
-          <span style="font-size:12px;font-weight:600;color:var(--ink)">${cfg.label}</span>
-          <span style="font-size:10px;color:var(--ink4)">${items.length}${dbWhSearch?`/${allItems.length}`:''} รายการ</span>
+          <span style="font-size:13px;font-weight:600;color:var(--ink)">${cfg.label}</span>
+          <span style="font-size:11px;color:var(--ink4)">${items.length}${dbWhSearch?`/${allItems.length}`:''} รายการ</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:14px;font-weight:700;color:var(--ink)">${total.toLocaleString()}</span>
