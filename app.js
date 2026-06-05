@@ -2928,6 +2928,58 @@ function dbScrollTo(id) {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+async function manualRefresh() {
+  const btn = document.querySelector('[onclick="manualRefresh()"]');
+  const icon = btn?.querySelector('i');
+  if (icon) icon.style.animation = 'spin 0.8s linear infinite';
+  if (btn) btn.style.opacity = '0.5';
+
+  try {
+    await dbLoadItems();
+    // โหลด lots ใหม่สำหรับคลังที่มี lot
+    const lotCodes = masterDB.filter(m=>['raw','finish','matcha','sample'].includes(m.pg)).map(m=>m.code);
+    if (lotCodes.length) {
+      const { data } = await sb.from('lots').select('*').in('item_code', lotCodes).order('lot_sw',{ascending:true});
+      if (data) {
+        // reset lotDB แล้วโหลดใหม่
+        lotCodes.forEach(c => { lotDB[c] = []; });
+        data.forEach(r => {
+          if (!lotDB[r.item_code]) lotDB[r.item_code] = [];
+          if (!lotDB[r.item_code].find(l=>l.id===r.id))
+            lotDB[r.item_code].push({
+              id:r.id, lot_sw:r.lot_sw, lot_supplier:r.lot_supplier||'',
+              stock:parseFloat(r.stock)||0, updated_at:r.updated_at,
+              expiry_date:r.expiry_date||null,
+            });
+        });
+      }
+    }
+    // โหลด transactions ของหน้าปัจจุบัน
+    if (WAREHOUSE_PAGES.includes(curPage)) {
+      const recs = await dbLoadTransactions(curPage);
+      if (recs) txState[curPage].records = recs;
+    }
+    checkAlerts();
+    // re-render หน้าปัจจุบัน
+    if (curPage === 'master') renderMasterContent();
+    else if (WAREHOUSE_PAGES.includes(curPage)) {
+      renderWarehousePage(curPage);
+      renderHistory(curPage);
+    }
+    else if (curPage === 'stockcount') renderStockCountPage();
+    else if (curPage === 'dashboard') renderDashboardPage(
+      document.getElementById('db-from')?.value,
+      document.getElementById('db-to')?.value
+    );
+    showToast('โหลดข้อมูลใหม่สำเร็จ ✓');
+  } catch(e) {
+    showToast('โหลดไม่สำเร็จ: ' + e.message, 'err');
+  } finally {
+    if (icon) icon.style.animation = '';
+    if (btn) btn.style.opacity = '';
+  }
+}
+
 async function dbExportPNG() {
   const div = document.getElementById('page-dashboard');
   if (!div) return;
