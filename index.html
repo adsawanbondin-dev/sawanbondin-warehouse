@@ -367,9 +367,9 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 /* ══ DASHBOARD ══ */
 .db-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px;margin-bottom:16px}
 .db-kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
-.db-kpi-label{font-size:10px;color:var(--ink4);font-weight:500;margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.db-kpi-label{font-size:10px;color:var(--ink3);font-weight:500;margin-bottom:8px;display:flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:.3px}
 .db-kpi-label i{font-size:12px}
-.db-kpi-val{font-size:24px;font-weight:500;color:var(--ink);letter-spacing:-.4px;line-height:1}
+.db-kpi-val{font-size:26px;font-weight:500;color:var(--ink);letter-spacing:-.5px;line-height:1}
 .db-kpi-sub{font-size:10px;color:var(--ink4);margin-top:5px}
 .db-kpi-warn{color:#9a5a00}
 .db-kpi-amber{color:#8a4f0b}
@@ -380,8 +380,8 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .db-two{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 @media(max-width:860px){.db-two{grid-template-columns:1fr}}
 .db-table{width:100%;border-collapse:collapse}
-.db-table th{padding:8px 12px;font-size:9px;color:var(--ink4);font-weight:600;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
-.db-table td{padding:9px 12px;border-bottom:1px solid #f8f8f6;color:var(--ink2);vertical-align:middle;font-size:11px}
+.db-table th{padding:8px 12px;font-size:9px;color:var(--ink3);font-weight:500;text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;background:var(--s2)}
+.db-table td{padding:9px 12px;border-bottom:1px solid var(--line);color:var(--ink2);vertical-align:middle;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .db-table tr:last-child td{border-bottom:none}
 .db-table tr:hover td{background:var(--s2)}
 .db-bar-wrap{height:4px;background:var(--line);border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle}
