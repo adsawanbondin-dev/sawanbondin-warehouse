@@ -1576,7 +1576,30 @@ async function saveEditStock(){ const code=document.getElementById('editStockId'
 function editMinMax(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editMMId').value=code;document.getElementById('editMMName').textContent=m.name;document.getElementById('editMMMin').value=m.min;document.getElementById('editMMMax').value=m.max;document.getElementById('editMinMaxModal').classList.add('show'); }
 async function saveEditMinMax(){ const code=document.getElementById('editMMId').value;const mn=parseFloat(document.getElementById('editMMMin').value);const mx=parseFloat(document.getElementById('editMMMax').value);if(isNaN(mn)||isNaN(mx)){showToast('ค่าไม่ถูกต้อง','err');return;}const m=masterDB.find(x=>x.code===code);if(m){m.min=mn;m.max=mx;await dbUpsertItem(m);}checkAlerts();closeModal('editMinMaxModal');renderMasterContent(); }
 function editName(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editNameId').value=code;document.getElementById('editNameVal').value=m.name;document.getElementById('editNameModal').classList.add('show'); }
-async function saveEditName(){ const code=document.getElementById('editNameId').value;const nm=(document.getElementById('editNameVal').value||'').trim();if(!nm){showToast('กรุณาระบุชื่อ','err');return;}const m=masterDB.find(x=>x.code===code);if(m){m.name=nm;await dbUpsertItem(m);}closeModal('editNameModal');renderMasterContent(); }
+async function saveEditName(){
+  const code = document.getElementById('editNameId').value;
+  const nm   = (document.getElementById('editNameVal').value||'').trim();
+  if(!nm){ showToast('กรุณาระบุชื่อ','err'); return; }
+  const m = masterDB.find(x=>x.code===code);
+  if(m){
+    m.name = nm;
+    await dbUpsertItem(m);
+    // อัปเดตชื่อใน transactions และ lots ด้วย
+    await Promise.all([
+      sb.from('transactions').update({ item_name: nm }).eq('item_code', code),
+      sb.from('lots').update({ item_name: nm }).eq('item_code', code),
+    ]);
+    // อัปเดต txState cache ที่โหลดไว้แล้ว
+    for (const pg of WAREHOUSE_PAGES) {
+      if (txState[pg]?.records) {
+        txState[pg].records.forEach(r => { if(r.code===code) r.item=nm; });
+      }
+    }
+  }
+  closeModal('editNameModal');
+  renderMasterContent();
+  showToast(`เปลี่ยนชื่อเป็น "${nm}" สำเร็จ`);
+}
 function editLoc(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editLocId').value=code;document.getElementById('editLocName').textContent=m.name;document.getElementById('editLocVal').value=locationDB[code]||'';document.getElementById('editLocModal').classList.add('show'); }
 async function saveEditLoc(){ const code=document.getElementById('editLocId').value;const loc=(document.getElementById('editLocVal').value||'').trim();locationDB[code]=loc;const m=masterDB.find(x=>x.code===code);if(m)await dbUpsertItem(m);closeModal('editLocModal');renderMasterContent(); }
 async function deleteMasterItem(code){ if(!confirm('ลบรายการนี้? ข้อมูลจะหายถาวร'))return;masterDB=masterDB.filter(m=>m.code!==code);delete locationDB[code];await dbDeleteItem(code);checkAlerts();renderMasterContent(); }
