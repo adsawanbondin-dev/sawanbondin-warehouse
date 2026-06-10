@@ -170,6 +170,10 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:5px;cursor:pointer"><input type="checkbox" id="ff-qty" checked> จำนวน</label>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ff-balance" checked> ยอดคงเหลือ</label>
       </div>
+    </div><!-- end sb-sec options -->
+  </div><!-- end sidebar -->
+
+  <div class="preview-area">
     <div class="preview-header"><span class="preview-title">ตัวอย่างสติ๊กเกอร์</span><span style="font-size:11px;color:var(--ink3)" id="stickerCount"></span></div>
     <div id="previewArea"><div class="preview-empty"><i class="ti ti-qrcode preview-empty-icon"></i><div class="preview-empty-text">เลือกรายการจากแถบซ้ายเพื่อดูตัวอย่าง</div></div></div>
   </div>
@@ -303,6 +307,7 @@ async function init(){
     container.appendChild(el);
   });
   filterItems();
+  bindFormControls();
 }
 function filterItems(){
   const q=(document.getElementById('searchInput').value||'').toLowerCase();
@@ -423,14 +428,18 @@ function renderPreview(){
   });
 }
 
-document.getElementById('showForm').addEventListener('change', function(){
-  document.getElementById('formOpts').style.display = this.checked ? 'block' : 'none';
-  renderPreview();
-});
-['ff-date','ff-name','ff-qty','ff-balance'].forEach(id=>{
-  const el = document.getElementById(id);
-  if(el) el.addEventListener('change', renderPreview);
-});
+// bind form controls หลัง DOM พร้อม
+function bindFormControls(){
+  const sf = document.getElementById('showForm');
+  if(sf) sf.addEventListener('change', function(){
+    document.getElementById('formOpts').style.display = this.checked ? 'block' : 'none';
+    renderPreview();
+  });
+  ['ff-date','ff-name','ff-qty','ff-balance'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('change', renderPreview);
+  });
+}
 
 function doPrint(){if(!selected.size&&!lotSelected.size){alert('กรุณาเลือกรายการหรือ Lot ก่อนพิมพ์');return;}window.print();}
 
