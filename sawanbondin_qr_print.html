@@ -76,13 +76,21 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .lot-load-btn{width:100%;padding:7px;background:var(--acc);border:none;border-radius:var(--r);color:#fff;font-family:inherit;font-size:12px;cursor:pointer;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:5px}
 .lot-load-btn:hover{background:#1a3a6e}
 .lot-load-btn:disabled{background:#8e8e93;cursor:not-allowed}
+/* ── Form fields บน sticker ── */
+.sticker-form{width:100%;margin-top:6px;border-top:0.5px solid #d0d0d0;padding-top:5px}
+.form-row{display:flex;align-items:flex-end;gap:4px;margin-bottom:5px}
+.form-row:last-child{margin-bottom:0}
+.form-lbl{font-size:8px;color:#6e6e73;white-space:nowrap;min-width:52px;padding-bottom:2px;line-height:1.2}
+.form-line{flex:1;border-bottom:0.75px solid #aaa;min-height:14px}
 @media print{
   .topbar,.sidebar,.preview-header{display:none!important}
   .workspace{display:block}
   .preview-area{padding:0}
   .sheet{border:none;box-shadow:none;border-radius:0;padding:8mm}
   body{background:#fff}
-  .sticker{page-break-inside:avoid}
+  .sticker{page-break-inside:avoid;break-inside:avoid}
+  .form-lbl{color:#000}
+  .form-box{color:transparent}
 }
 @media(max-width:768px){.workspace{grid-template-columns:1fr;grid-template-rows:auto 1fr}.sidebar{height:auto;position:static;border-right:none;border-bottom:1px solid var(--line)}}
 </style>
@@ -149,10 +157,19 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       <div class="opt-row"><span class="opt-label">คอลัมน์</span><div class="opt-ctrl"><button class="opt-btn" id="c2" onclick="setCols(2)">2</button><button class="opt-btn active" id="c3" onclick="setCols(3)">3</button><button class="opt-btn" id="c4" onclick="setCols(4)">4</button><button class="opt-btn" id="c5" onclick="setCols(5)">5</button></div></div>
       <div class="opt-row"><span class="opt-label">ขนาด QR (px)</span><input class="opt-num" id="qrSize" type="number" value="80" min="48" max="160" step="8" onchange="renderPreview()"></div>
       <div class="opt-row"><span class="opt-label">จำนวนชุด</span><input class="opt-num" id="copies" type="number" value="1" min="1" max="20" onchange="renderPreview()"></div>
-    </div>
-  </div>
-
-  <div class="preview-area">
+      <div class="opt-row" style="border-top:1px solid var(--line);padding-top:8px;margin-top:4px">
+        <span class="opt-label" style="font-weight:500">แบบฟอร์มบันทึก</span>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px">
+          <input type="checkbox" id="showForm" style="width:14px;height:14px;cursor:pointer"> แสดง
+        </label>
+      </div>
+      <div id="formOpts" style="display:none;background:var(--s2);border-radius:var(--r);padding:8px;margin-top:4px;border:1px solid var(--line)">
+        <div style="font-size:10px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">ช่องที่ต้องการ</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:5px;cursor:pointer"><input type="checkbox" id="ff-date" checked> วันที่</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:5px;cursor:pointer"><input type="checkbox" id="ff-name" checked> ชื่อ (ผู้รับ/เบิก)</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:5px;cursor:pointer"><input type="checkbox" id="ff-qty" checked> จำนวน</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ff-balance" checked> ยอดคงเหลือ</label>
+      </div>
     <div class="preview-header"><span class="preview-title">ตัวอย่างสติ๊กเกอร์</span><span style="font-size:11px;color:var(--ink3)" id="stickerCount"></span></div>
     <div id="previewArea"><div class="preview-empty"><i class="ti ti-qrcode preview-empty-icon"></i><div class="preview-empty-text">เลือกรายการจากแถบซ้ายเพื่อดูตัวอย่าง</div></div></div>
   </div>
@@ -364,6 +381,32 @@ function renderPreview(){
     cd.textContent=item.itemCode||item.code.split('__LOT__')[0];
     div.appendChild(cd);
     if(showBrand){const br=document.createElement('div');br.className='sticker-brand';br.textContent='SAWANBONDIN';div.appendChild(br);}
+
+    // ── แบบฟอร์มบันทึก ──
+    const showForm    = document.getElementById('showForm')?.checked;
+    if(showForm){
+      const ffDate    = document.getElementById('ff-date')?.checked;
+      const ffName    = document.getElementById('ff-name')?.checked;
+      const ffQty     = document.getElementById('ff-qty')?.checked;
+      const ffBalance = document.getElementById('ff-balance')?.checked;
+      const fields = [];
+      if(ffDate)    fields.push('วันที่');
+      if(ffName)    fields.push('ชื่อ');
+      if(ffQty)     fields.push('จำนวน');
+      if(ffBalance) fields.push('ยอดคงเหลือ');
+      if(fields.length){
+        const form = document.createElement('div');
+        form.className = 'sticker-form';
+        fields.forEach(lbl=>{
+          const row = document.createElement('div');
+          row.className = 'form-row';
+          row.innerHTML = `<span class="form-lbl">${lbl}</span><div class="form-line"></div>`;
+          form.appendChild(row);
+        });
+        div.appendChild(form);
+      }
+    }
+
     grid.appendChild(div);
   });
   requestAnimationFrame(()=>{
@@ -379,6 +422,15 @@ function renderPreview(){
     }
   });
 }
+
+document.getElementById('showForm').addEventListener('change', function(){
+  document.getElementById('formOpts').style.display = this.checked ? 'block' : 'none';
+  renderPreview();
+});
+['ff-date','ff-name','ff-qty','ff-balance'].forEach(id=>{
+  const el = document.getElementById(id);
+  if(el) el.addEventListener('change', renderPreview);
+});
 
 function doPrint(){if(!selected.size&&!lotSelected.size){alert('กรุณาเลือกรายการหรือ Lot ก่อนพิมพ์');return;}window.print();}
 
