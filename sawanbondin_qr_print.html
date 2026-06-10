@@ -82,15 +82,27 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .form-row:last-child{margin-bottom:0}
 .form-lbl{font-size:8px;color:#6e6e73;white-space:nowrap;min-width:52px;padding-bottom:2px;line-height:1.2}
 .form-line{flex:1;border-bottom:0.75px solid #aaa;min-height:14px}
+/* ── Log Table ── */
+.log-table-wrap{margin-top:8px;background:#fff;border-radius:var(--rlg);border:1px solid var(--line);padding:16px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+.log-table-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.log-table-title{font-size:13px;font-weight:500;color:var(--ink2)}
+.log-table{width:100%;border-collapse:collapse;font-size:11px}
+.log-table th{background:#f5f5f3;padding:7px 10px;border:1px solid #ddd;font-weight:600;color:#3c3c3e;text-align:center;white-space:nowrap;font-size:10px;text-transform:uppercase;letter-spacing:.3px}
+.log-table td{border:1px solid #e0e0de;height:28px;padding:3px 8px;vertical-align:middle}
+.log-table td.item-col{font-size:10px;color:#3c3c3e;white-space:nowrap;width:1%;padding-right:12px}
+.log-table tr:nth-child(even) td{background:#fafaf8}
 @media print{
-  .topbar,.sidebar,.preview-header{display:none!important}
+  .topbar,.sidebar,.preview-header,.log-table-header button{display:none!important}
   .workspace{display:block}
   .preview-area{padding:0}
-  .sheet{border:none;box-shadow:none;border-radius:0;padding:8mm}
+  .sheet{border:none;box-shadow:none;border-radius:0;padding:6mm}
+  .log-table-wrap{border:none;box-shadow:none;padding:0;border-radius:0;margin-top:6mm}
   body{background:#fff}
   .sticker{page-break-inside:avoid;break-inside:avoid}
   .form-lbl{color:#000}
-  .form-box{color:transparent}
+  .log-table{font-size:10px}
+  .log-table th{font-size:9px;padding:5px 8px}
+  .log-table td{height:24px}
 }
 @media(max-width:768px){.workspace{grid-template-columns:1fr;grid-template-rows:auto 1fr}.sidebar{height:auto;position:static;border-right:none;border-bottom:1px solid var(--line)}}
 </style>
@@ -158,17 +170,25 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       <div class="opt-row"><span class="opt-label">ขนาด QR (px)</span><input class="opt-num" id="qrSize" type="number" value="80" min="48" max="160" step="8" onchange="renderPreview()"></div>
       <div class="opt-row"><span class="opt-label">จำนวนชุด</span><input class="opt-num" id="copies" type="number" value="1" min="1" max="20" onchange="renderPreview()"></div>
       <div class="opt-row" style="border-top:1px solid var(--line);padding-top:8px;margin-top:4px">
-        <span class="opt-label" style="font-weight:500">แบบฟอร์มบันทึก</span>
+        <span class="opt-label" style="font-weight:500">ตารางบันทึก</span>
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px">
           <input type="checkbox" id="showForm" style="width:14px;height:14px;cursor:pointer"> แสดง
         </label>
       </div>
       <div id="formOpts" style="display:none;background:var(--s2);border-radius:var(--r);padding:8px;margin-top:4px;border:1px solid var(--line)">
-        <div style="font-size:10px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">ช่องที่ต้องการ</div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:5px;cursor:pointer"><input type="checkbox" id="ff-date" checked> วันที่</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:5px;cursor:pointer"><input type="checkbox" id="ff-name" checked> ชื่อ (ผู้รับ/เบิก)</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:5px;cursor:pointer"><input type="checkbox" id="ff-qty" checked> จำนวน</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ff-balance" checked> ยอดคงเหลือ</label>
+        <div style="font-size:10px;font-weight:600;color:var(--ink3);letter-spacing:.4px;margin-bottom:6px">ตั้งค่าตาราง</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+          <span style="font-size:12px;color:var(--ink2)">จำนวนแถว</span>
+          <input type="number" id="logRows" value="15" min="5" max="50" style="width:52px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;font-size:12px;text-align:center;outline:none">
+        </div>
+        <div style="font-size:10px;font-weight:600;color:var(--ink3);letter-spacing:.4px;margin:7px 0 5px">คอลัมน์</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-date" checked> วันที่</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-action" checked> ประเภท (รับ/เบิก/คืน)</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-name" checked> ชื่อผู้ทำรายการ</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-qty" checked> จำนวน</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-balance" checked> ยอดคงเหลือ</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-lot"> Lot SW</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ff-note"> หมายเหตุ</label>
       </div>
     </div><!-- end sb-sec options -->
   </div><!-- end sidebar -->
@@ -425,7 +445,71 @@ function renderPreview(){
         if(svg){try{JsBarcode(svg,item.itemCode||item.code.split('__LOT__')[0],{format:'CODE128',width:1.5,height:36,displayValue:true,fontSize:9,lineColor:isDark?'#fff':'#1a1a1c',background:isDark?'#1a1a1c':'#fff',margin:3});}catch(e){}}
       });
     }
+    renderLogTable();
   });
+}
+
+function renderLogTable(){
+  const area = document.getElementById('previewArea');
+  const showForm = document.getElementById('showForm')?.checked;
+  if(!showForm){ 
+    const existing = document.getElementById('logTableWrap');
+    if(existing) existing.remove();
+    return;
+  }
+  const cols = [];
+  if(document.getElementById('ff-date')?.checked)    cols.push({key:'date',  label:'วันที่',                width:'80px'});
+  if(document.getElementById('ff-action')?.checked)  cols.push({key:'action',label:'ประเภท',              width:'80px'});
+  if(document.getElementById('ff-name')?.checked)    cols.push({key:'name',  label:'ผู้ทำรายการ',         width:'auto'});
+  if(document.getElementById('ff-qty')?.checked)     cols.push({key:'qty',   label:'จำนวน',               width:'60px'});
+  if(document.getElementById('ff-balance')?.checked) cols.push({key:'bal',   label:'ยอดคงเหลือ',          width:'80px'});
+  if(document.getElementById('ff-lot')?.checked)     cols.push({key:'lot',   label:'Lot SW',              width:'80px'});
+  if(document.getElementById('ff-note')?.checked)    cols.push({key:'note',  label:'หมายเหตุ',            width:'auto'});
+  if(!cols.length) return;
+
+  const numRows = parseInt(document.getElementById('logRows')?.value)||15;
+  // รายการที่เลือก
+  const itemsList = CATALOG.filter(i=>selected.has(i.code));
+  const lotsList  = lotCatalog.filter(l=>lotSelected.has(l.code));
+  const allItems  = [...itemsList,...lotsList];
+
+  let existing = document.getElementById('logTableWrap');
+  if(!existing){
+    existing = document.createElement('div');
+    existing.id = 'logTableWrap';
+    area.appendChild(existing);
+  }
+
+  let html2 = '';
+  if(!allItems.length){
+    // ตารางเดี่ยว ไม่ระบุสินค้า
+    html2 += buildLogTableHTML('บันทึกรายการรับ-เบิก-คืน',cols,numRows);
+  } else {
+    allItems.forEach(item=>{
+      const swStr = item.lotSW ? new Date(item.lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+      const subTitle = item.type==='lot' ? `Lot SW: ${swStr} · คงเหลือ ${item.stock}` : item.code;
+      html2 += buildLogTableHTML(item.name, cols, numRows, subTitle);
+    });
+  }
+  existing.innerHTML = html2;
+}
+
+function buildLogTableHTML(title, cols, numRows, subtitle=''){
+  const thCols = cols.map(c=>`<th style="width:${c.width}">${c.label}</th>`).join('');
+  const rows = Array.from({length:numRows},()=>`<tr>${cols.map(()=>'<td></td>').join('')}</tr>`).join('');
+  return `<div class="log-table-wrap">
+    <div class="log-table-header">
+      <div>
+        <div class="log-table-title">${title}</div>
+        ${subtitle?`<div style="font-size:10px;color:var(--ink3);margin-top:2px;font-family:monospace">${subtitle}</div>`:''}
+      </div>
+      <div style="font-size:11px;color:var(--ink3)">${numRows} แถว</div>
+    </div>
+    <table class="log-table">
+      <thead><tr><th style="width:24px">#</th>${thCols}</tr></thead>
+      <tbody>${Array.from({length:numRows},(_,i)=>`<tr><td class="item-col" style="text-align:center;color:var(--ink4)">${i+1}</td>${cols.map(()=>'<td></td>').join('')}</tr>`).join('')}</tbody>
+    </table>
+  </div>`;
 }
 
 // bind form controls หลัง DOM พร้อม
@@ -434,10 +518,11 @@ function bindFormControls(){
   if(sf) sf.addEventListener('change', function(){
     document.getElementById('formOpts').style.display = this.checked ? 'block' : 'none';
     renderPreview();
+    renderLogTable();
   });
-  ['ff-date','ff-name','ff-qty','ff-balance'].forEach(id=>{
+  ['ff-date','ff-action','ff-name','ff-qty','ff-balance','ff-lot','ff-note','logRows'].forEach(id=>{
     const el = document.getElementById(id);
-    if(el) el.addEventListener('change', renderPreview);
+    if(el) el.addEventListener('change', ()=>{ renderPreview(); renderLogTable(); });
   });
 }
 
