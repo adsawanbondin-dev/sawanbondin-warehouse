@@ -83,20 +83,23 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .form-lbl{font-size:8px;color:#6e6e73;white-space:nowrap;min-width:52px;padding-bottom:2px;line-height:1.2}
 .form-line{flex:1;border-bottom:0.75px solid #aaa;min-height:14px}
 /* ── Log Table ── */
-.log-table-wrap{margin-top:8px;background:#fff;border-radius:var(--rlg);border:1px solid var(--line);padding:16px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
-.log-table-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.log-table-title{font-size:13px;font-weight:500;color:var(--ink2)}
-.log-table{width:100%;border-collapse:collapse;font-size:11px}
-.log-table th{background:#f5f5f3;padding:7px 10px;border:1px solid #ddd;font-weight:600;color:#3c3c3e;text-align:center;white-space:nowrap;font-size:10px;text-transform:uppercase;letter-spacing:.3px}
-.log-table td{border:1px solid #e0e0de;height:28px;padding:3px 8px;vertical-align:middle}
-.log-table td.item-col{font-size:10px;color:#3c3c3e;white-space:nowrap;width:1%;padding-right:12px}
+.log-table-wrap{margin-top:10px;background:#fff;border-radius:8px;border:1px solid var(--line);padding:10px 12px;box-shadow:0 1px 6px rgba(0,0,0,.05);display:inline-block}
+.log-table-header{margin-bottom:6px}
+.log-table-title{font-size:11px;font-weight:600;color:var(--ink2)}
+.log-table-sub{font-size:9px;color:var(--ink3);font-family:monospace;margin-top:1px}
+.log-table{border-collapse:collapse;font-size:10px}
+.log-table th{background:#f5f5f3;padding:4px 7px;border:0.5px solid #ccc;font-weight:600;color:#3c3c3e;text-align:center;white-space:nowrap;font-size:9px;letter-spacing:.2px}
+.log-table td{border:0.5px solid #ddd;height:22px;padding:2px 6px;vertical-align:middle}
+.log-table td.num-col{text-align:center;color:#aeaeb2;font-size:9px;width:16px}
 .log-table tr:nth-child(even) td{background:#fafaf8}
+.log-tables-grid{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
 @media print{
   .topbar,.sidebar,.preview-header,.log-table-header button{display:none!important}
   .workspace{display:block}
   .preview-area{padding:0}
   .sheet{border:none;box-shadow:none;border-radius:0;padding:6mm}
-  .log-table-wrap{border:none;box-shadow:none;padding:0;border-radius:0;margin-top:6mm}
+  .log-table-wrap{border:0.5px solid #ccc;box-shadow:none;padding:8px 10px;border-radius:4px;margin:0}
+  .log-tables-grid{display:flex;flex-wrap:wrap;gap:8px;padding:6mm 0 0}
   body{background:#fff}
   .sticker{page-break-inside:avoid;break-inside:avoid}
   .form-lbl{color:#000}
@@ -458,13 +461,13 @@ function renderLogTable(){
     return;
   }
   const cols = [];
-  if(document.getElementById('ff-date')?.checked)    cols.push({key:'date',  label:'วันที่',                width:'80px'});
-  if(document.getElementById('ff-action')?.checked)  cols.push({key:'action',label:'ประเภท',              width:'80px'});
-  if(document.getElementById('ff-name')?.checked)    cols.push({key:'name',  label:'ผู้ทำรายการ',         width:'auto'});
-  if(document.getElementById('ff-qty')?.checked)     cols.push({key:'qty',   label:'จำนวน',               width:'60px'});
-  if(document.getElementById('ff-balance')?.checked) cols.push({key:'bal',   label:'ยอดคงเหลือ',          width:'80px'});
-  if(document.getElementById('ff-lot')?.checked)     cols.push({key:'lot',   label:'Lot SW',              width:'80px'});
-  if(document.getElementById('ff-note')?.checked)    cols.push({key:'note',  label:'หมายเหตุ',            width:'auto'});
+  if(document.getElementById('ff-date')?.checked)    cols.push({key:'date',  label:'วันที่',       width:'60px', maxW:'70px'});
+  if(document.getElementById('ff-action')?.checked)  cols.push({key:'action',label:'ประเภท',       width:'50px', maxW:'60px'});
+  if(document.getElementById('ff-name')?.checked)    cols.push({key:'name',  label:'ชื่อ',         width:'60px', maxW:'80px'});
+  if(document.getElementById('ff-qty')?.checked)     cols.push({key:'qty',   label:'จำนวน',        width:'44px', maxW:'52px'});
+  if(document.getElementById('ff-balance')?.checked) cols.push({key:'bal',   label:'คงเหลือ',      width:'50px', maxW:'60px'});
+  if(document.getElementById('ff-lot')?.checked)     cols.push({key:'lot',   label:'Lot SW',       width:'56px', maxW:'64px'});
+  if(document.getElementById('ff-note')?.checked)    cols.push({key:'note',  label:'หมายเหตุ',     width:'60px', maxW:'80px'});
   if(!cols.length) return;
 
   const numRows = parseInt(document.getElementById('logRows')?.value)||15;
@@ -491,23 +494,19 @@ function renderLogTable(){
       html2 += buildLogTableHTML(item.name, cols, numRows, subTitle);
     });
   }
-  existing.innerHTML = html2;
+  existing.innerHTML = `<div class="log-tables-grid">${html2}</div>`;
 }
 
 function buildLogTableHTML(title, cols, numRows, subtitle=''){
-  const thCols = cols.map(c=>`<th style="width:${c.width}">${c.label}</th>`).join('');
-  const rows = Array.from({length:numRows},()=>`<tr>${cols.map(()=>'<td></td>').join('')}</tr>`).join('');
+  const thCols = cols.map(c=>`<th style="min-width:${c.width};max-width:${c.maxW||c.width}">${c.label}</th>`).join('');
   return `<div class="log-table-wrap">
     <div class="log-table-header">
-      <div>
-        <div class="log-table-title">${title}</div>
-        ${subtitle?`<div style="font-size:10px;color:var(--ink3);margin-top:2px;font-family:monospace">${subtitle}</div>`:''}
-      </div>
-      <div style="font-size:11px;color:var(--ink3)">${numRows} แถว</div>
+      <div class="log-table-title">${title}</div>
+      ${subtitle?`<div class="log-table-sub">${subtitle}</div>`:''}
     </div>
     <table class="log-table">
-      <thead><tr><th style="width:24px">#</th>${thCols}</tr></thead>
-      <tbody>${Array.from({length:numRows},(_,i)=>`<tr><td class="item-col" style="text-align:center;color:var(--ink4)">${i+1}</td>${cols.map(()=>'<td></td>').join('')}</tr>`).join('')}</tbody>
+      <thead><tr><th style="width:16px">#</th>${thCols}</tr></thead>
+      <tbody>${Array.from({length:numRows},(_,i)=>`<tr><td class="num-col">${i+1}</td>${cols.map(()=>'<td></td>').join('')}</tr>`).join('')}</tbody>
     </table>
   </div>`;
 }
