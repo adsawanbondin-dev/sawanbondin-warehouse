@@ -76,30 +76,23 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .lot-load-btn{width:100%;padding:7px;background:var(--acc);border:none;border-radius:var(--r);color:#fff;font-family:inherit;font-size:12px;cursor:pointer;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:5px}
 .lot-load-btn:hover{background:#1a3a6e}
 .lot-load-btn:disabled{background:#8e8e93;cursor:not-allowed}
-/* ── Form fields บน sticker ── */
-.sticker-form{width:100%;margin-top:6px;border-top:0.5px solid #d0d0d0;padding-top:5px}
-.form-row{display:flex;align-items:flex-end;gap:4px;margin-bottom:5px}
-.form-row:last-child{margin-bottom:0}
-.form-lbl{font-size:8px;color:#6e6e73;white-space:nowrap;min-width:52px;padding-bottom:2px;line-height:1.2}
-.form-line{flex:1;border-bottom:0.75px solid #aaa;min-height:14px}
 /* ── Log Table ── */
-.log-table-wrap{margin-top:10px;background:#fff;border-radius:8px;border:1px solid var(--line);padding:10px 12px;box-shadow:0 1px 6px rgba(0,0,0,.05);display:inline-block}
-.log-table-header{margin-bottom:6px}
-.log-table-title{font-size:11px;font-weight:600;color:var(--ink2)}
-.log-table-sub{font-size:9px;color:var(--ink3);font-family:monospace;margin-top:1px}
-.log-table{border-collapse:collapse;font-size:10px}
-.log-table th{background:#f5f5f3;padding:4px 7px;border:0.5px solid #ccc;font-weight:600;color:#3c3c3e;text-align:center;white-space:nowrap;font-size:9px;letter-spacing:.2px}
-.log-table td{border:0.5px solid #ddd;height:22px;padding:2px 6px;vertical-align:middle}
-.log-table td.num-col{text-align:center;color:#aeaeb2;font-size:9px;width:16px}
+.log-table-wrap{background:#fff;border-radius:4px;border:0.5px solid #ccc;padding:5px 6px;display:flex;flex-direction:column;break-inside:avoid}
+.log-table-header{margin-bottom:4px;text-align:center}
+.log-table-title{font-size:10px;font-weight:600;color:#1c1c1e;line-height:1.25;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.log-table-sub{font-size:8px;color:#8e8e93;font-family:monospace;margin-top:1px}
+.log-table{width:100%;border-collapse:collapse;font-size:9px;table-layout:fixed}
+.log-table th{background:#f5f5f3;padding:3px 2px;border:0.5px solid #ccc;font-weight:600;color:#3c3c3e;text-align:center;white-space:nowrap;font-size:8px;overflow:hidden;text-overflow:ellipsis}
+.log-table td{border:0.5px solid #ddd;height:20px;padding:1px 3px;vertical-align:middle}
+.log-table td.num-col{text-align:center;color:#c0c0c0;font-size:8px;width:14px}
 .log-table tr:nth-child(even) td{background:#fafaf8}
-.log-tables-grid{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
+.log-tables-grid{display:grid;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed #ddd}
 @media print{
   .topbar,.sidebar,.preview-header,.log-table-header button{display:none!important}
   .workspace{display:block}
   .preview-area{padding:0}
   .sheet{border:none;box-shadow:none;border-radius:0;padding:6mm}
-  .log-table-wrap{border:0.5px solid #ccc;box-shadow:none;padding:8px 10px;border-radius:4px;margin:0}
-  .log-tables-grid{display:flex;flex-wrap:wrap;gap:8px;padding:6mm 0 0}
+  .log-tables-grid{padding:6mm 0 0;page-break-before:auto}
   body{background:#fff}
   .sticker{page-break-inside:avoid;break-inside:avoid}
   .form-lbl{color:#000}
@@ -410,31 +403,6 @@ function renderPreview(){
     div.appendChild(cd);
     if(showBrand){const br=document.createElement('div');br.className='sticker-brand';br.textContent='SAWANBONDIN';div.appendChild(br);}
 
-    // ── แบบฟอร์มบันทึก ──
-    const showForm    = document.getElementById('showForm')?.checked;
-    if(showForm){
-      const ffDate    = document.getElementById('ff-date')?.checked;
-      const ffName    = document.getElementById('ff-name')?.checked;
-      const ffQty     = document.getElementById('ff-qty')?.checked;
-      const ffBalance = document.getElementById('ff-balance')?.checked;
-      const fields = [];
-      if(ffDate)    fields.push('วันที่');
-      if(ffName)    fields.push('ชื่อ');
-      if(ffQty)     fields.push('จำนวน');
-      if(ffBalance) fields.push('ยอดคงเหลือ');
-      if(fields.length){
-        const form = document.createElement('div');
-        form.className = 'sticker-form';
-        fields.forEach(lbl=>{
-          const row = document.createElement('div');
-          row.className = 'form-row';
-          row.innerHTML = `<span class="form-lbl">${lbl}</span><div class="form-line"></div>`;
-          form.appendChild(row);
-        });
-        div.appendChild(form);
-      }
-    }
-
     grid.appendChild(div);
   });
   requestAnimationFrame(()=>{
@@ -453,22 +421,23 @@ function renderPreview(){
 }
 
 function renderLogTable(){
-  const area = document.getElementById('previewArea');
+  const sheet = document.querySelector('.sheet');
   const showForm = document.getElementById('showForm')?.checked;
-  if(!showForm){ 
+  if(!sheet) return;
+  if(!showForm){
     const existing = document.getElementById('logTableWrap');
     if(existing) existing.remove();
     return;
   }
-  const cols = [];
-  if(document.getElementById('ff-date')?.checked)    cols.push({key:'date',  label:'วันที่',       width:'60px', maxW:'70px'});
-  if(document.getElementById('ff-action')?.checked)  cols.push({key:'action',label:'ประเภท',       width:'50px', maxW:'60px'});
-  if(document.getElementById('ff-name')?.checked)    cols.push({key:'name',  label:'ชื่อ',         width:'60px', maxW:'80px'});
-  if(document.getElementById('ff-qty')?.checked)     cols.push({key:'qty',   label:'จำนวน',        width:'44px', maxW:'52px'});
-  if(document.getElementById('ff-balance')?.checked) cols.push({key:'bal',   label:'คงเหลือ',      width:'50px', maxW:'60px'});
-  if(document.getElementById('ff-lot')?.checked)     cols.push({key:'lot',   label:'Lot SW',       width:'56px', maxW:'64px'});
-  if(document.getElementById('ff-note')?.checked)    cols.push({key:'note',  label:'หมายเหตุ',     width:'60px', maxW:'80px'});
-  if(!cols.length) return;
+  const logCols = [];
+  if(document.getElementById('ff-date')?.checked)    logCols.push({key:'date',  label:'วันที่'});
+  if(document.getElementById('ff-action')?.checked)  logCols.push({key:'action',label:'ประเภท'});
+  if(document.getElementById('ff-name')?.checked)    logCols.push({key:'name',  label:'ชื่อ'});
+  if(document.getElementById('ff-qty')?.checked)     logCols.push({key:'qty',   label:'จำนวน'});
+  if(document.getElementById('ff-balance')?.checked) logCols.push({key:'bal',   label:'คงเหลือ'});
+  if(document.getElementById('ff-lot')?.checked)     logCols.push({key:'lot',   label:'Lot'});
+  if(document.getElementById('ff-note')?.checked)    logCols.push({key:'note',  label:'หมายเหตุ'});
+  if(!logCols.length) return;
 
   const numRows = parseInt(document.getElementById('logRows')?.value)||15;
   // รายการที่เลือก
@@ -480,32 +449,34 @@ function renderLogTable(){
   if(!existing){
     existing = document.createElement('div');
     existing.id = 'logTableWrap';
-    area.appendChild(existing);
+    sheet.appendChild(existing);
   }
+
+  // ใช้ grid columns เดียวกับ sticker grid เพื่อให้ความกว้างตารางตรงกับ 1 sticker
+  const stickerCols = cols; // global variable, 2-5, set via setCols()
 
   let html2 = '';
   if(!allItems.length){
-    // ตารางเดี่ยว ไม่ระบุสินค้า
-    html2 += buildLogTableHTML('บันทึกรายการรับ-เบิก-คืน',cols,numRows);
+    html2 += buildLogTableHTML('บันทึกรายการรับ-เบิก-คืน',logCols,numRows);
   } else {
     allItems.forEach(item=>{
       const swStr = item.lotSW ? new Date(item.lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
-      const subTitle = item.type==='lot' ? `Lot SW: ${swStr} · คงเหลือ ${item.stock}` : item.code;
-      html2 += buildLogTableHTML(item.name, cols, numRows, subTitle);
+      const subTitle = item.type==='lot' ? `Lot ${swStr} · เหลือ ${item.stock}` : item.code;
+      html2 += buildLogTableHTML(item.name, logCols, numRows, subTitle);
     });
   }
-  existing.innerHTML = `<div class="log-tables-grid">${html2}</div>`;
+  existing.innerHTML = `<div class="log-tables-grid cols-${stickerCols}">${html2}</div>`;
 }
 
 function buildLogTableHTML(title, cols, numRows, subtitle=''){
-  const thCols = cols.map(c=>`<th style="min-width:${c.width};max-width:${c.maxW||c.width}">${c.label}</th>`).join('');
+  const thCols = cols.map(c=>`<th>${c.label}</th>`).join('');
   return `<div class="log-table-wrap">
     <div class="log-table-header">
-      <div class="log-table-title">${title}</div>
+      <div class="log-table-title" title="${title}">${title}</div>
       ${subtitle?`<div class="log-table-sub">${subtitle}</div>`:''}
     </div>
     <table class="log-table">
-      <thead><tr><th style="width:16px">#</th>${thCols}</tr></thead>
+      <thead><tr><th style="width:14px">#</th>${thCols}</tr></thead>
       <tbody>${Array.from({length:numRows},(_,i)=>`<tr><td class="num-col">${i+1}</td>${cols.map(()=>'<td></td>').join('')}</tr>`).join('')}</tbody>
     </table>
   </div>`;
