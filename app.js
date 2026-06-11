@@ -469,7 +469,14 @@ function handleScanResult(raw, pg) {
     // autofill lot picker
     const pickerList = document.getElementById(pg+'-lot-picker-list');
     if (pickerList && (pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')) {
-      buildLotPickerHtml(m.code, pg).then(html => { pickerList.innerHTML = html; });
+      buildLotPickerHtml(m.code, pg).then(html => {
+        pickerList.innerHTML = html;
+        const action = txState[pg]?.action;
+        if (action==='withdraw'||action==='return_good'||action==='return_bad') {
+          const first = pickerList.querySelector('.lot-select-item');
+          if (first) pickLot(first, pg, first.dataset.lot);
+        }
+      });
     }
   }
 
@@ -1136,6 +1143,18 @@ function switchAction(pg, action) {
       if (o.textContent.trim()===sv.dept) o.classList.add('sel');
     });
   }
+  // ── ถ้ามีรายการที่เลือกอยู่แล้ว และ action เป็นเบิก/คืน → โหลด Lot picker + auto-select ──
+  if (sv.ival && (pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')) {
+    const m = masterDB.find(x=>x.code===sv.ival || x.name===sv.idisp);
+    const pickerList = document.getElementById(pg+'-lot-picker-list');
+    if (m && pickerList && (action==='withdraw'||action==='return_good'||action==='return_bad')) {
+      buildLotPickerHtml(m.code, pg).then(html => {
+        pickerList.innerHTML = html;
+        const first = pickerList.querySelector('.lot-select-item');
+        if (first) pickLot(first, pg, first.dataset.lot);
+      });
+    }
+  }
 }
 function resetForm(pg) {
   const a = txState[pg].action;
@@ -1193,7 +1212,15 @@ function selItem(pg, item, code) {
   const pickerList=document.getElementById(pg+'-lot-picker-list');
   if(m&&pickerList&&(pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')) {
     pickerList.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด Lot...</div>';
-    buildLotPickerHtml(m.code,pg).then(html=>{ pickerList.innerHTML=html; });
+    buildLotPickerHtml(m.code,pg).then(html=>{
+      pickerList.innerHTML=html;
+      // ── auto-select Lot แรก (FIFO เก่าสุด) สำหรับ เบิก/คืน ──
+      const action = txState[pg]?.action;
+      if (action==='withdraw'||action==='return_good'||action==='return_bad') {
+        const first = pickerList.querySelector('.lot-select-item');
+        if (first) pickLot(first, pg, first.dataset.lot);
+      }
+    });
   }
 }
 document.addEventListener('click', e => {
