@@ -214,10 +214,11 @@ async function dbInsertTransaction(rec) {
   // ข้อ 5: ตรวจสอบ offline
   if (!navigator.onLine) {
     addToOfflineQueue(payload);
-    return;
+    return null;
   }
-  const { error } = await sb.from('transactions').insert(payload);
-  if (error) console.error('dbInsertTransaction:', error.message);
+  const { data, error } = await sb.from('transactions').insert(payload).select('id').single();
+  if (error) { console.error('dbInsertTransaction:', error.message); return null; }
+  return data?.id ?? null;
 }
 
 async function dbLoadTransactions(pg) {
@@ -226,6 +227,7 @@ async function dbLoadTransactions(pg) {
     .order('created_at', { ascending:false }).limit(200);
   if (error) { console.error('dbLoadTx:', error.message); return []; }
   return (data||[]).map(r => ({
+    id: r.id,
     time: new Date(r.created_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}),
     timeDetail: new Date(r.created_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),
     type:r.action_type, typeLabel:ACTION_LABELS[r.action_type]||r.action_type,
@@ -543,6 +545,214 @@ function getAlertItems(pg) {
     return m.stock < m.min;                  // ต่ำกว่า Min (ไม่รวม stock === min)
   });
 }
+/* ═══════════════════════════════════════════
+   HISTORY EDIT/DELETE — เฉพาะ admin/manager
+═══════════════════════════════════════════ */
+function canEditHistory() {
+  const role = window._operatorRole || '';
+  return role === 'admin' || role === 'manager';
+}
+
+/**
+ * applyStockDelta — เรียก RPC ปรับสต็อกตาม action/qty/lot
+ * ใช้ทั้งตอน "ย้อนผลเดิม" (กลับด้าน action) และ "ใช้ค่าใหม่"
+ * คืนค่า { ok, ... } จาก dbAdjustStockWithLot
+ */
+async function applyStockDelta(code, type, qty, lotSW, name) {
+  if (type === 'return_bad' || !qty) return { ok: true, skipped: true };
+  let lotId = null;
+  if (lotSW && lotSW !== '-') {
+    if (!lotDB[code]) await dbLoadLotsForItem(code);
+    const cached = (lotDB[code]||[]).find(l => l.lot_sw === lotSW);
+    if (cached) lotId = cached.id;
+  }
+  return await dbAdjustStockWithLot(code, type, qty, {
+    lotId,
+    lotSW: (type==='receive'||type==='return_good') && lotSW && lotSW!=='-' ? lotSW : null,
+    name,
+  });
+}
+
+/** การกระทำตรงข้าม สำหรับ "ย้อนผลเดิม" */
+function oppositeAction(type) {
+  if (type === 'receive' || type === 'return_good') return 'withdraw';
+  if (type === 'withdraw') return 'return_good';
+  return null; // return_bad — ไม่กระทบสต็อก
+}
+
+function openEditTx(rec, pg) {
+  if (!canEditHistory()) return;
+  const cfg = WAREHOUSE_CONFIG[pg];
+  document.getElementById('editTxId').value = rec.id;
+  document.getElementById('editTxPg').value = pg;
+  document.getElementById('editTxOrigJson').value = JSON.stringify(rec);
+  document.getElementById('editTxItem').textContent = `${rec.item} (${rec.code})`;
+  document.getElementById('editTxType').value = rec.type;
+  document.getElementById('editTxQty').value = rec.qty;
+  document.getElementById('editTxName').value = rec.name;
+  document.getElementById('editTxNote').value = rec.note || '';
+
+  // แผนก
+  const deptSel = document.getElementById('editTxDept');
+  deptSel.innerHTML = (cfg.depts||[]).map(d=>`<option value="${d}" ${d===rec.dept?'selected':''}>${d}</option>`).join('');
+
+  // Lot row — แสดงเฉพาะคลังที่มี lot
+  const lotRow = document.getElementById('editTxLotRow');
+  if (cfg.hasLot) {
+    lotRow.style.display = 'grid';
+    buildEditTxLotOptions(rec, pg);
+  } else {
+    lotRow.style.display = 'none';
+  }
+
+  onEditTxTypeChange();
+  document.getElementById('editTxModal').classList.add('show');
+}
+
+async function buildEditTxLotOptions(rec, pg) {
+  const sel = document.getElementById('editTxLot');
+  sel.innerHTML = `<option value="">กำลังโหลด...</option>`;
+  await dbLoadLotsForItem(rec.code);
+  const lots = (lotDB[rec.code]||[]).slice().sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
+  let opts = `<option value="">-- ไม่ระบุ Lot --</option>`;
+  opts += lots.map(l=>{
+    const dateStr = new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const sel_ = l.lot_sw===rec.lotSW ? 'selected':'';
+    return `<option value="${l.lot_sw}" ${sel_}>${dateStr} — คงเหลือ ${l.stock.toLocaleString()}</option>`;
+  }).join('');
+  // ถ้า lot เดิมของรายการนี้ไม่อยู่ใน list (เช่น lot ถูกใช้หมดแล้ว) ให้เพิ่มเข้าไปด้วย
+  if (rec.lotSW && rec.lotSW!=='-' && !lots.find(l=>l.lot_sw===rec.lotSW)) {
+    const dateStr = new Date(rec.lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+    opts += `<option value="${rec.lotSW}" selected>${dateStr} (Lot เดิม)</option>`;
+  }
+  sel.innerHTML = opts;
+}
+
+function onEditTxTypeChange() {
+  const type = document.getElementById('editTxType').value;
+  const dateWrap = document.getElementById('editTxLotDateWrap');
+  // สำหรับ receive — เลือกวันที่ Lot ใหม่แทน dropdown lot ที่มีอยู่
+  if (type === 'receive') {
+    dateWrap.style.display = 'block';
+    const sel = document.getElementById('editTxLot');
+    const dateInput = document.getElementById('editTxLotDate');
+    if (sel.value) dateInput.value = sel.value;
+  } else {
+    dateWrap.style.display = 'none';
+  }
+}
+
+async function saveEditTx() {
+  if (!canEditHistory()) return;
+  const id    = document.getElementById('editTxId').value;
+  const pg    = document.getElementById('editTxPg').value;
+  const orig  = JSON.parse(document.getElementById('editTxOrigJson').value);
+  const cfg   = WAREHOUSE_CONFIG[pg];
+
+  const newType = document.getElementById('editTxType').value;
+  const newQty  = parseFloat(document.getElementById('editTxQty').value);
+  const newName = (document.getElementById('editTxName').value||'').trim();
+  const newDept = document.getElementById('editTxDept').value;
+  const newNote = document.getElementById('editTxNote').value||'';
+  let   newLotSW = cfg.hasLot ? (document.getElementById('editTxLot').value || '') : '';
+  if (cfg.hasLot && newType==='receive') {
+    const lotDate = document.getElementById('editTxLotDate').value;
+    if (lotDate) newLotSW = lotDate;
+  }
+
+  if (!newName) { showToast('กรุณาระบุชื่อผู้ทำรายการ','err'); return; }
+  if (!newQty || newQty<=0) { showToast('กรุณาระบุจำนวนที่มากกว่า 0','err'); return; }
+
+  setLoading('editTxSaveBtn', true, 'กำลังบันทึก...');
+
+  const mi = masterDB.find(m => m.code === orig.code);
+  let finalOldStock = orig.oldStock;
+  let finalNewStock = orig.newStock;
+
+  if (mi) {
+    // ── 1) ย้อนผลเดิมกลับ ──
+    const revertType = oppositeAction(orig.type);
+    if (revertType) {
+      const revertRes = await applyStockDelta(orig.code, revertType, orig.qty, orig.lotSW, orig.item);
+      if (!revertRes.ok) { setLoading('editTxSaveBtn', false); return; }
+    }
+    // ── 2) ใช้ค่าใหม่กับสต็อกปัจจุบัน ──
+    const applyType = newType;
+    if (applyType !== 'return_bad') {
+      const applyRes = await applyStockDelta(orig.code, applyType, newQty, newLotSW || null, newName);
+      if (!applyRes.ok) {
+        // rollback การย้อนผล ถ้าใช้ค่าใหม่ไม่สำเร็จ (เช่นสต็อกไม่พอ) — กลับไปใช้ action เดิม
+        if (revertType) await applyStockDelta(orig.code, orig.type, orig.qty, orig.lotSW, orig.item);
+        setLoading('editTxSaveBtn', false);
+        return;
+      }
+      finalOldStock = mi.stock - (applyType==='withdraw' ? -newQty : newQty);
+      finalNewStock = mi.stock;
+    } else {
+      finalOldStock = mi.stock;
+      finalNewStock = mi.stock;
+    }
+    await dbUpsertItem(mi);
+  }
+
+  // ── 3) อัปเดตแถว transaction ──
+  const { error } = await sb.from('transactions').update({
+    action_type:  newType,
+    quantity:     newQty,
+    operator_name:newName,
+    department:   newDept,
+    lot_sw:       (newLotSW && newLotSW!=='-') ? newLotSW : null,
+    note:         newNote,
+    old_stock:    finalOldStock,
+    new_stock:    finalNewStock,
+  }).eq('id', id);
+
+  setLoading('editTxSaveBtn', false);
+  if (error) { showToast('บันทึกไม่สำเร็จ: '+error.message,'err'); return; }
+
+  // ── 4) sync local cache ──
+  const r = txState[pg].records.find(x=>x.id==id);
+  if (r) {
+    r.type=newType; r.typeLabel=ACTION_LABELS[newType];
+    r.qty=newQty; r.name=newName; r.dept=newDept; r.note=newNote;
+    r.lotSW=(newLotSW&&newLotSW!=='-')?newLotSW:'-';
+    r.oldStock=finalOldStock; r.newStock=finalNewStock;
+  }
+
+  closeModal('editTxModal');
+  checkAlerts();
+  renderHistory(pg);
+  if (curPage==='master') renderMasterContent();
+  showToast('แก้ไขรายการสำเร็จ');
+}
+
+async function deleteTx(id, pg) {
+  if (!canEditHistory()) return;
+  if (!confirm('ลบรายการนี้และย้อนผลสต็อกที่เกิดจากรายการนี้?')) return;
+
+  const r = txState[pg].records.find(x=>x.id==id);
+  if (!r) return;
+
+  const mi = masterDB.find(m => m.code === r.code);
+  if (mi) {
+    const revertType = oppositeAction(r.type);
+    if (revertType) {
+      const revertRes = await applyStockDelta(r.code, revertType, r.qty, r.lotSW, r.item);
+      if (!revertRes.ok) return;
+    }
+    await dbUpsertItem(mi);
+  }
+
+  const { error } = await sb.from('transactions').delete().eq('id', id);
+  if (error) { showToast('ลบไม่สำเร็จ: '+error.message,'err'); return; }
+
+  txState[pg].records = txState[pg].records.filter(x=>x.id!=id);
+  checkAlerts();
+  renderHistory(pg);
+  if (curPage==='master') renderMasterContent();
+  showToast('ลบรายการสำเร็จ');
+}
+
 function checkAlerts() {
   const alerts = getAlertItems(null);
   // อัปเดต dot และ count
@@ -714,9 +924,10 @@ function renderWarehousePage(pg) {
                 <th>แผนก</th><th>รายการ</th><th>รหัส</th><th>จำนวน</th>
                 ${cfg.hasLot ? '<th>Lot SW</th>' : ''}
                 ${cfg.lotSupplier ? '<th>Lot Supplier</th>' : ''}
+                ${canEditHistory() ? '<th></th>' : ''}
               </tr></thead>
               <tbody id="${pg}-hbody">
-                <tr><td colspan="${cfg.hasLot?(cfg.lotSupplier?9:8):7}">
+                <tr><td colspan="${(cfg.hasLot?(cfg.lotSupplier?9:8):7)+(canEditHistory()?1:0)}">
                   <div class="empty">
                     <i class="ti ti-notes"></i>
                     <div class="empty-text">ยังไม่มีรายการ</div>
@@ -1327,7 +1538,7 @@ async function submitF(pg) {
       newStock:  rpcResult.ok ? rpcResult.new_stock : null,
     };
     txState[pg].records.unshift(rec);
-    await dbInsertTransaction(rec);
+    rec.id = await dbInsertTransaction(rec);
     checkAlerts();
     renderHistory(pg);
     // อัปเดตตัวเลขใน Master ถ้ากำลังดูอยู่
@@ -1414,7 +1625,7 @@ async function submitBatch(pg){
     }
     const rec={time:dateToday(),timeDetail:timeNow(),type:r.action,typeLabel:r.typeLabel,name,dept,item:r.item,code,qty:r.qty,lotSW:r.lotSW||'-',lotSP:r.lotSP||'',note:r.note||'',pg,via:'batch'};
     txState[pg].records.unshift(rec);
-    await dbInsertTransaction(rec);
+    rec.id = await dbInsertTransaction(rec);
   }
   checkAlerts(); renderHistory(pg);
   if(curPage==='master') renderMasterContent();
@@ -1435,7 +1646,8 @@ function renderHistory(pg, page){
   if(!tb)return;
   const recs=txState[pg].records;
   if(hc)hc.textContent=recs.length;
-  const totalCols = cfg.hasLot ? (cfg.lotSupplier ? 9 : 8) : 7;
+  const canEdit = canEditHistory();
+  const totalCols = (cfg.hasLot ? (cfg.lotSupplier ? 9 : 8) : 7) + (canEdit?1:0);
 
   if(!recs.length){
     tb.innerHTML=`<tr><td colspan="${totalCols}"><div class="empty"><i class="ti ti-notes"></i><div class="empty-text">ยังไม่มีรายการ</div></div></td></tr>`;
@@ -1461,7 +1673,9 @@ function renderHistory(pg, page){
     <td style="font-family:monospace;font-size:10px;color:var(--acc)">${r.code}</td>
     <td>${r.qty}</td>
     ${cfg.hasLot?`<td>${r.lotSW||'-'}</td>`:''}
+
     ${cfg.lotSupplier?`<td style="font-size:10px;color:var(--ink3)">${r.lotSP||'-'}</td>`:''}
+    ${canEdit?`<td style="white-space:nowrap"><button class="icon-btn" title="แก้ไข" onclick='openEditTx(${JSON.stringify(r).replace(/'/g,"&#39;")},"${pg}")'><i class="ti ti-pencil"></i></button><button class="icon-btn danger" title="ลบ" onclick="deleteTx(${r.id},'${pg}')"><i class="ti ti-trash"></i></button></td>`:''}
   </tr>`).join('');
 
   // ── Pagination controls ──
@@ -1641,7 +1855,7 @@ async function confirmCamScan(){
     newStock:action!=='return_bad'?m.stock:null,
   };
   txState[pg].records.unshift(rec);
-  await dbInsertTransaction(rec);
+  rec.id = await dbInsertTransaction(rec);
   checkAlerts();
   if(currentQRPage===pg) renderHistory(pg,1);
   if(curPage==='master') renderMasterContent();
@@ -1707,7 +1921,7 @@ async function doQRScan(){
   const pg=m.pg;
   const rec={time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],name:'(QR)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],item:m.name,code:m.code,qty,lotSW:'-',pg,via:'scan'};
   txState[pg].records.unshift(rec);
-  await dbInsertTransaction(rec);
+  rec.id = await dbInsertTransaction(rec);
   checkAlerts();if(currentQRPage===pg)renderHistory(pg,1);
   res.className='qr-result ok';
   res.textContent=`${ACTION_LABELS[action]} "${m.name}" ${qty} · สต็อก ${m.stock}`;

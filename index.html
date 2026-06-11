@@ -664,6 +664,52 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
 </div></div>
 
+<div class="modal-wrap" id="editTxModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-pencil"></i> แก้ไขรายการประวัติ</div>
+    <button class="btn btn-sm" onclick="closeModal('editTxModal')">ยกเลิก</button>
+  </div>
+  <div class="info-bar warn" style="margin-bottom:10px">
+    <i class="ti ti-alert-triangle"></i> การแก้ไขจะ "ย้อนผลเดิม" แล้ว "ใช้ค่าใหม่" กับสต็อกปัจจุบันทันที
+  </div>
+  <div class="fg" style="margin-bottom:10px"><label class="fl">รายการ</label>
+    <div id="editTxItem" style="font-size:12px;font-weight:500;padding:5px 0"></div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div class="fg"><label class="fl">ประเภท <span class="req">*</span></label>
+      <select class="fi" id="editTxType" style="padding:7px 9px" onchange="onEditTxTypeChange()">
+        <option value="receive">รับเข้า</option>
+        <option value="withdraw">เบิก</option>
+        <option value="return_good">คืนดี</option>
+        <option value="return_bad">คืนเสีย</option>
+      </select></div>
+    <div class="fg"><label class="fl">จำนวน <span class="req">*</span></label>
+      <input class="fi" id="editTxQty" type="number" min="0.01" step="0.01" inputmode="decimal"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div class="fg"><label class="fl">ผู้ทำรายการ <span class="req">*</span></label>
+      <input class="fi" id="editTxName" type="text"></div>
+    <div class="fg"><label class="fl">แผนก <span class="req">*</span></label>
+      <select class="fi" id="editTxDept" style="padding:7px 9px"></select></div>
+  </div>
+  <div id="editTxLotRow" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div class="fg"><label class="fl">Lot Sawanbondin</label>
+      <select class="fi" id="editTxLot" style="padding:7px 9px"></select>
+      <div class="fhint">ถ้าไม่เลือก ระบบจะสร้าง/ใช้ Lot ตามวันที่</div></div>
+    <div class="fg" id="editTxLotDateWrap" style="display:none">
+      <label class="fl">วันที่ Lot ใหม่</label>
+      <input class="fi" id="editTxLotDate" type="date"></div>
+  </div>
+  <div class="fg" style="margin-bottom:12px"><label class="fl">หมายเหตุ</label>
+    <textarea class="fta" id="editTxNote"></textarea></div>
+  <input type="hidden" id="editTxId">
+  <input type="hidden" id="editTxPg">
+  <input type="hidden" id="editTxOrigJson">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('editTxModal')">ยกเลิก</button>
+    <button class="btn btn-primary" id="editTxSaveBtn" onclick="saveEditTx()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
 <div class="modal-wrap" id="assignPendingModal"><div class="modal">
   <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
     <div class="card-title-left"><i class="ti ti-tag" style="color:var(--warn)"></i> ตั้งชื่อสินค้า</div>
