@@ -166,15 +166,15 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .hist-pg.active{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:500}
 .hist-pg:disabled{opacity:.4;cursor:default}
 .hist-pg:disabled:hover{background:var(--surface)}
-.hist-table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
-.hist-table th{text-align:left;padding:6px 8px;background:var(--s2);color:var(--ink3);font-weight:500;border-bottom:1px solid var(--line);font-size:10px;letter-spacing:.3px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hist-table td{padding:7px 8px;border-bottom:1px solid var(--line);color:var(--ink2);vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-table{width:100%;border-collapse:collapse;font-size:11px}
+.hist-table th{text-align:left;padding:6px 8px;background:var(--s2);color:var(--ink3);font-weight:500;border-bottom:1px solid var(--line);font-size:10px;letter-spacing:.3px;text-transform:uppercase;white-space:nowrap}
+.hist-table td{padding:7px 8px;border-bottom:1px solid var(--line);color:var(--ink2);vertical-align:middle}
 .hist-table tr:last-child td{border-bottom:none}
 .hist-table tr:hover td{background:var(--s2)}
-/* คอลัมน์ "รายการ" (ลำดับที่ 5) ให้ขยายพื้นที่มากที่สุดและ wrap ได้ */
-.hist-table th:nth-child(5),.hist-table td:nth-child(5){white-space:normal;word-break:break-word;width:100%}
-/* คอลัมน์อื่นบีบให้พอดีเนื้อหา ไม่กิน flex */
-.hist-table th:not(:nth-child(5)),.hist-table td:not(:nth-child(5)){width:1%;white-space:nowrap}
+/* คอลัมน์ "รายการ" (ลำดับที่ 5) ให้ wrap ได้เต็มชื่อ และเป็นคอลัมน์เดียวที่ขยายตามพื้นที่เหลือ */
+.hist-table th:nth-child(5),.hist-table td:nth-child(5){white-space:normal;word-break:break-word;width:auto;min-width:160px}
+/* คอลัมน์อื่นไม่ wrap แต่ไม่บีบจนตัด badge/pill */
+.hist-table th:not(:nth-child(5)),.hist-table td:not(:nth-child(5)){white-space:nowrap}
 @media(max-width:600px){
   .hist-table td:nth-child(6),.hist-table th:nth-child(6){display:none} /* ซ่อน รหัส */
   .hist-table td,.hist-table th{padding:8px 8px;font-size:11px}
