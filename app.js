@@ -16,7 +16,7 @@
    CONFIG — แก้ได้ที่นี่ที่เดียว
 ═══════════════════════════════════════════ */
 const SB_URL = 'https://rsmcrshvcbtcxvvhdmnk.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzbWNyc2h2Y2J0Y3h2dmhkbW5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MzYxMzcsImV4cCI6MjA5NDUxMjEzN30.DosZI6bmTu3hu7q-TrQcnYTThqv-fZGngv3i9a14q2Q;
+const SB_KEY = 'sb_publishable__RK27ReptMhtMdc8EdA-KQ_K4zfhMwJ';
 const PREFIX  = 'SWBD';
 
 const WAREHOUSE_CONFIG = {
@@ -88,12 +88,12 @@ async function initAuth() {
 }
 
 function showLoginScreen() {
-  document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('appRoot').style.display     = 'none';
+  document.getElementById('loginScreen').classList.add('visible');
+  document.getElementById('appRoot').style.display = 'none';
 }
 function hideLoginScreen() {
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('appRoot').style.display     = 'block';
+  document.getElementById('loginScreen').classList.remove('visible');
+  document.getElementById('appRoot').style.display = 'block';
 }
 
 async function doLogin() {
