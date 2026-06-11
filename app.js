@@ -32,8 +32,8 @@ const WAREHOUSE_CONFIG = {
 };
 const WAREHOUSE_PAGES = Object.keys(WAREHOUSE_CONFIG);
 
-const ACTION_LABELS = { receive:'รับเข้า', withdraw:'เบิก', return_good:'คืนดี', return_bad:'คืนเสีย' };
-const ACTION_BADGE  = { receive:'badge-receive', withdraw:'badge-withdraw', return_good:'badge-return-good', return_bad:'badge-return-bad' };
+const ACTION_LABELS = { receive:'รับเข้า', withdraw:'เบิก', return_good:'คืนดี', return_bad:'คืนเสีย', transform_lot:'แปรรูป' };
+const ACTION_BADGE  = { receive:'badge-receive', withdraw:'badge-withdraw', return_good:'badge-return-good', return_bad:'badge-return-bad', transform_lot:'badge-transform' };
 const DEPT_PILL_CLS = { 'ผลิต':'dept-prod', 'คลัง':'dept-ware', 'บรรจุ':'dept-pack', 'Tea House':'dept-tea' };
 
 /* ═══════════════════════════════════════════
@@ -328,6 +328,64 @@ async function dbAdjustStockWithLot(code, action, qty, { lotId=null, lotSW=null,
   // ถ้าเป็น receive + มี expiry → update lots ตรงๆ
   if ((action==='receive'||action==='return_good') && expiry && data.lot_id) {
     await sb.from('lots').update({ expiry_date: expiry }).eq('id', data.lot_id);
+  }
+  return data;
+}
+
+/**
+ * dbTransformStockLot — แปรรูป/ปรับสภาพสินค้าในคลังเดียวกัน
+ * เบิก Lot ต้นทาง + สร้าง/รวม Lot ใหม่ใน item เดียวกัน แบบ atomic
+ *
+ * params:
+ *   code      — item code (เช่น มะตูม)
+ *   fromLotId — bigint id ของ Lot ต้นทาง
+ *   qtyOut    — จำนวนที่นำออกจาก Lot ต้นทาง
+ *   newLotSW  — date string ของ Lot ใหม่ (YYYY-MM-DD)
+ *   qtyIn     — น้ำหนักหลังแปรรูป (เข้า Lot ใหม่)
+ *   note      — หมายเหตุ เช่น "อบเพิ่ม 40 องศา"
+ */
+async function dbTransformStockLot(code, fromLotId, qtyOut, newLotSW, qtyIn, note='') {
+  const params = {
+    p_code:        code,
+    p_from_lot_id: fromLotId,
+    p_qty_out:     qtyOut,
+    p_new_lot_sw:  newLotSW,
+    p_qty_in:      qtyIn,
+    p_note:        note || null,
+  };
+  const { data, error } = await sb.rpc('transform_stock_lot', params);
+  if (error) {
+    console.error('transform_stock_lot RPC:', error.message);
+    showToast('เกิดข้อผิดพลาด: ' + error.message, 'err');
+    return { ok:false, error: error.message };
+  }
+  if (!data.ok) {
+    if (data.error === 'insufficient_lot_stock') {
+      showToast(`Lot ต้นทางมีไม่พอ (มี ${data.available} เหลือ)`, 'err');
+    } else if (data.error === 'from_lot_not_found') {
+      showToast('ไม่พบ Lot ต้นทาง กรุณาโหลดใหม่', 'err');
+    } else {
+      showToast(`เกิดข้อผิดพลาด: ${data.error}`, 'err');
+    }
+    return data;
+  }
+  // sync local cache — items
+  const m = masterDB.find(x => x.code === code);
+  if (m) m.stock = data.new_stock;
+  // sync lot cache — Lot ต้นทาง
+  if (lotDB[code]) {
+    const fromLot = lotDB[code].find(l => l.id === data.from_lot_id);
+    if (fromLot) fromLot.stock = data.from_lot_remaining;
+    // Lot ใหม่ — อัปเดตหรือเพิ่มเข้า cache
+    let newLot = lotDB[code].find(l => l.id === data.new_lot_id);
+    if (newLot) {
+      newLot.stock = data.new_lot_stock;
+    } else {
+      lotDB[code].push({
+        id: data.new_lot_id, lot_sw: data.new_lot_sw, lot_supplier: note||'',
+        stock: data.new_lot_stock, updated_at: new Date().toISOString(), expiry_date: null,
+      });
+    }
   }
   return data;
 }
@@ -684,6 +742,8 @@ function renderForm(pg) {
   if (t) t.textContent = `${ACTION_LABELS[action]} — ${cfg.label}`;
   if (b) { b.textContent=ACTION_LABELS[action]; b.className='badge '+ACTION_BADGE[action]; }
 
+  if (action === 'transform_lot') { renderTransformForm(pg); return; }
+
   const deptOpts = cfg.depts.map(d =>
     `<label class="radio-opt" onclick="selRadio(this,'${pg}-dept')"><input type="radio"> ${d}</label>`
   ).join('');
@@ -694,7 +754,7 @@ function renderForm(pg) {
   h += `<div class="action-select-wrap">
     <span class="action-select-label">ประเภท</span>
     <select class="action-select" id="${pg}-action-sel" onchange="changeAction('${pg}',this.value)">
-      ${Object.entries(ACTION_LABELS).map(([v,l])=>`<option value="${v}" ${action===v?'selected':''}>${l}</option>`).join('')}
+      ${Object.entries(ACTION_LABELS).filter(([v])=>v!=='transform_lot'||cfg.hasLot).map(([v,l])=>`<option value="${v}" ${action===v?'selected':''}>${l}</option>`).join('')}
     </select>
     <i class="ti ti-chevron-down action-select-icon"></i>
   </div>`;
@@ -860,7 +920,203 @@ function renderForm(pg) {
   }
 }
 
-function changeAction(pg, action) {
+/* ── TRANSFORM / แปรรูป FORM ── */
+function renderTransformForm(pg) {
+  const cfg  = WAREHOUSE_CONFIG[pg];
+  const body = document.getElementById(pg+'-fbody');
+  if (!body) return;
+
+  let h = `<div class="info-bar" style="background:var(--acc-bg);color:var(--acc);border-color:var(--acc-mid)">
+    <i class="ti ti-recycle"></i> แปรรูป/ปรับสภาพ — เบิก Lot เดิมออก แล้วสร้าง Lot ใหม่เข้าในสินค้าเดิม
+  </div>`;
+
+  // เลือกสินค้า
+  h += `<div class="form-grid">
+    <div class="fg form-full">
+      <label class="fl">รายการ <span class="req">*</span></label>
+      <div class="item-wrap">
+        <input class="item-input" id="${pg}-tf-idisplay" placeholder="พิมพ์เพื่อค้นหา"
+          oninput="ddFilter('${pg}',this.value,true)" onfocus="ddShow('${pg}')"
+          autocomplete="off">
+        <button class="item-btn" onclick="ddToggle('${pg}')">
+          <i class="ti ti-chevron-down"></i>
+        </button>
+        <div class="dd" id="${pg}-dd" style="display:none">
+          <div class="dd-search">
+            <input id="${pg}-dds" placeholder="ค้นหา..."
+              oninput="ddListFilter('${pg}',this.value,true)">
+          </div>
+          <div id="${pg}-ddl"></div>
+        </div>
+      </div>
+      <input type="hidden" id="${pg}-tf-ival">
+    </div>
+  </div><div class="divider"></div>`;
+
+  // Lot ต้นทาง
+  h += `<div class="form-grid">
+    <div class="fg form-full">
+      <label class="fl">Lot ต้นทาง <span class="req">*</span></label>
+      <select class="fi" id="${pg}-tf-fromlot" onchange="onTransformLotChange('${pg}')">
+        <option value="">-- เลือกรายการก่อน --</option>
+      </select>
+      <div class="fhint">เฉพาะ Lot ที่มียอดคงเหลือมากกว่า 0</div>
+    </div>
+  </div>`;
+
+  // จำนวนที่นำไปแปรรูป + น้ำหนักหลังแปรรูป
+  h += `<div class="form-grid">
+    <div class="fg">
+      <label class="fl">จำนวนที่นำไปแปรรูป <span class="req">*</span></label>
+      <input class="fi" id="${pg}-tf-qtyout" type="number" min="0.01" step="0.01"
+        placeholder="0.00" inputmode="decimal">
+      <div class="fhint" id="${pg}-tf-avail"></div>
+    </div>
+    <div class="fg">
+      <label class="fl">น้ำหนักหลังแปรรูป <span class="req">*</span></label>
+      <input class="fi" id="${pg}-tf-qtyin" type="number" min="0.01" step="0.01"
+        placeholder="0.00" inputmode="decimal">
+      <div class="fhint">น้ำหนักจริงหลังอบ/แปรรูป (อาจไม่เท่าเดิม)</div>
+    </div>
+  </div><div class="divider"></div>`;
+
+  // Lot ใหม่
+  h += `<div class="form-grid">
+    <div class="fg">
+      <label class="fl">วันที่ Lot ใหม่ <span class="req">*</span></label>
+      <input class="fi" id="${pg}-tf-newlot" type="date">
+      <div class="fhint">ถ้าตรงกับ Lot เดิม จะรวมยอดเข้าด้วยกัน</div>
+    </div>
+    <div class="fg">
+      <label class="fl">หมายเหตุ Lot ใหม่</label>
+      <input class="fi" id="${pg}-tf-note" placeholder="เช่น อบเพิ่ม 40 องศา">
+    </div>
+  </div>`;
+
+  // สรุปยอด
+  h += `<div class="info-bar" id="${pg}-tf-summary" style="display:none"></div>`;
+
+  h += `<div class="form-actions">
+    <button class="btn" onclick="resetForm('${pg}')">
+      <i class="ti ti-refresh"></i> ล้าง</button>
+    <button class="btn btn-primary" id="${pg}-tf-submit-btn" onclick="submitTransform('${pg}')">
+      <i class="ti ti-device-floppy"></i> บันทึกแปรรูป</button>
+  </div>`;
+
+  body.innerHTML = h;
+  buildDDList(pg, '', true);
+
+  // bind live summary update
+  ['${pg}-tf-qtyout','${pg}-tf-qtyin'.replace('${pg}',pg)].forEach(()=>{});
+  [pg+'-tf-qtyout', pg+'-tf-qtyin'].forEach(id=>{
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', ()=>updateTransformSummary(pg));
+  });
+}
+
+// เมื่อเลือกสินค้าจาก dropdown ในโหมดแปรรูป — โหลด Lot ของสินค้านั้น
+async function onTransformItemSelect(pg, code, name) {
+  document.getElementById(pg+'-tf-ival').value = code;
+  document.getElementById(pg+'-tf-idisplay').value = name;
+  const sel = document.getElementById(pg+'-tf-fromlot');
+  sel.innerHTML = `<option value="">กำลังโหลด Lot...</option>`;
+  if (!lotDB[code]) await dbLoadLotsForItem(code);
+  const lots = (lotDB[code]||[]).filter(l=>l.stock>0).sort((a,b)=>a.lot_sw.localeCompare(b.lot_sw));
+  if (!lots.length) {
+    sel.innerHTML = `<option value="">-- ไม่มี Lot ที่มียอดคงเหลือ --</option>`;
+    return;
+  }
+  sel.innerHTML = `<option value="">-- เลือก Lot --</option>` +
+    lots.map(l=>{
+      const dateStr = new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+      const supStr  = l.lot_supplier ? ` (${l.lot_supplier})` : '';
+      return `<option value="${l.id}" data-stock="${l.stock}" data-sw="${l.lot_sw}">${dateStr}${supStr} — คงเหลือ ${l.stock.toLocaleString()}</option>`;
+    }).join('');
+  document.getElementById(pg+'-tf-avail').textContent = '';
+  updateTransformSummary(pg);
+}
+
+function onTransformLotChange(pg) {
+  const sel = document.getElementById(pg+'-tf-fromlot');
+  const opt = sel.options[sel.selectedIndex];
+  const avail = opt?.dataset?.stock;
+  const hint = document.getElementById(pg+'-tf-avail');
+  if (avail) hint.textContent = `คงเหลือใน Lot นี้: ${parseFloat(avail).toLocaleString()}`;
+  else hint.textContent = '';
+  updateTransformSummary(pg);
+}
+
+function updateTransformSummary(pg) {
+  const m = masterDB.find(x=>x.code===document.getElementById(pg+'-tf-ival')?.value);
+  const sel = document.getElementById(pg+'-tf-fromlot');
+  const opt = sel?.options[sel.selectedIndex];
+  const qtyOut = parseFloat(document.getElementById(pg+'-tf-qtyout')?.value)||0;
+  const qtyIn  = parseFloat(document.getElementById(pg+'-tf-qtyin')?.value)||0;
+  const box = document.getElementById(pg+'-tf-summary');
+  if (!m || !opt?.value) { box.style.display='none'; return; }
+  const newTotal = m.stock - qtyOut + qtyIn;
+  box.style.display = '';
+  box.innerHTML = `<i class="ti ti-calculator"></i> ยอดรวม "${m.name}": ${m.stock.toLocaleString()} − ${qtyOut.toLocaleString()} + ${qtyIn.toLocaleString()} = <strong>${newTotal.toLocaleString()}</strong>`;
+}
+
+async function submitTransform(pg) {
+  const code   = document.getElementById(pg+'-tf-ival')?.value;
+  const itemEl = document.getElementById(pg+'-tf-idisplay');
+  const name   = itemEl?.value || '';
+  const sel    = document.getElementById(pg+'-tf-fromlot');
+  const fromLotId = sel?.value;
+  const fromOpt   = sel?.options[sel.selectedIndex];
+  const qtyOut = parseFloat(document.getElementById(pg+'-tf-qtyout')?.value);
+  const qtyIn  = parseFloat(document.getElementById(pg+'-tf-qtyin')?.value);
+  const newLotSW = document.getElementById(pg+'-tf-newlot')?.value;
+  const note     = (document.getElementById(pg+'-tf-note')?.value||'').trim();
+  const opName   = window._operatorName || '';
+  const opDept   = window._operatorDept || '';
+
+  if (!code) { showToast('กรุณาเลือกรายการ','err'); return; }
+  if (!fromLotId) { showToast('กรุณาเลือก Lot ต้นทาง','err'); return; }
+  if (!qtyOut || qtyOut<=0) { showToast('กรุณาระบุจำนวนที่นำไปแปรรูป','err'); return; }
+  if (!qtyIn || qtyIn<=0) { showToast('กรุณาระบุน้ำหนักหลังแปรรูป','err'); return; }
+  if (!newLotSW) { showToast('กรุณาระบุวันที่ Lot ใหม่','err'); return; }
+
+  const avail = parseFloat(fromOpt?.dataset?.stock)||0;
+  if (qtyOut > avail) { showToast(`Lot ต้นทางมีไม่พอ (มี ${avail.toLocaleString()} เหลือ)`,'err'); return; }
+
+  const btn = document.getElementById(pg+'-tf-submit-btn');
+  setLoading(pg+'-tf-submit-btn', true, 'กำลังบันทึก...');
+
+  const fromLotSW = fromOpt?.dataset?.sw || '';
+  const fromDateStr = fromLotSW ? new Date(fromLotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+  const newDateStr  = new Date(newLotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+
+  const result = await dbTransformStockLot(code, parseInt(fromLotId), qtyOut, newLotSW, qtyIn, note);
+  setLoading(pg+'-tf-submit-btn', false);
+  if (!result.ok) return;
+
+  // บันทึก transaction 2 รายการ — transform_out / transform_in
+  const baseTx = { item_code:code, item_name:name, pg, operator_name:opName, department:opDept, via:'manual' };
+  await dbInsertTransaction({
+    ...baseTx, action_type:'transform_out', quantity:qtyOut,
+    lot_sw:fromLotSW, note:`แปรรูปออก → Lot ${newDateStr}${note?' ('+note+')':''}`,
+    old_stock:result.old_stock, new_stock:result.new_stock,
+  });
+  await dbInsertTransaction({
+    ...baseTx, action_type:'transform_in', quantity:qtyIn,
+    lot_sw:newLotSW, note:`แปรรูปเข้า ← Lot ${fromDateStr}${note?' — '+note:''}`,
+    old_stock:result.old_stock, new_stock:result.new_stock,
+  });
+
+  showToast(`แปรรูปสำเร็จ — Lot ${fromDateStr} → Lot ${newDateStr}`);
+  checkAlerts();
+  if (curPage===pg) {
+    const recs = await dbLoadTransactions(pg);
+    if (recs) txState[pg].records = recs;
+    renderWarehousePage(pg);
+    renderHistory(pg,1);
+  }
+}
+
+
   const sv = {
     name: document.getElementById(pg+'-name')?.value||'',
     ival: document.getElementById(pg+'-ival')?.value||'',
@@ -886,7 +1142,7 @@ function resetForm(pg) {
 }
 
 /* ── DROPDOWN ── */
-function buildDDList(pg, filter) {
+function buildDDList(pg, filter, isTransform=false) {
   const l = document.getElementById(pg+'-ddl');
   if (!l) return;
   const filt  = filter.toLowerCase();
@@ -902,17 +1158,23 @@ function buildDDList(pg, filter) {
     if (grp!=='-') h += `<div class="dd-grp-label">${grp}</div>`;
     grpItems.forEach(m => {
       const es = m.name.replace(/'/g,"\\'");
-      h += `<div class="dd-item" onclick="selItem('${pg}','${es}','${m.code}')">
+      h += `<div class="dd-item" onclick="${isTransform?`selTransformItem('${pg}','${es}','${m.code}')`:`selItem('${pg}','${es}','${m.code}')`}">
         <span>${m.name}</span><span class="dd-code">${m.code}</span>
       </div>`;
     });
   }
   l.innerHTML = h;
 }
-function ddFilter(pg,v)    { buildDDList(pg,v); document.getElementById(pg+'-dd').style.display='block'; const iv=document.getElementById(pg+'-ival');if(iv)iv.value=''; }
-function ddListFilter(pg,v){ buildDDList(pg,v); }
-function ddShow(pg)        { buildDDList(pg,document.getElementById(pg+'-idisplay')?.value||''); document.getElementById(pg+'-dd').style.display='block'; }
+function ddFilter(pg,v,isTransform=false){ buildDDList(pg,v,isTransform); document.getElementById(pg+'-dd').style.display='block'; if(!isTransform){const iv=document.getElementById(pg+'-ival');if(iv)iv.value='';} }
+function ddListFilter(pg,v,isTransform=false){ buildDDList(pg,v,isTransform); }
+function ddShow(pg)        { const idispId=document.getElementById(pg+'-tf-idisplay')?pg+'-tf-idisplay':pg+'-idisplay'; const isTransform=idispId.includes('-tf-'); buildDDList(pg,document.getElementById(idispId)?.value||'',isTransform); document.getElementById(pg+'-dd').style.display='block'; }
 function ddToggle(pg)      { const d=document.getElementById(pg+'-dd'); if(!d)return; d.style.display=d.style.display==='none'?'block':'none'; if(d.style.display==='block')ddShow(pg); }
+function selTransformItem(pg, item, code) {
+  document.getElementById(pg+'-tf-idisplay').value = item;
+  document.getElementById(pg+'-tf-ival').value = code;
+  document.getElementById(pg+'-dd').style.display='none';
+  onTransformItemSelect(pg, code, item);
+}
 function selItem(pg, item, code) {
   const di=document.getElementById(pg+'-idisplay');
   const iv=document.getElementById(pg+'-ival');
