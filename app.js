@@ -580,6 +580,12 @@ function oppositeAction(type) {
   return null; // return_bad — ไม่กระทบสต็อก
 }
 
+function openEditTxById(id, pg) {
+  const rec = (txState[pg]?.records||[]).find(x=>x.id==id);
+  if (!rec) { showToast('ไม่พบรายการ','err'); return; }
+  openEditTx(rec, pg);
+}
+
 function openEditTx(rec, pg) {
   if (!canEditHistory()) return;
   const cfg = WAREHOUSE_CONFIG[pg];
@@ -1675,7 +1681,7 @@ function renderHistory(pg, page){
     ${cfg.hasLot?`<td>${r.lotSW||'-'}</td>`:''}
 
     ${cfg.lotSupplier?`<td style="font-size:10px;color:var(--ink3)">${r.lotSP||'-'}</td>`:''}
-    ${canEdit?`<td style="white-space:nowrap"><button class="icon-btn" title="แก้ไข" onclick='openEditTx(${JSON.stringify(r).replace(/'/g,"&#39;")},"${pg}")'><i class="ti ti-pencil"></i></button><button class="icon-btn danger" title="ลบ" onclick="deleteTx(${r.id},'${pg}')"><i class="ti ti-trash"></i></button></td>`:''}
+    ${canEdit?`<td style="white-space:nowrap"><button class="icon-btn" title="แก้ไข" onclick="openEditTxById(${r.id},'${pg}')"><i class="ti ti-pencil"></i></button><button class="icon-btn danger" title="ลบ" onclick="deleteTx(${r.id},'${pg}')"><i class="ti ti-trash"></i></button></td>`:''}
   </tr>`).join('');
 
   // ── Pagination controls ──
