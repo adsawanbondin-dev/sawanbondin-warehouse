@@ -86,6 +86,8 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .log-table td{border:1px solid #999;height:20px;padding:1px 3px;vertical-align:middle}
 .log-table td.num-col{text-align:center;color:#c0c0c0;font-size:8px;width:14px}
 .log-table tr:nth-child(even) td{background:#fafaf8}
+/* ── Sticker+Table paired block ── */
+.sticker-pair{display:flex;flex-direction:column;gap:6px;break-inside:avoid}
 .log-tables-grid{display:grid;gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed #ddd}
 @media print{
   .topbar,.sidebar,.preview-header,.log-table-header button{display:none!important}
@@ -381,6 +383,8 @@ function renderPreview(){
   cntEl.textContent=`${expanded.length} สติ๊กเกอร์`;
   area.innerHTML=`<div class="sheet"><div class="sticker-grid cols-${cols}" id="grid"></div></div>`;
   const grid=document.getElementById('grid');
+  // store expanded items for log table pairing
+  window._expandedItems = expanded;
   const isDark=style==='modern';
   const qrItems=[];
   expanded.forEach((item,idx)=>{
@@ -413,7 +417,12 @@ function renderPreview(){
     div.appendChild(cd);
     if(showBrand){const br=document.createElement('div');br.className='sticker-brand';br.textContent='SAWANBONDIN';div.appendChild(br);}
 
-    grid.appendChild(div);
+    // wrap sticker in a pair div
+    const pair = document.createElement('div');
+    pair.className = 'sticker-pair';
+    pair.appendChild(div);
+    pair.dataset.idx = idx;
+    grid.appendChild(pair);
   });
   requestAnimationFrame(()=>{
     qrItems.forEach(q=>{
@@ -434,11 +443,16 @@ function renderLogTable(){
   const sheet = document.querySelector('.sheet');
   const showForm = document.getElementById('showForm')?.checked;
   if(!sheet) return;
-  if(!showForm){
-    const existing = document.getElementById('logTableWrap');
-    if(existing) existing.remove();
-    return;
-  }
+
+  // Remove any existing standalone log table wrap (legacy)
+  const legacyWrap = document.getElementById('logTableWrap');
+  if(legacyWrap) legacyWrap.remove();
+
+  // Remove existing tables from all pairs
+  document.querySelectorAll('.sticker-pair .log-table-wrap').forEach(el=>el.remove());
+
+  if(!showForm) return;
+
   const logCols = [];
   if(document.getElementById('ff-date')?.checked)    logCols.push({key:'date',  label:'วันที่'});
   if(document.getElementById('ff-action')?.checked)  logCols.push({key:'action',label:'ประเภท'});
@@ -450,33 +464,19 @@ function renderLogTable(){
   if(!logCols.length) return;
 
   const numRows = parseInt(document.getElementById('logRows')?.value)||15;
-  const copies  = parseInt(document.getElementById('copies')?.value)||1;
-  // รายการที่เลือก
-  const itemsList = CATALOG.filter(i=>selected.has(i.code));
-  const lotsList  = lotCatalog.filter(l=>lotSelected.has(l.code));
-  const allItems  = [...itemsList,...lotsList];
+  const expanded = window._expandedItems || [];
+  if(!expanded.length) return;
 
-  let existing = document.getElementById('logTableWrap');
-  if(!existing){
-    existing = document.createElement('div');
-    existing.id = 'logTableWrap';
-    sheet.appendChild(existing);
-  }
-
-  // ใช้ grid columns เดียวกับ sticker grid เพื่อให้ความกว้างตารางตรงกับ 1 sticker
-  const stickerCols = cols; // global variable, 2-5, set via setCols()
-
-  let html2 = '';
-  if(!allItems.length){
-    for(let c=0;c<copies;c++) html2 += buildLogTableHTML('บันทึกรายการรับ-เบิก-คืน',logCols,numRows);
-  } else {
-    allItems.forEach(item=>{
-      const swStr = item.lotSW ? new Date(item.lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
-      const subTitle = item.type==='lot' ? `Lot ${swStr} · เหลือ ${item.stock}` : item.code;
-      for(let c=0;c<copies;c++) html2 += buildLogTableHTML(item.name, logCols, numRows, subTitle);
-    });
-  }
-  existing.innerHTML = `<div class="log-tables-grid cols-${stickerCols}">${html2}</div>`;
+  document.querySelectorAll('.sticker-pair').forEach((pair, idx) => {
+    const item = expanded[parseInt(pair.dataset.idx)];
+    if(!item) return;
+    const swStr = item.lotSW ? new Date(item.lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+    const subTitle = item.type==='lot' ? `Lot ${swStr} · เหลือ ${item.stock}` : (item.code||'');
+    const tableHTML = buildLogTableHTML(item.name, logCols, numRows, subTitle);
+    const wrap = document.createElement('div');
+    wrap.innerHTML = tableHTML;
+    pair.appendChild(wrap.firstElementChild);
+  });
 }
 
 function buildLogTableHTML(title, cols, numRows, subtitle=''){
