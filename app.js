@@ -1117,6 +1117,7 @@ async function submitTransform(pg) {
 }
 
 
+function switchAction(pg, action) {
   const sv = {
     name: document.getElementById(pg+'-name')?.value||'',
     ival: document.getElementById(pg+'-ival')?.value||'',
