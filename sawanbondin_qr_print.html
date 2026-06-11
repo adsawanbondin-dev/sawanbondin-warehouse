@@ -93,12 +93,14 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   .preview-area{padding:0}
   .sheet{border:none;box-shadow:none;border-radius:0;padding:6mm}
   .log-tables-grid{padding:6mm 0 0;page-break-before:auto}
-  body{background:#fff}
-  .sticker{page-break-inside:avoid;break-inside:avoid}
+  body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact}
+  .sticker{page-break-inside:avoid;break-inside:avoid;border:1.5px solid #000!important}
   .form-lbl{color:#000}
+  .form-line{border-bottom:1px solid #000!important}
   .log-table{font-size:10px}
-  .log-table th{font-size:9px;padding:5px 8px}
-  .log-table td{height:24px}
+  .log-table-wrap{border:1.5px solid #000!important}
+  .log-table th{font-size:9px;padding:5px 8px;border:1px solid #000!important;background:#e0e0e0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .log-table td{height:24px;border:1px solid #000!important}
 }
 @media(max-width:768px){.workspace{grid-template-columns:1fr;grid-template-rows:auto 1fr}.sidebar{height:auto;position:static;border-right:none;border-bottom:1px solid var(--line)}}
 </style>
