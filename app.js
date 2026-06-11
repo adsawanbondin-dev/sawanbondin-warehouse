@@ -977,7 +977,7 @@ function renderForm(pg) {
 
   h += `<div class="action-select-wrap">
     <span class="action-select-label">ประเภท</span>
-    <select class="action-select" id="${pg}-action-sel" onchange="changeAction('${pg}',this.value)">
+    <select class="action-select" id="${pg}-action-sel" onchange="switchAction('${pg}',this.value)">
       ${Object.entries(ACTION_LABELS).filter(([v])=>v!=='transform_lot'||cfg.hasLot).map(([v,l])=>`<option value="${v}" ${action===v?'selected':''}>${l}</option>`).join('')}
     </select>
     <i class="ti ti-chevron-down action-select-icon"></i>
