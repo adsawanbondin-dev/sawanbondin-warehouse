@@ -660,6 +660,7 @@ function renderWarehousePage(pg) {
               </tbody>
             </table>
           </div>
+          <div class="hist-pager" id="${pg}-hpager"></div>
         </div>
       </div>
     </div>`;
@@ -1133,19 +1134,35 @@ async function submitBatch(pg){
   showToast(`บันทึก <strong>${n}</strong> รายการสำเร็จ`);
 }
 
-function renderHistory(pg){
+const HIST_PAGE_SIZE = 20;
+const histPageState = {}; // { pg: currentPage }
+
+function renderHistory(pg, page){
   const cfg=WAREHOUSE_CONFIG[pg];
   const tb=document.getElementById(pg+'-hbody');
   const hc=document.getElementById(pg+'-hcount');
+  const pager=document.getElementById(pg+'-hpager');
   if(!tb)return;
   const recs=txState[pg].records;
   if(hc)hc.textContent=recs.length;
   const totalCols = cfg.hasLot ? (cfg.lotSupplier ? 9 : 8) : 7;
+
   if(!recs.length){
     tb.innerHTML=`<tr><td colspan="${totalCols}"><div class="empty"><i class="ti ti-notes"></i><div class="empty-text">ยังไม่มีรายการ</div></div></td></tr>`;
+    if(pager) pager.innerHTML='';
     return;
   }
-  tb.innerHTML=recs.slice(0,60).map(r=>`<tr ${r.type==='return_bad'?'style="opacity:.75"':''}>
+
+  const totalPages = Math.max(1, Math.ceil(recs.length / HIST_PAGE_SIZE));
+  let curP = page!==undefined ? page : (histPageState[pg]||1);
+  if(curP < 1) curP = 1;
+  if(curP > totalPages) curP = totalPages;
+  histPageState[pg] = curP;
+
+  const start = (curP-1)*HIST_PAGE_SIZE;
+  const pageRecs = recs.slice(start, start+HIST_PAGE_SIZE);
+
+  tb.innerHTML=pageRecs.map(r=>`<tr ${r.type==='return_bad'?'style="opacity:.75"':''}>
     <td title="${r.timeDetail||''}">${r.time}</td>
     <td><span class="tbadge ${ACTION_BADGE[r.type]}">${r.typeLabel}</span></td>
     <td>${r.name}${r.via==='scan'||r.via==='camera'?'<span style="font-size:9px;color:var(--acc);margin-left:3px">scan</span>':r.via==='batch'?'<span style="font-size:9px;color:var(--grn);margin-left:3px">batch</span>':''}</td>
@@ -1156,6 +1173,32 @@ function renderHistory(pg){
     ${cfg.hasLot?`<td>${r.lotSW||'-'}</td>`:''}
     ${cfg.lotSupplier?`<td style="font-size:10px;color:var(--ink3)">${r.lotSP||'-'}</td>`:''}
   </tr>`).join('');
+
+  // ── Pagination controls ──
+  if(pager){
+    if(totalPages<=1){
+      pager.innerHTML=`<span>ทั้งหมด ${recs.length} รายการ</span>`;
+    } else {
+      const rangeStart = start+1;
+      const rangeEnd = Math.min(start+HIST_PAGE_SIZE, recs.length);
+      // สร้างเลขหน้า: แสดงสูงสุด 5 ปุ่ม รอบหน้าปัจจุบัน
+      let pages=[];
+      let lo=Math.max(1,curP-2), hi=Math.min(totalPages,curP+2);
+      if(curP<=2) hi=Math.min(totalPages,5);
+      if(curP>=totalPages-1) lo=Math.max(1,totalPages-4);
+      for(let i=lo;i<=hi;i++) pages.push(i);
+      const btns = pages.map(i=>`<button class="hist-pg ${i===curP?'active':''}" onclick="renderHistory('${pg}',${i})">${i}</button>`).join('');
+      pager.innerHTML = `
+        <span>${rangeStart}-${rangeEnd} จาก ${recs.length} รายการ</span>
+        <div class="hist-pager-btns">
+          <button class="hist-pg" onclick="renderHistory('${pg}',${curP-1})" ${curP<=1?'disabled':''}><i class="ti ti-chevron-left" style="font-size:12px"></i></button>
+          ${lo>1?`<button class="hist-pg" onclick="renderHistory('${pg}',1)">1</button>${lo>2?'<span style="padding:0 2px">…</span>':''}`:''}
+          ${btns}
+          ${hi<totalPages?`${hi<totalPages-1?'<span style="padding:0 2px">…</span>':''}<button class="hist-pg" onclick="renderHistory('${pg}',${totalPages})">${totalPages}</button>`:''}
+          <button class="hist-pg" onclick="renderHistory('${pg}',${curP+1})" ${curP>=totalPages?'disabled':''}><i class="ti ti-chevron-right" style="font-size:12px"></i></button>
+        </div>`;
+    }
+  }
 }
 
 /* ═══════════════════════════════════════════
@@ -1310,7 +1353,7 @@ async function confirmCamScan(){
   txState[pg].records.unshift(rec);
   await dbInsertTransaction(rec);
   checkAlerts();
-  if(currentQRPage===pg) renderHistory(pg);
+  if(currentQRPage===pg) renderHistory(pg,1);
   if(curPage==='master') renderMasterContent();
 
   document.getElementById('camResult').className='cam-result ok';
@@ -1375,7 +1418,7 @@ async function doQRScan(){
   const rec={time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],name:'(QR)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],item:m.name,code:m.code,qty,lotSW:'-',pg,via:'scan'};
   txState[pg].records.unshift(rec);
   await dbInsertTransaction(rec);
-  checkAlerts();if(currentQRPage===pg)renderHistory(pg);
+  checkAlerts();if(currentQRPage===pg)renderHistory(pg,1);
   res.className='qr-result ok';
   res.textContent=`${ACTION_LABELS[action]} "${m.name}" ${qty} · สต็อก ${m.stock}`;
   document.getElementById('qr-scan-input').value='';document.getElementById('qr-scan-qty').value='1';
@@ -2127,7 +2170,7 @@ async function boot(){
     _txDebounce[pg] = setTimeout(async () => {
       const recs = await dbLoadTransactions(pg);
       if (recs) txState[pg].records = recs;
-      if (curPage === pg) renderHistory(pg);
+      if (curPage === pg) renderHistory(pg,1);
     }, 600);
   }).subscribe();
 
