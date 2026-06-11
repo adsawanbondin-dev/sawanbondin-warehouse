@@ -188,6 +188,7 @@ async function dbUpsertItem(m) {
     stock:m.stock,           // ← include stock ที่ sync มาจาก RPC
     min_stock:m.min, max_stock:m.max,
     note:locationDB[m.code]||'', seq:m.seq||0,
+    is_active:true,          // ← สำคัญ: ป้องกันรายการใหม่หายเพราะถูกกรองด้วย is_active=true
   }, { onConflict:'code' });
   if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
@@ -1560,13 +1561,23 @@ async function addMasterItem(){
   setLoading('add-item-btn',true,'กำลังบันทึก...');
   const seq=nextSeq(pg,subcat);
   const code=buildCode(pg,subcat,seq);
+
+  // ตรวจสอบรหัสซ้ำก่อนบันทึก ป้องกันชนกับรายการที่มีอยู่
+  if(masterDB.find(x=>x.code===code)){
+    setLoading('add-item-btn',false);
+    showToast(`รหัส ${code} มีอยู่แล้วในระบบ กรุณาลองใหม่`,'err');
+    return;
+  }
+
   const newItem={code,name,pg,subcat,stock,min,max,seq};
-  masterDB.push(newItem);
   const ok=await dbUpsertItem(newItem);
   setLoading('add-item-btn',false);
   if(ok){
+    masterDB.push(newItem);
     checkAlerts(); hideAddForm(); buildAddForm(); renderMasterContent();
     showToast(`เพิ่ม "${name}" (${code}) สำเร็จ`);
+  } else {
+    showToast(`บันทึกไม่สำเร็จ — ${code} อาจไม่ถูกบันทึกลงระบบ`,'err');
   }
 }
 
