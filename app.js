@@ -2168,6 +2168,49 @@ function editLoc(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;doc
 async function saveEditLoc(){ const code=document.getElementById('editLocId').value;const loc=(document.getElementById('editLocVal').value||'').trim();locationDB[code]=loc;const m=masterDB.find(x=>x.code===code);if(m)await dbUpsertItem(m);closeModal('editLocModal');renderMasterContent(); }
 async function deleteMasterItem(code){ if(!confirm('ลบรายการนี้? ข้อมูลจะหายถาวร'))return;masterDB=masterDB.filter(m=>m.code!==code);delete locationDB[code];await dbDeleteItem(code);checkAlerts();renderMasterContent(); }
 
+/* ── ย้ายหมวดหมู่ (subcat) ── */
+function editSubcat(code){
+  const m=masterDB.find(x=>x.code===code); if(!m) return;
+  document.getElementById('editSubcatId').value=code;
+  document.getElementById('editSubcatName').textContent=m.name;
+  document.getElementById('editSubcatCurrent').textContent=m.subcat||'(ไม่มีหมวดหมู่)';
+
+  // รวมรายชื่อ subcat ที่มีอยู่จริงในระบบ + ที่ตั้งไว้ใน WAREHOUSE_CONFIG
+  const cfg = WAREHOUSE_CONFIG[m.pg];
+  const fromConfig = cfg?.subcats || [];
+  const fromData = [...new Set(masterDB.filter(x=>x.pg===m.pg).map(x=>x.subcat).filter(Boolean))];
+  const all = [...new Set([...fromConfig, ...fromData])].sort();
+
+  const sel = document.getElementById('editSubcatSelect');
+  sel.innerHTML = all.map(s=>`<option value="${s}" ${s===m.subcat?'selected':''}>${s}</option>`).join('')
+    + `<option value="__new__">-- หมวดหมู่ใหม่ --</option>`;
+
+  document.getElementById('editSubcatNewRow').style.display='none';
+  document.getElementById('editSubcatNewName').value='';
+  document.getElementById('editSubcatModal').classList.add('show');
+}
+
+function onEditSubcatSelectChange(){
+  const v = document.getElementById('editSubcatSelect').value;
+  document.getElementById('editSubcatNewRow').style.display = (v==='__new__') ? 'block' : 'none';
+}
+
+async function saveEditSubcat(){
+  const code = document.getElementById('editSubcatId').value;
+  const m = masterDB.find(x=>x.code===code); if(!m) return;
+  let target = document.getElementById('editSubcatSelect').value;
+  if (target === '__new__') {
+    target = (document.getElementById('editSubcatNewName').value||'').trim();
+    if (!target) { showToast('กรุณาระบุชื่อหมวดหมู่ใหม่','err'); return; }
+  }
+  if (target === m.subcat) { closeModal('editSubcatModal'); return; }
+  m.subcat = target;
+  await dbUpsertItem(m);
+  closeModal('editSubcatModal');
+  renderMasterContent();
+  showToast(`ย้ายไปหมวดหมู่ "${target}" สำเร็จ`);
+}
+
 /* ── MASTER CONTENT ── */
 function showBinForm(){
   const f=document.getElementById('binAddForm');
@@ -2255,6 +2298,7 @@ function renderMasterContent(){
       </div>
       <div class="ir-actions">
         <button class="icon-btn" onclick="editName('${m.code}')" title="แก้ไขชื่อ"><i class="ti ti-pencil"></i></button>
+        <button class="icon-btn" onclick="editSubcat('${m.code}')" title="ย้ายหมวดหมู่"><i class="ti ti-folder-symlink"></i></button>
         <button class="icon-btn" onclick="editStock('${m.code}')" title="สต็อก"><i class="ti ti-edit"></i></button>
         <button class="icon-btn" onclick="editMinMax('${m.code}')" title="Min/Max"><i class="ti ti-adjustments-horizontal"></i></button>
         <button class="icon-btn danger" onclick="deleteMasterItem('${m.code}')" title="ลบ"><i class="ti ti-trash"></i></button>

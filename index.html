@@ -648,6 +648,27 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
 </div></div>
 
+<div class="modal-wrap" id="editSubcatModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-folder-symlink"></i> ย้ายหมวดหมู่</div>
+    <button class="btn btn-sm" onclick="closeModal('editSubcatModal')">ยกเลิก</button>
+  </div>
+  <div class="fg" style="margin-bottom:10px"><label class="fl">รายการ</label>
+    <div id="editSubcatName" style="font-size:12px;font-weight:500;padding:5px 0"></div></div>
+  <div class="fg" style="margin-bottom:10px"><label class="fl">หมวดหมู่ปัจจุบัน</label>
+    <div id="editSubcatCurrent" style="font-size:12px;color:var(--ink3);padding:5px 0"></div></div>
+  <div class="fg" style="margin-bottom:8px"><label class="fl">ย้ายไปหมวดหมู่ <span class="req">*</span></label>
+    <select class="fi" id="editSubcatSelect" style="padding:7px 9px" onchange="onEditSubcatSelectChange()"></select></div>
+  <div class="fg" id="editSubcatNewRow" style="display:none;margin-bottom:12px">
+    <label class="fl">ชื่อหมวดหมู่ใหม่ <span class="req">*</span></label>
+    <input class="fi" id="editSubcatNewName" placeholder="เช่น OEM - บริษัท ชำนาญทาง จำกัด"></div>
+  <input type="hidden" id="editSubcatId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('editSubcatModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveEditSubcat()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
 <div class="modal-wrap" id="editLocModal"><div class="modal">
   <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
     <div class="card-title-left"><i class="ti ti-map-pin"></i> สถานที่จัดเก็บ</div>
