@@ -221,22 +221,33 @@ async function dbInsertTransaction(rec) {
   return data?.id ?? null;
 }
 
-async function dbLoadTransactions(pg) {
-  const { data, error } = await sb.from('transactions')
-    .select('*').eq('pg', pg)
-    .order('created_at', { ascending:false }).limit(1000);
+async function dbLoadTransactionsRaw(pg, beforeDate) {
+  let q = sb.from('transactions').select('*').eq('pg', pg);
+  if (beforeDate) q = q.lt('created_at', beforeDate);
+  const { data, error } = await q.order('created_at', { ascending:false }).limit(1000);
   if (error) { console.error('dbLoadTx:', error.message); return []; }
-  return (data||[]).map(r => ({
+  return data||[];
+}
+
+function mapTxRow(r) {
+  return {
     id: r.id,
     time: new Date(r.created_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}),
     timeDetail: new Date(r.created_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),
+    rawCreatedAt: r.created_at,
     type:r.action_type, typeLabel:ACTION_LABELS[r.action_type]||r.action_type,
     name:r.operator_name||'', dept:r.department||'',
     item:r.item_name, code:r.item_code,
     qty:parseFloat(r.quantity), lotSW:r.lot_sw||'-', lotSP:r.lot_supplier||'',
     pg:r.pg, via:r.via||'manual',
     oldStock:r.old_stock, newStock:r.new_stock,
-  }));
+  };
+}
+
+async function dbLoadTransactions(pg) {
+  const raw = await dbLoadTransactionsRaw(pg);
+  histHasMore[pg] = raw.length === 1000;
+  return raw.map(mapTxRow);
 }
 
 async function dbDeleteItem(code) {
@@ -1643,6 +1654,21 @@ async function submitBatch(pg){
 
 const HIST_PAGE_SIZE = 20;
 const histPageState = {}; // { pg: currentPage }
+const histHasMore = {};    // { pg: bool } — อาจมีข้อมูลเก่ากว่าในฐานข้อมูลอีก
+
+async function loadMoreHistory(pg){
+  const recs = txState[pg].records;
+  const oldest = recs[recs.length-1];
+  if (!oldest) return;
+  const olderRaw = await dbLoadTransactionsRaw(pg, oldest.rawCreatedAt);
+  if (!olderRaw.length) { histHasMore[pg] = false; renderHistory(pg); return; }
+  histHasMore[pg] = olderRaw.length === 1000;
+  txState[pg].records = recs.concat(olderRaw.map(mapTxRow));
+  // ไปหน้าแรกของชุดข้อมูลที่โหลดเพิ่ม
+  const newTotalPages = Math.max(1, Math.ceil(txState[pg].records.length / HIST_PAGE_SIZE));
+  const prevLastPage = Math.max(1, Math.ceil(recs.length / HIST_PAGE_SIZE));
+  renderHistory(pg, Math.min(prevLastPage+1, newTotalPages));
+}
 
 function renderHistory(pg, page){
   const cfg=WAREHOUSE_CONFIG[pg];
@@ -1686,8 +1712,12 @@ function renderHistory(pg, page){
 
   // ── Pagination controls ──
   if(pager){
+    const showLoadMore = histHasMore[pg] && curP===totalPages;
+    const loadMoreBtn = showLoadMore
+      ? `<button class="btn btn-sm" style="margin-left:8px" onclick="loadMoreHistory('${pg}')"><i class="ti ti-history"></i> โหลดประวัติเก่าเพิ่ม</button>`
+      : '';
     if(totalPages<=1){
-      pager.innerHTML=`<span>ทั้งหมด ${recs.length} รายการ</span>`;
+      pager.innerHTML=`<span>ทั้งหมด ${recs.length} รายการ</span>${loadMoreBtn}`;
     } else {
       const rangeStart = start+1;
       const rangeEnd = Math.min(start+HIST_PAGE_SIZE, recs.length);
@@ -1706,7 +1736,7 @@ function renderHistory(pg, page){
           ${btns}
           ${hi<totalPages?`${hi<totalPages-1?'<span style="padding:0 2px">…</span>':''}<button class="hist-pg" onclick="renderHistory('${pg}',${totalPages})">${totalPages}</button>`:''}
           <button class="hist-pg" onclick="renderHistory('${pg}',${curP+1})" ${curP>=totalPages?'disabled':''}><i class="ti ti-chevron-right" style="font-size:12px"></i></button>
-        </div>`;
+        </div>${loadMoreBtn}`;
     }
   }
 }
