@@ -224,7 +224,7 @@ async function dbInsertTransaction(rec) {
 async function dbLoadTransactions(pg) {
   const { data, error } = await sb.from('transactions')
     .select('*').eq('pg', pg)
-    .order('created_at', { ascending:false }).limit(200);
+    .order('created_at', { ascending:false }).limit(1000);
   if (error) { console.error('dbLoadTx:', error.message); return []; }
   return (data||[]).map(r => ({
     id: r.id,
