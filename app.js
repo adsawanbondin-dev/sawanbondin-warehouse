@@ -266,7 +266,7 @@ async function dbLoadLotsForItem(code) {
   lotDB[code] = (data||[]).map(r => ({
     id:r.id, lot_sw:r.lot_sw, lot_supplier:r.lot_supplier||'',
     stock:parseFloat(r.stock)||0, updated_at:r.updated_at,
-    expiry_date:r.expiry_date||null,
+    expiry_date:r.expiry_date||null, note:r.note||'',
   }));
 }
 
@@ -299,7 +299,7 @@ async function dbLoadItems() {
  *   lotSP   — date string lot supplier
  *   name    — item name (ใช้ตอน insert lot ใหม่)
  */
-async function dbAdjustStockWithLot(code, action, qty, { lotId=null, lotSW=null, lotSP=null, expiry=null, name='' } = {}) {
+async function dbAdjustStockWithLot(code, action, qty, { lotId=null, lotSW=null, lotSP=null, expiry=null, name='', note=null } = {}) {
   const params = {
     p_code:     code,
     p_action:   action,
@@ -308,6 +308,7 @@ async function dbAdjustStockWithLot(code, action, qty, { lotId=null, lotSW=null,
     p_lot_sw:   lotSW   || null,
     p_lot_sp:   (lotSP && lotSP.length > 0) ? lotSP : null,
     p_lot_name: name    || null,
+    p_note:     (note && note.length > 0) ? note : null,
   };
   const { data, error } = await sb.rpc('adjust_stock_with_lot', params);
   if (error) {
@@ -1537,6 +1538,7 @@ async function submitF(pg) {
         lotSP: (lotSP && lotSP.length > 0) ? lotSP : null,
         expiry: (expiry && expiry.length > 0) ? expiry : null,
         name: item,
+        note: (pg==='raw' && action==='receive') ? note : null,
       });
       if (!rpcResult.ok) { setLoading(pg+'-submit-btn', false); return; }
       // sync stock ใน memory จาก RPC result ก่อน upsert
@@ -1632,6 +1634,7 @@ async function submitBatch(pg){
           lotSW:(cfg_r.hasLot && r.lotSW && r.lotSW!=='-') ? r.lotSW : null,
           lotSP:(r.lotSP && r.lotSP.length > 0) ? r.lotSP : null,
           name:r.item,
+          note: (pg==='raw' && r.action==='receive') ? (r.note||null) : null,
         });
         if(!res.ok)continue;
         // sync stock จาก RPC result
@@ -2292,11 +2295,13 @@ function renderMasterContent(){
           const ex=l.expiry_date?new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
           const isEmpty=l.stock<=0;
           const isExpired=l.expiry_date&&new Date(l.expiry_date)<new Date();
-          return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}${isExpired?';background:#fdf2f2':''}">
+          const noteHtml=(m.pg==='raw'&&l.note)?`<div style="font-size:10px;color:var(--ink3);margin-top:2px;width:100%">หมายเหตุ: ${l.note}</div>`:'';
+          return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}${isExpired?';background:#fdf2f2':''}${noteHtml?';flex-wrap:wrap':''}">
             <span class="lot-date">${sw}${isEmpty?' <span style="font-size:9px;color:var(--red)">หมด</span>':''}</span>
             <span class="lot-stock-val">คงเหลือ ${l.stock}</span>
             ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">Sup: ${sp}</span>`:''}
             ${ex?`<span style="font-size:10px;color:${isExpired?'var(--red)':'var(--ink4)'};margin-left:8px">${isExpired?'⚠️ หมดอายุ':'หมดอายุ'}: ${ex}</span>`:''}
+            ${noteHtml}
           </div>`;
         }).join('')
       :'<div class="lot-empty">ยังไม่มี Lot</div>';
