@@ -2676,7 +2676,7 @@ async function boot(){
       if(data)data.forEach(r=>{
         if(!lotDB[r.item_code])lotDB[r.item_code]=[];
         if(!lotDB[r.item_code].find(l=>l.id===r.id))
-          lotDB[r.item_code].push({id:r.id,lot_sw:r.lot_sw,lot_supplier:r.lot_supplier||'',stock:parseFloat(r.stock)||0,updated_at:r.updated_at,expiry_date:r.expiry_date||null});
+          lotDB[r.item_code].push({id:r.id,lot_sw:r.lot_sw,lot_supplier:r.lot_supplier||'',stock:parseFloat(r.stock)||0,updated_at:r.updated_at,expiry_date:r.expiry_date||null,note:r.note||''});
       });
     }
   }catch(e){console.warn(e);}
@@ -2893,7 +2893,7 @@ async function renderStockCountPage() {
       if (data) data.forEach(r => {
         if (!lotDB[r.item_code]) lotDB[r.item_code] = [];
         if (!lotDB[r.item_code].find(l => l.id === r.id))
-          lotDB[r.item_code].push({ id:r.id, lot_sw:r.lot_sw, lot_supplier:r.lot_supplier||'', stock:parseFloat(r.stock)||0, expiry_date:r.expiry_date||null });
+          lotDB[r.item_code].push({ id:r.id, lot_sw:r.lot_sw, lot_supplier:r.lot_supplier||'', stock:parseFloat(r.stock)||0, expiry_date:r.expiry_date||null, note:r.note||'' });
       });
     }
   }
@@ -3604,7 +3604,7 @@ async function manualRefresh() {
             lotDB[r.item_code].push({
               id:r.id, lot_sw:r.lot_sw, lot_supplier:r.lot_supplier||'',
               stock:parseFloat(r.stock)||0, updated_at:r.updated_at,
-              expiry_date:r.expiry_date||null,
+              expiry_date:r.expiry_date||null, note:r.note||'',
             });
         });
       }
