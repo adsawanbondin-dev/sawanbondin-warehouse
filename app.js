@@ -934,6 +934,15 @@ function renderWarehousePage(pg) {
             <div class="card-title-left">
               ประวัติรายการ <span class="mcount" id="${pg}-hcount">0</span>
             </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="position:relative">
+                <i class="ti ti-search" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--ink4);pointer-events:none"></i>
+                <input class="fi" id="${pg}-hist-search" type="text" placeholder="ค้นหาชื่อ/รหัส..." 
+                  style="padding:5px 10px 5px 28px;font-size:11px;width:160px;height:30px"
+                  oninput="filterHistory('${pg}')">
+              </div>
+              <button class="btn btn-sm" style="padding:4px 8px;font-size:11px" onclick="clearHistSearch('${pg}')" title="ล้างการค้นหา"><i class="ti ti-x"></i></button>
+            </div>
           </div>
           <div class="hist-wrap">
             <table class="hist-table">
@@ -1657,7 +1666,23 @@ async function submitBatch(pg){
 
 const HIST_PAGE_SIZE = 20;
 const histPageState = {}; // { pg: currentPage }
-const histHasMore = {};    // { pg: bool } — อาจมีข้อมูลเก่ากว่าในฐานข้อมูลอีก
+const histHasMore = {};    // { pg: bool }
+const histSearchState = {}; // { pg: searchText }
+
+function filterHistory(pg) {
+  const q = (document.getElementById(pg+'-hist-search')?.value||'').trim();
+  histSearchState[pg] = q;
+  histPageState[pg] = 1;
+  renderHistory(pg, 1);
+}
+
+function clearHistSearch(pg) {
+  const el = document.getElementById(pg+'-hist-search');
+  if (el) el.value = '';
+  histSearchState[pg] = '';
+  histPageState[pg] = 1;
+  renderHistory(pg, 1);
+}
 
 async function loadMoreHistory(pg){
   const recs = txState[pg].records;
@@ -1679,8 +1704,18 @@ function renderHistory(pg, page){
   const hc=document.getElementById(pg+'-hcount');
   const pager=document.getElementById(pg+'-hpager');
   if(!tb)return;
-  const recs=txState[pg].records;
-  if(hc)hc.textContent=recs.length;
+  const allRecs=txState[pg].records;
+
+  // ── กรองตาม search text ──
+  const q=(histSearchState[pg]||'').toLowerCase();
+  const recs = q
+    ? allRecs.filter(r =>
+        r.item.toLowerCase().includes(q) ||
+        r.code.toLowerCase().includes(q)
+      )
+    : allRecs;
+
+  if(hc)hc.textContent=recs.length+(q?` (กรองจาก ${allRecs.length})`:'');
   const canEdit = canEditHistory();
   const totalCols = (cfg.hasLot ? (cfg.lotSupplier ? 9 : 8) : 7) + (canEdit?1:0);
 
