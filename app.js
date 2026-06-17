@@ -2330,13 +2330,13 @@ function renderMasterContent(){
           const ex=l.expiry_date?new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
           const isEmpty=l.stock<=0;
           const isExpired=l.expiry_date&&new Date(l.expiry_date)<new Date();
-          const noteHtml=(m.pg==='raw'&&l.note)?`<div style="font-size:10px;color:var(--ink3);margin-top:2px;width:100%">หมายเหตุ: ${l.note}</div>`:'';
-          return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}${isExpired?';background:#fdf2f2':''}${noteHtml?';flex-wrap:wrap':''}">
+          const noteHtml=(m.pg==='raw'&&l.note)?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">${l.note}</span>`:'';
+          return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}${isExpired?';background:#fdf2f2':''}">
             <span class="lot-date">${sw}${isEmpty?' <span style="font-size:9px;color:var(--red)">หมด</span>':''}</span>
             <span class="lot-stock-val">คงเหลือ ${l.stock}</span>
+            ${noteHtml}
             ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">Sup: ${sp}</span>`:''}
             ${ex?`<span style="font-size:10px;color:${isExpired?'var(--red)':'var(--ink4)'};margin-left:8px">${isExpired?'⚠️ หมดอายุ':'หมดอายุ'}: ${ex}</span>`:''}
-            ${noteHtml}
           </div>`;
         }).join('')
       :'<div class="lot-empty">ยังไม่มี Lot</div>';
@@ -2508,13 +2508,13 @@ function toggleLotSub(subId,code){
             const ex=l.expiry_date?new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
             const isEmpty=l.stock<=0;
             const isExpired=l.expiry_date&&new Date(l.expiry_date)<new Date();
-            const noteHtml=(m&&m.pg==='raw'&&l.note)?`<div style="font-size:10px;color:var(--ink3);margin-top:2px;width:100%">หมายเหตุ: ${l.note}</div>`:'';
-            return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}${isExpired?';background:#fdf2f2':''}${noteHtml?';flex-wrap:wrap':''}">
+            const noteHtml=(m&&m.pg==='raw'&&l.note)?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">${l.note}</span>`:'';
+            return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}${isExpired?';background:#fdf2f2':''}">
               <span class="lot-date" title="Lot SW">${sw}${isEmpty?' <span style="font-size:9px;color:var(--red)">หมด</span>':''}</span>
               <span class="lot-stock-val">คงเหลือ ${l.stock}</span>
+              ${noteHtml}
               ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px" title="Lot Supplier">Sup: ${sp}</span>`:''}
               ${ex?`<span style="font-size:10px;color:${isExpired?'var(--red)':'var(--ink4)'};margin-left:8px">${isExpired?'⚠️ หมดอายุ':'หมดอายุ'}: ${ex}</span>`:''}
-              ${noteHtml}
             </div>`;
           }).join('')
         :'<div class="lot-empty">ยังไม่มี Lot</div>';
