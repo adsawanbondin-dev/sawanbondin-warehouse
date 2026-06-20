@@ -565,6 +565,11 @@ function canEditHistory() {
   return role === 'admin' || role === 'manager';
 }
 
+/** แก้ไขวันที่ทำรายการ — เฉพาะ admin เท่านั้น */
+function canEditDate() {
+  return (window._operatorRole || '') === 'admin';
+}
+
 /**
  * applyStockDelta — เรียก RPC ปรับสต็อกตาม action/qty/lot
  * ใช้ทั้งตอน "ย้อนผลเดิม" (กลับด้าน action) และ "ใช้ค่าใหม่"
@@ -609,6 +614,25 @@ function openEditTx(rec, pg) {
   document.getElementById('editTxQty').value = rec.qty;
   document.getElementById('editTxName').value = rec.name;
   document.getElementById('editTxNote').value = rec.note || '';
+
+  // วันที่ทำรายการ — แก้ได้เฉพาะ admin
+  const dateRow = document.getElementById('editTxDateRow');
+  const dateInput = document.getElementById('editTxDate');
+  if (canEditDate()) {
+    dateRow.style.display = 'block';
+    // rec.rawCreatedAt เป็น ISO string จาก DB — แปลงเป็น local datetime-local format
+    if (rec.rawCreatedAt) {
+      const d = new Date(rec.rawCreatedAt);
+      const pad = n => String(n).padStart(2,'0');
+      const localStr = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      dateInput.value = localStr;
+    } else {
+      dateInput.value = '';
+    }
+  } else {
+    dateRow.style.display = 'none';
+    dateInput.value = '';
+  }
 
   // แผนก
   const deptSel = document.getElementById('editTxDept');
@@ -714,7 +738,7 @@ async function saveEditTx() {
   }
 
   // ── 3) อัปเดตแถว transaction ──
-  const { error } = await sb.from('transactions').update({
+  const updatePayload = {
     action_type:  newType,
     quantity:     newQty,
     operator_name:newName,
@@ -723,7 +747,16 @@ async function saveEditTx() {
     note:         newNote,
     old_stock:    finalOldStock,
     new_stock:    finalNewStock,
-  }).eq('id', id);
+  };
+  // วันที่ทำรายการ — แก้ได้เฉพาะ admin
+  if (canEditDate()) {
+    const dateVal = document.getElementById('editTxDate')?.value;
+    if (dateVal) {
+      const d = new Date(dateVal); // local time → JS Date handles tz conversion on toISOString
+      if (!isNaN(d.getTime())) updatePayload.created_at = d.toISOString();
+    }
+  }
+  const { error } = await sb.from('transactions').update(updatePayload).eq('id', id);
 
   setLoading('editTxSaveBtn', false);
   if (error) { showToast('บันทึกไม่สำเร็จ: '+error.message,'err'); return; }
@@ -735,10 +768,20 @@ async function saveEditTx() {
     r.qty=newQty; r.name=newName; r.dept=newDept; r.note=newNote;
     r.lotSW=(newLotSW&&newLotSW!=='-')?newLotSW:'-';
     r.oldStock=finalOldStock; r.newStock=finalNewStock;
+    if (updatePayload.created_at) {
+      r.rawCreatedAt = updatePayload.created_at;
+      const d = new Date(updatePayload.created_at);
+      r.time = d.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'});
+      r.timeDetail = d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+    }
   }
 
   closeModal('editTxModal');
   checkAlerts();
+  // ถ้าแก้วันที่ ลำดับการเรียงอาจเปลี่ยน — เรียง records ใหม่
+  if (updatePayload.created_at) {
+    txState[pg].records.sort((a,b)=> new Date(b.rawCreatedAt) - new Date(a.rawCreatedAt));
+  }
   renderHistory(pg);
   if (curPage==='master') renderMasterContent();
   showToast('แก้ไขรายการสำเร็จ');

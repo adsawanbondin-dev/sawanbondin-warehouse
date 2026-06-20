@@ -722,6 +722,9 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
   <div class="fg" style="margin-bottom:12px"><label class="fl">หมายเหตุ</label>
     <textarea class="fta" id="editTxNote"></textarea></div>
+  <div class="fg" id="editTxDateRow" style="display:none;margin-bottom:12px">
+    <label class="fl">วันที่/เวลาทำรายการ <span style="color:var(--ink4);font-weight:400">(admin เท่านั้น)</span></label>
+    <input class="fi" id="editTxDate" type="datetime-local" style="padding:7px 9px"></div>
   <input type="hidden" id="editTxId">
   <input type="hidden" id="editTxPg">
   <input type="hidden" id="editTxOrigJson">
