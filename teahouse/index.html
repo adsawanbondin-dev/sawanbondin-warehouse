@@ -477,18 +477,15 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
 </div>
 
-<!-- NAV — เพิ่มคลังใหม่ที่นี่พร้อมกับ WAREHOUSE_CONFIG ใน app.js -->
+<!-- NAV — โครงสร้างคลังของ Tea House (4 คลัง ต่างจาก Factory) -->
 <nav class="nav">
   <div class="nav-item active" onclick="switchPage('master')" data-page="master">
     <i class="ti ti-database"></i> Master
   </div>
-  <div class="nav-item" onclick="switchPage('raw')"       data-page="raw">วัตถุดิบ</div>
-  <div class="nav-item" onclick="switchPage('matcha')"    data-page="matcha">ชาบดผงมัตจะ</div>
-  <div class="nav-item" onclick="switchPage('pack')"      data-page="pack">บรรจุภัณฑ์ภายใน</div>
-  <div class="nav-item" onclick="switchPage('packaging')" data-page="packaging">บรรจุภัณฑ์ภายนอก</div>
-  <div class="nav-item" onclick="switchPage('equip')"     data-page="equip">อุปกรณ์</div>
-  <div class="nav-item" onclick="switchPage('finish')"    data-page="finish">สินค้าสำเร็จรูป</div>
-  <div class="nav-item" onclick="switchPage('sample')" "    data-page="sample">ชาตัวอย่าง</div>
+  <div class="nav-item" onclick="switchPage('finish')"      data-page="finish">คลังสินค้าสำเร็จรูป</div>
+  <div class="nav-item" onclick="switchPage('raw')"         data-page="raw">คลังวัตถุดิบ</div>
+  <div class="nav-item" onclick="switchPage('equip_th')"    data-page="equip_th">คลังอุปกรณ์ Tea House</div>
+  <div class="nav-item" onclick="switchPage('equip_boot')"  data-page="equip_boot">คลังอุปกรณ์ Boot</div>
   <div class="nav-item" onclick="switchPage('dashboard')" data-page="dashboard" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
     <i class="ti ti-chart-bar"></i> Dashboard
   </div>
@@ -501,13 +498,10 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 <!-- PAGE CONTAINERS -->
 <div class="main">
   <div id="page-master"      class="page-visible"></div>
-  <div id="page-raw"         class="page-hidden"></div>
-  <div id="page-matcha"      class="page-hidden"></div>
-  <div id="page-pack"        class="page-hidden"></div>
-  <div id="page-packaging"   class="page-hidden"></div>
-  <div id="page-equip"       class="page-hidden"></div>
   <div id="page-finish"      class="page-hidden"></div>
-  <div id="page-sample"      class="page-hidden"></div>
+  <div id="page-raw"         class="page-hidden"></div>
+  <div id="page-equip_th"    class="page-hidden"></div>
+  <div id="page-equip_boot"  class="page-hidden"></div>
   <div id="page-stockcount"  class="page-hidden"></div>
   <div id="page-dashboard"   class="page-hidden"></div>
 </div>
