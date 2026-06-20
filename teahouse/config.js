@@ -9,4 +9,16 @@ window.WMS_CONFIG = {
   PREFIX:  'SWBD',
   SITE_NAME: 'Sawanbondin',
   SITE_SUB:  'ระบบจัดการคลัง (Tea House)',
+
+  // รหัสสินค้าทุกคลังใช้รูปแบบเดียวกัน SWBD_TH_0001, 0002, ... รันต่อเนื่องไม่แยกตามคลัง
+  UNIFIED_CODE: 'TH',
+
+  // โครงสร้างคลังของ Tea House — แทนที่ WAREHOUSE_CONFIG เริ่มต้นของ Factory ทั้งก้อน
+  WAREHOUSE_CONFIG: {
+    finish:     { label:'คลังสินค้าสำเร็จรูป',     prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'] },
+    raw:        { label:'คลังวัตถุดิบ',             prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'] },
+    equip_th:   { label:'คลังอุปกรณ์ Tea House',   prefix:'TH', hasLot:false, lotSupplier:false, rawFields:false, depts:['คลัง'] },
+    equip_boot: { label:'คลังอุปกรณ์ Boot',         prefix:'TH', hasLot:false, lotSupplier:false, rawFields:false, depts:['คลัง'] },
+  },
 };
+
