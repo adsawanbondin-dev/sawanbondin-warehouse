@@ -13,11 +13,13 @@
 'use strict';
 
 /* ═══════════════════════════════════════════
-   CONFIG — แก้ได้ที่นี่ที่เดียว
+   CONFIG — ตั้งค่าจริงอยู่ใน config.js (โหลดก่อนไฟล์นี้)
+   ห้ามแก้ตรงนี้ — ไปแก้ที่ config.js ของแต่ละหน่วยงานแทน
 ═══════════════════════════════════════════ */
-const SB_URL = 'https://rsmcrshvcbtcxvvhdmnk.supabase.co';
-const SB_KEY = 'sb_publishable__RK27ReptMhtMdc8EdA-KQ_K4zfhMwJ';
-const PREFIX  = 'SWBD';
+const _CFG = window.WMS_CONFIG || {};
+const SB_URL = _CFG.SB_URL || 'https://rsmcrshvcbtcxvvhdmnk.supabase.co';
+const SB_KEY = _CFG.SB_KEY || 'sb_publishable__RK27ReptMhtMdc8EdA-KQ_K4zfhMwJ';
+const PREFIX  = _CFG.PREFIX || 'SWBD';
 
 const WAREHOUSE_CONFIG = {
   raw:       { label:'วัตถุดิบ',          prefix:'RM', hasLot:true,  lotSupplier:true,  rawFields:true,  depts:['ผลิต','คลัง'] },
