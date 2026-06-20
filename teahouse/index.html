@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1a1a1c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SWBD คลัง">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Sawanbondin — ระบบจัดการคลัง</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+/* ══ RESET & TOKENS ══ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#1c1c1e;--ink2:#48484a;--ink3:#8e8e93;--ink4:#aeaeb2;
+  --bg:#f0f0ee;--surface:#fff;--s2:#f7f7f5;--s3:#eeeeec;
+  --line:#e4e4e0;--line2:#d0d0c8;
+  --acc:#2c5282;--acc-bg:#ebf0f8;--acc-mid:#4a7ab5;
+  --grn:#2d6a4f;--grn-bg:#edf5f0;--grn-mid:#3d8b67;
+  --amb:#7a4f1e;--amb-bg:#faf3ea;
+  --red:#7a2020;--red-bg:#faf0f0;
+  --blu:#1a4a72;--blu-bg:#e8f1f8;
+  --warn:#854f0b;--warn-bg:#fef3e2;--warn-bdr:#f0c060;
+  --r:6px;--rlg:10px;
+}
+body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+
+/* ══ TOPBAR ══ */
+.topbar{background:#1c1c1e;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 14px;height:46px;position:sticky;top:0;z-index:200;gap:8px}
+.topbar-title{font-size:13px;font-weight:500;white-space:nowrap}
+.topbar-sub{color:#6e6e73;font-size:11px;padding-left:8px;border-left:1px solid #3a3a3c;margin-left:6px;white-space:nowrap}
+.topbar-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.topbar-date{font-size:11px;color:#6e6e73;white-space:nowrap}
+.alert-bell{position:relative;cursor:pointer;color:#6e6e73;padding:6px;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center}
+.alert-bell:hover{color:#fff}
+.alert-dot{position:absolute;top:4px;right:4px;width:7px;height:7px;background:#e24b4a;border-radius:50%;border:2px solid #1c1c1e;display:none}
+.topbar-link{font-size:11px;color:#8e8e93;text-decoration:none;display:flex;align-items:center;gap:4px;padding:6px 10px;border:1px solid #3a3a3c;border-radius:7px;min-height:32px;white-space:nowrap}
+.topbar-link:hover{color:#fff;border-color:#6e6e73}
+/* mobile: ซ่อน topbar-sub และ date บนจอเล็ก */
+@media(max-width:600px){
+  .topbar-sub{display:none}
+  .topbar-date{display:none}
+  .topbar{padding:0 12px;height:44px}
+}
+
+/* ══ NAV ══ */
+.nav{background:var(--surface);border-bottom:1px solid var(--line);display:flex;padding:0 8px;position:sticky;top:46px;z-index:190;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav-item{padding:11px 12px;cursor:pointer;font-size:12px;color:var(--ink3);border-bottom:2px solid transparent;white-space:nowrap;transition:all .12s;display:flex;align-items:center;gap:5px;flex-shrink:0;min-height:42px;-webkit-tap-highlight-color:transparent}
+.nav-item:hover{color:var(--ink2)}
+.nav-item.active{color:var(--ink);border-bottom-color:var(--ink);font-weight:500}
+@media(max-width:600px){
+  .nav{top:44px;padding:0 4px}
+  .nav-item{padding:10px 10px;font-size:11px;min-height:40px}
+}
+
+/* ══ LAYOUT ══ */
+.main{padding:12px 14px;max-width:1280px;margin:0 auto}
+.wh-layout{display:grid;grid-template-columns:340px 1fr;gap:12px;align-items:start}
+@media(max-width:900px){.wh-layout{grid-template-columns:1fr}}
+@media(max-width:600px){.main{padding:10px 10px}}
+.wh-left,.wh-right{display:flex;flex-direction:column;gap:10px;min-width:0}
+
+/* ══ CARD ══ */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--rlg);padding:13px 15px}
+.card-title{font-size:12px;font-weight:500;color:var(--ink);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-title-left{display:flex;align-items:center;gap:6px}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px}
+.page-title{font-size:15px;font-weight:500}
+.page-sub{font-size:11px;color:var(--ink3);margin-top:1px}
+.page-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+
+/* ══ BUTTONS ══ */
+.btn{padding:8px 14px;border-radius:var(--r);border:1px solid var(--line);cursor:pointer;font-family:inherit;font-size:12px;font-weight:500;transition:all .15s;display:inline-flex;align-items:center;gap:5px;background:var(--surface);color:var(--ink2);min-height:34px;-webkit-tap-highlight-color:transparent}
+.btn:hover{background:var(--s2);border-color:var(--line2)}
+.btn-primary{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn-primary:hover{background:#2c2c2e}
+.btn-sm{padding:5px 10px;font-size:11px;min-height:28px}
+.qr-btn{display:flex;align-items:center;gap:5px;padding:7px 12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);cursor:pointer;font-family:inherit;font-size:12px;font-weight:500;color:var(--ink2);transition:all .15s;min-height:34px}
+.qr-btn:hover{border-color:var(--acc-mid);color:var(--acc);background:var(--acc-bg)}
+.cam-btn{display:flex;align-items:center;gap:5px;padding:7px 12px;background:var(--grn);border:none;border-radius:var(--r);cursor:pointer;font-family:inherit;font-size:12px;font-weight:500;color:#fff;min-height:34px}
+.cam-btn:hover{background:var(--grn-mid)}
+.icon-btn{width:30px;height:30px;border-radius:7px;border:1px solid var(--line);background:var(--surface);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--ink3);transition:all .15s;font-size:13px;-webkit-tap-highlight-color:transparent}
+.icon-btn:hover{border-color:var(--line2);color:var(--ink2)}
+.icon-btn.danger:hover{border-color:#e0b0b0;color:var(--red);background:var(--red-bg)}
+
+/* ══ BADGE ══ */
+.badge{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:500}
+.badge-receive{background:var(--grn-bg);color:var(--grn)}
+.badge-withdraw{background:var(--amb-bg);color:var(--amb)}
+.badge-return-good{background:var(--blu-bg);color:var(--blu)}
+.badge-return-bad{background:var(--red-bg);color:var(--red)}
+.mcount{font-size:10px;padding:1px 5px;border-radius:8px;background:var(--s3);color:var(--ink3);font-weight:500}
+
+/* ══ FORM ══ */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.form-full{grid-column:1/-1}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fl{font-size:10px;font-weight:500;color:var(--ink3);letter-spacing:.3px;text-transform:uppercase}
+.req{color:#c0392b;margin-left:2px}
+.fi,.fta{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:var(--r);font-family:inherit;font-size:13px;color:var(--ink);background:var(--surface);outline:none;transition:border-color .15s}
+.fi:focus,.fta:focus{border-color:var(--acc)}
+.fta{resize:vertical;min-height:52px;line-height:1.5}
+.fhint{font-size:10px;color:var(--ink4)}
+.divider{height:1px;background:var(--line);margin:10px 0}
+.lot-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.lot-single{display:grid;grid-template-columns:1fr;gap:10px}
+.form-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.action-select-wrap{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.action-select-label{font-size:11px;color:var(--ink3);white-space:nowrap}
+.action-select{padding:7px 28px 7px 10px;border:1px solid var(--line);border-radius:var(--r);font-family:inherit;font-size:13px;color:var(--ink);background:var(--surface);outline:none;cursor:pointer;appearance:none;-webkit-appearance:none;flex:1}
+.action-select:focus{border-color:var(--acc)}
+.action-select-icon{margin-left:-22px;pointer-events:none;color:var(--ink3);font-size:12px;flex-shrink:0}
+.info-bar{padding:7px 10px;border-radius:var(--r);font-size:11px;margin-bottom:9px;display:flex;align-items:center;gap:6px}
+.info-bar.warn{background:var(--red-bg);border:1px solid #e0b0b0;color:var(--red)}
+
+/* ══ RADIO ══ */
+.radio-grp{display:flex;gap:4px;flex-wrap:wrap}
+.radio-opt{display:flex;align-items:center;gap:4px;cursor:pointer;padding:8px 13px;min-height:36px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;transition:all .15s;color:var(--ink2);user-select:none}
+.radio-opt:hover{border-color:var(--line2);background:var(--s2)}
+.radio-opt input{display:none}
+.radio-opt.sel{border-color:var(--acc);background:var(--acc-bg);color:var(--acc);font-weight:500}
+.dept-pill{display:inline-flex;align-items:center;font-size:10px;padding:2px 6px;border-radius:10px;font-weight:500}
+.dept-prod{background:#e8f0e8;color:#2d5a2d}
+.dept-ware{background:#e8eef8;color:#2d4a7a}
+.dept-pack{background:#f0e8f8;color:#5a2d8a}
+.dept-tea{background:#f8f0e0;color:#7a4f1e}
+/* dept button default = เทา, active = สีเด่น */
+.radio-opt{border-color:var(--line);background:var(--surface);color:var(--ink3)}
+.radio-opt.sel{border-color:var(--ink);background:var(--ink);color:#fff}
+.radio-opt:not(.sel):hover{border-color:var(--line2);background:var(--s2);color:var(--ink2)}
+
+/* ══ DROPDOWN ══ */
+.item-wrap{position:relative}
+.item-input{width:100%;padding:7px 28px 7px 9px;border:1px solid var(--line);border-radius:var(--r);font-family:inherit;font-size:13px;color:var(--ink);background:var(--surface);outline:none;transition:border-color .15s}
+.item-input:focus{border-color:var(--acc)}
+.item-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--ink3);padding:2px;font-size:11px}
+.dd{position:absolute;top:calc(100% + 3px);left:0;right:0;background:var(--surface);border:1px solid var(--line2);border-radius:var(--r);z-index:300;max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12)}
+.dd-search{padding:6px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
+.dd-search input{width:100%;padding:5px 8px;border:1px solid var(--line);border-radius:5px;font-family:inherit;font-size:11px;outline:none}
+.dd-grp-label{padding:7px 10px 3px;font-size:9px;font-weight:600;color:var(--ink4);letter-spacing:.6px;text-transform:uppercase}
+.dd-item{padding:6px 10px;cursor:pointer;font-size:12px;color:var(--ink);display:flex;align-items:center;gap:6px}
+.dd-item:hover{background:var(--s2)}
+.dd-code{font-size:10px;color:var(--ink4);font-family:monospace;margin-left:auto}
+
+/* ══ ALERT ══ */
+.alert-bar{background:var(--warn-bg);border:1px solid var(--warn-bdr);border-radius:var(--r);padding:8px 11px;margin-bottom:10px;display:flex;align-items:flex-start;gap:8px}
+.alert-bar-title{font-size:11px;font-weight:500;color:var(--warn);margin-bottom:3px}
+.alert-items{display:flex;flex-wrap:wrap;gap:4px}
+.alert-chip{font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid var(--warn-bdr);color:var(--warn);background:#fff5e0}
+
+/* ══ HISTORY TABLE ══ */
+.hist-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.hist-pager{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-top:1px solid var(--line);font-size:11px;color:var(--ink3)}
+.hist-pager-btns{display:flex;align-items:center;gap:4px}
+.hist-pg{min-width:26px;height:26px;padding:0 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink2);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
+.hist-pg:hover{background:var(--s2);border-color:var(--line2)}
+.hist-pg.active{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:500}
+.hist-pg:disabled{opacity:.4;cursor:default}
+.hist-pg:disabled:hover{background:var(--surface)}
+.hist-table{width:100%;border-collapse:collapse;font-size:11px}
+.hist-table th{text-align:left;padding:6px 8px;background:var(--s2);color:var(--ink3);font-weight:500;border-bottom:1px solid var(--line);font-size:10px;letter-spacing:.3px;text-transform:uppercase;white-space:nowrap}
+.hist-table td{padding:7px 8px;border-bottom:1px solid var(--line);color:var(--ink2);vertical-align:middle}
+.hist-table tr:last-child td{border-bottom:none}
+.hist-table tr:hover td{background:var(--s2)}
+/* คอลัมน์ "รายการ" (ลำดับที่ 5) ให้ wrap ได้เต็มชื่อ และเป็นคอลัมน์เดียวที่ขยายตามพื้นที่เหลือ */
+.hist-table th:nth-child(5),.hist-table td:nth-child(5){white-space:normal;word-break:break-word;width:auto;min-width:160px}
+/* คอลัมน์อื่นไม่ wrap แต่ไม่บีบจนตัด badge/pill */
+.hist-table th:not(:nth-child(5)),.hist-table td:not(:nth-child(5)){white-space:nowrap}
+@media(max-width:600px){
+  .hist-table td:nth-child(6),.hist-table th:nth-child(6){display:none} /* ซ่อน รหัส */
+  .hist-table td,.hist-table th{padding:8px 8px;font-size:11px}
+  .hist-table th:nth-child(5),.hist-table td:nth-child(5){min-width:120px}
+}
+.tbadge{padding:2px 6px;border-radius:3px;font-size:10px;font-weight:500;white-space:nowrap}
+.empty{text-align:center;padding:24px;color:var(--ink3)}
+.empty i{font-size:20px;display:block;margin-bottom:5px;opacity:.5}
+.empty-text{font-size:12px}
+
+/* ══ MASTER ══ */
+.master-search-bar{display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.master-search-bar input{flex:1;min-width:130px;padding:7px 9px;border:1px solid var(--line);border-radius:var(--r);font-family:inherit;font-size:12px;outline:none;background:var(--surface)}
+.master-search-bar input:focus{border-color:var(--acc)}
+.cat-tabs{display:flex;gap:4px;flex-wrap:wrap}
+.cat-tab{padding:4px 10px;border-radius:20px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:11px;font-weight:500;color:var(--ink3);transition:all .15s;white-space:nowrap}
+.cat-tab:hover{border-color:var(--line2);color:var(--ink2)}
+.cat-tab.active{background:var(--ink);border-color:var(--ink);color:#fff}
+.master-section{margin-bottom:18px}
+.master-section-header{display:flex;align-items:center;margin-bottom:7px}
+.master-section-title{font-size:11px;font-weight:600;color:var(--ink2);display:flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:.4px}
+.item-list{display:flex;flex-direction:column;gap:1px}
+.item-row{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:9px 12px;display:flex;align-items:center;gap:10px;transition:border-color .15s}
+.item-row:hover{border-color:var(--line2)}
+.item-row.low-stock{border-left:3px solid var(--warn-bdr);background:var(--warn-bg)}
+.item-row.out-stock{border-left:3px solid #e0b0b0;background:#fdf5f5}
+.ir-main{flex:1;min-width:0}
+.ir-name{font-size:12px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ir-code{font-size:10px;color:var(--acc);font-family:monospace;margin-top:1px}
+.ir-meta{display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap}
+.ir-stock strong{color:var(--ink);font-weight:500}
+.ir-minmax{font-size:10px;color:var(--ink4)}
+.ir-si{display:inline-flex;align-items:center;gap:2px;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:500}
+.si-ok{background:var(--grn-bg);color:var(--grn)}
+.si-low{background:var(--warn-bg);color:var(--warn)}
+.si-out{background:var(--red-bg);color:var(--red)}
+.stock-bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden;flex-shrink:0}
+.stock-bar-fill{height:100%;border-radius:2px}
+.fill-ok{background:var(--grn-mid)}.fill-low{background:#e6a817}.fill-out{background:#e24b4a}
+.ir-actions{display:flex;gap:4px;flex-shrink:0}
+.loc-tag{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--acc);background:var(--acc-bg);padding:1px 6px;border-radius:4px;margin-top:2px;cursor:pointer}
+.loc-tag:hover{background:#d0dff4}
+.naming-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:5px}
+.naming-rule{font-size:11px;color:var(--acc);padding:5px 9px;background:var(--acc-bg);border-radius:var(--r);font-family:monospace;font-weight:500}
+.add-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:9px}
+
+/* ══ PENDING ══ */
+.pending-card{background:#fff8ee;border:1.5px solid var(--warn-bdr);border-radius:var(--rlg);padding:13px 15px;margin-bottom:11px}
+.pending-badge{font-size:10px;padding:2px 7px;border-radius:10px;background:var(--warn);color:#fff;font-weight:500;margin-left:5px}
+.pending-item-row{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--warn-bdr);border-radius:var(--r);background:#fff;margin-bottom:5px}
+.pi-info{flex:1;min-width:0}
+.pi-temp{font-size:12px;font-weight:600;color:var(--warn);font-family:monospace}
+.pi-stock{font-size:10px;color:var(--ink3);margin-top:2px}
+.pi-actions{display:flex;gap:5px;flex-shrink:0}
+.assign-btn{padding:5px 11px;background:var(--warn);border:none;border-radius:var(--r);color:#fff;font-family:inherit;font-size:11px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:4px}
+.assign-btn:hover{background:#6b3f08}
+
+/* ══ BATCH ══ */
+.batch-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line);font-size:12px}
+.batch-row:last-child{border-bottom:none}
+.batch-row-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.batch-row-meta{font-size:10px;color:var(--ink3);white-space:nowrap}
+.batch-row-del{background:none;border:none;cursor:pointer;color:var(--ink4);padding:2px;display:flex;align-items:center;font-size:14px}
+.batch-row-del:hover{color:var(--red)}
+
+/* ══ LOT ══ */
+.lot-expand-btn{background:none;border:none;cursor:pointer;color:var(--acc);font-size:11px;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;font-family:inherit}
+.lot-expand-btn:hover{background:var(--acc-bg)}
+.lot-sub-list{padding:6px 0 4px 12px;border-left:2px solid var(--acc-bg);margin:4px 0 2px 8px}
+.lot-sub-row{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:5px;font-size:11px;color:var(--ink2)}
+.lot-sub-row:hover{background:var(--s2)}
+.lot-date{font-family:monospace;font-size:10px;color:var(--acc);min-width:80px}
+.lot-stock-val{font-weight:500;color:var(--ink)}
+.lot-empty{font-size:11px;color:var(--ink4);padding:4px 8px;font-style:italic}
+.lot-select-wrap{margin-top:8px;padding:9px 11px;background:var(--s2);border:1px solid var(--line);border-radius:var(--r)}
+.lot-select-label{font-size:10px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px}
+.lot-select-item{display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);margin-bottom:4px;cursor:pointer;transition:all .15s}
+.lot-select-item:hover{border-color:var(--acc-mid);background:var(--acc-bg)}
+.lot-select-item.active{border-color:var(--acc);background:var(--acc-bg)}
+.lot-sel-stock{font-size:10px;color:var(--ink3);margin-left:auto}
+
+/* ══ QR SIDEBAR ══ */
+.qr-sidebar{position:fixed;inset:0;z-index:500;display:none;justify-content:flex-end}
+.qr-sidebar.show{display:flex}
+.qr-overlay{position:absolute;inset:0;background:rgba(0,0,0,.25)}
+.qr-panel{position:relative;width:340px;max-width:90vw;background:var(--surface);height:100%;overflow-y:auto;box-shadow:-4px 0 24px rgba(0,0,0,.15);display:flex;flex-direction:column}
+.qr-panel-header{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--surface);z-index:1}
+.qr-panel-title{font-size:13px;font-weight:500;color:var(--ink);display:flex;align-items:center;gap:7px}
+.qr-panel-body{padding:13px 15px;flex:1}
+.qr-action-form{background:var(--s2);border:1px solid var(--line);border-radius:var(--r);padding:11px;margin-bottom:13px}
+.qr-action-title{font-size:10px;font-weight:600;color:var(--ink2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px}
+.qr-action-row{display:flex;flex-direction:column;gap:6px}
+.qr-action-input{width:100%;padding:8px 10px;border:1.5px solid var(--acc-mid);border-radius:var(--r);font-family:inherit;font-size:13px;color:var(--ink);background:var(--surface);outline:none}
+.qr-action-input:focus{border-color:var(--acc)}
+.qr-action-row2{display:flex;gap:6px}
+.qr-action-select,.qr-action-qty{padding:7px 9px;border:1px solid var(--line);border-radius:var(--r);font-family:inherit;font-size:12px;color:var(--ink);background:var(--surface);outline:none;cursor:pointer}
+.qr-action-qty{width:68px}
+.qr-action-btn{width:100%;padding:9px;background:var(--acc);border:none;border-radius:var(--r);color:#fff;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+.qr-action-btn:hover{background:var(--blu)}
+.qr-result{padding:7px 10px;border-radius:var(--r);font-size:11px;display:none;margin-top:4px}
+.qr-result.ok{display:block;background:var(--grn-bg);color:var(--grn);border:1px solid #b0d4c0}
+.qr-result.err{display:block;background:var(--red-bg);color:var(--red);border:1px solid #e0b0b0}
+.qr-list-title{font-size:10px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px}
+.qr-list{display:flex;flex-direction:column;gap:10px}
+.qr-list-item{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+.qr-list-info{flex:1;min-width:0}
+.qr-list-name{font-size:11px;font-weight:500;color:var(--ink);line-height:1.3;overflow-wrap:break-word}
+.qr-list-code{font-size:10px;color:var(--acc);font-family:monospace;margin-top:2px}
+.qr-list-stock{font-size:10px;color:var(--ink3);margin-top:2px}
+
+/* ══ CAMERA ══ */
+.cam-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:600;display:none;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.cam-overlay.show{display:flex}
+.cam-box{width:100%;max-width:400px;background:#000;border-radius:12px;overflow:hidden;position:relative}
+#cam-reader{width:100%}
+.cam-result{margin-top:12px;padding:10px 16px;border-radius:var(--r);font-size:13px;color:#fff;text-align:center;min-height:44px}
+.cam-result.ok{background:rgba(45,106,79,.8)}
+.cam-result.err{background:rgba(122,32,32,.8)}
+.cam-close{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.cam-controls{display:flex;gap:10px;margin-top:12px;align-items:center}
+.cam-action-select,.cam-qty{padding:8px 10px;border:1px solid rgba(255,255,255,.3);border-radius:var(--r);background:rgba(255,255,255,.1);color:#fff;font-family:inherit;font-size:13px;outline:none}
+.cam-qty{width:70px;text-align:center}
+.cam-confirm{padding:8px 18px;background:var(--acc);border:none;border-radius:var(--r);color:#fff;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}
+
+/* ══ MODALS ══ */
+.modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:500;display:none;align-items:center;justify-content:center;padding:14px}
+.modal-wrap.show{display:flex}
+.modal{background:var(--surface);border-radius:var(--rlg);padding:18px;max-width:440px;width:100%}
+@media(max-width:500px){.modal{max-height:92vh;border-radius:20px 20px 0 0;position:fixed;bottom:0;left:0;right:0;max-width:100%!important;margin:0!important}.modal-wrap.show{align-items:flex-end!important;padding:0!important}}
+.modal-check{width:32px;height:32px;background:var(--grn-bg);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 9px}
+
+/* ══ MISC ══ */
+@keyframes spin{to{transform:rotate(360deg)}}
+.page-hidden{display:none}.page-visible{display:block}
+@media(max-width:600px){
+  .form-grid,.form-grid-3,.lot-pair,.add-form-grid{grid-template-columns:1fr}
+  .naming-grid{grid-template-columns:1fr 1fr}
+  .topbar-sub{display:none}
+  .main{padding:10px}
+}
+
+/* ══ LOGIN ══ */
+#loginScreen{position:fixed;inset:0;background:#f0f0ee;z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
+#loginScreen.visible{display:flex}
+.login-card{background:#fff;border-radius:16px;padding:32px;max-width:360px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,.1)}
+.login-logo{font-size:18px;font-weight:600;color:#1c1c1e;margin-bottom:4px}
+.login-sub{font-size:12px;color:#8e8e93;margin-bottom:24px}
+.login-label{font-size:11px;font-weight:500;color:#8e8e93;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:5px}
+.login-input{width:100%;padding:10px 12px;border:1px solid #e4e4e0;border-radius:8px;font-family:inherit;font-size:14px;color:#1c1c1e;outline:none;transition:border-color .15s;margin-bottom:12px}
+.login-input:focus{border-color:#2c5282}
+.login-btn{width:100%;padding:11px;background:#1c1c1e;border:none;border-radius:8px;color:#fff;font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s}
+.login-btn:hover{background:#2c2c2e}
+.login-btn:disabled{background:#8e8e93;cursor:not-allowed}
+.login-error{font-size:12px;color:#7a2020;background:#faf0f0;border:1px solid #e0b0b0;border-radius:6px;padding:8px 11px;margin-top:10px;display:none}
+.login-error:not(:empty){display:block}
+.lot-expired{opacity:.6;background:rgba(200,60,60,.08)}
+.cam-lot-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.15);cursor:pointer;transition:all .15s}
+.cam-lot-row:hover{background:rgba(255,255,255,.12)}
+.cam-lot-row.selected{background:rgba(44,180,100,.2);border-color:rgba(44,180,100,.5)}
+/* ══ RESPONSIVE HELPERS ══ */
+@media(max-width:600px){
+  .hide-mobile{display:none!important}
+  .ir-si{font-size:9px;padding:1px 5px}
+  .stock-bar{width:40px}
+  .ir-stock{font-size:14px}
+  .form-grid{grid-template-columns:1fr!important}
+  .card{padding:11px 12px}
+  .page-title{font-size:14px}
+  .loc-tag{font-size:9px}
+}
+@media(min-width:601px){.hide-desktop{display:none!important}}
+
+/* ══ STOCK COUNT ══ */
+.sc-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.sc-title{font-size:18px;font-weight:600;color:var(--ink);letter-spacing:-.3px}
+.sc-sub{font-size:12px;color:var(--ink4);margin-top:3px}
+.sc-toolbar{background:var(--surface);border:1px solid var(--line);border-radius:var(--rlg);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sc-pg-tabs{display:flex;gap:5px;flex-wrap:wrap}
+.sc-pg-tab{padding:5px 12px;border-radius:20px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:11px;font-weight:500;color:var(--ink3);transition:all .12s;white-space:nowrap}
+.sc-pg-tab:hover{border-color:var(--line2);color:var(--ink2)}
+.sc-pg-tab.active{background:var(--ink);border-color:var(--ink);color:#fff}
+.sc-search{display:flex;align-items:center;gap:7px;background:var(--s2);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;flex:1;min-width:180px}
+.sc-search input{border:none;background:none;outline:none;font-size:12px;color:var(--ink);width:100%}
+.sc-table-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--rlg);overflow:hidden}
+.sc-table{width:100%;border-collapse:collapse}
+.sc-table th{text-align:left;padding:10px 13px;font-size:9px;color:var(--ink4);font-weight:600;border-bottom:1px solid var(--line);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;background:var(--s2)}
+.sc-table td{padding:9px 13px;border-bottom:1px solid #f8f8f6;vertical-align:middle;font-size:12px}
+.sc-table tr:last-child td{border-bottom:none}
+.sc-table tr:hover td{background:var(--s2)}
+.sc-input{width:90px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;font-weight:500;color:var(--ink);text-align:center;outline:none;font-family:inherit}
+.sc-input:focus{border-color:var(--ink);box-shadow:0 0 0 2px rgba(28,28,30,.08)}
+.sc-diff-pos{font-weight:600;color:var(--grn)}
+.sc-diff-neg{font-weight:600;color:var(--red)}
+.sc-diff-zero{color:var(--ink4)}
+.sc-status-ok{font-size:10px;padding:2px 7px;border-radius:4px;background:var(--grn-bg);color:var(--grn);font-weight:500}
+.sc-status-diff{font-size:10px;padding:2px 7px;border-radius:4px;background:#fdf2f2;color:var(--red);font-weight:500}
+.sc-status-blank{font-size:10px;padding:2px 7px;border-radius:4px;background:var(--s3);color:var(--ink4)}
+.sc-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.sc-kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.sc-kpi-label{font-size:10px;color:var(--ink4);margin-bottom:6px}
+.sc-kpi-val{font-size:20px;font-weight:600;color:var(--ink);letter-spacing:-.3px}
+.sc-footer{padding:12px 16px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+/* ══ DASHBOARD ══ */
+.db-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px;margin-bottom:16px}
+.db-kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.db-kpi-label{font-size:10px;color:var(--ink3);font-weight:500;margin-bottom:8px;display:flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:.3px}
+.db-kpi-label i{font-size:12px}
+.db-kpi-val{font-size:26px;font-weight:500;color:var(--ink);letter-spacing:-.5px;line-height:1}
+.db-kpi-sub{font-size:10px;color:var(--ink4);margin-top:5px}
+.db-kpi-warn{color:#9a5a00}
+.db-kpi-amber{color:#8a4f0b}
+.db-section{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+.db-section-header{padding:11px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;background:var(--s2)}
+.db-section-title{font-size:11px;font-weight:600;color:var(--ink2);display:flex;align-items:center;gap:6px;letter-spacing:-.1px}
+.db-section-title i{font-size:13px;color:var(--ink3)}
+.db-two{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+@media(max-width:860px){.db-two{grid-template-columns:1fr}}
+.db-table{width:100%;border-collapse:collapse}
+.db-table th{padding:8px 12px;font-size:9px;color:var(--ink3);font-weight:500;text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;background:var(--s2)}
+.db-table td{padding:9px 12px;border-bottom:1px solid var(--line);color:var(--ink2);vertical-align:middle;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.db-table tr:last-child td{border-bottom:none}
+.db-table tr:hover td{background:var(--s2)}
+.db-bar-wrap{height:4px;background:var(--line);border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle}
+.db-bar-fill{height:100%;border-radius:2px}
+.db-bar-ok{background:#52a870}.db-bar-low{background:#d4920a}.db-bar-out{background:#c04040}
+.db-tag{font-size:10px;padding:2px 7px;border-radius:4px;font-weight:500}
+.db-tag-ok{background:#edf5f0;color:#2d6a4f}
+.db-tag-warn{background:#fef3e2;color:#854f0b}
+.db-tag-err{background:#faf0f0;color:#7a2020}
+.db-tag-gray{background:var(--s3);color:var(--ink3)}
+.db-day-badge{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:500;white-space:nowrap}
+.db-day-urgent{background:#faf0f0;color:#7a2020}
+.db-day-soon{background:#fef3e2;color:#854f0b}
+.db-day-ok{background:#edf5f0;color:#2d6a4f}
+@keyframes spin{to{transform:rotate(360deg)}}
+#alertPanelWrap{display:none}
+#alertPanelWrap.show{display:block}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">Sawanbondin</div>
+    <div class="login-sub">ระบบจัดการคลัง — กรุณาเข้าสู่ระบบ</div>
+    <label class="login-label">Username หรือ Email</label>
+    <input class="login-input" id="loginEmail" type="text"
+      placeholder="username หรือ email@sawanbondin.com"
+      autocomplete="username"
+      onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+    <label class="login-label">Password</label>
+    <input class="login-input" id="loginPass" type="password"
+      placeholder="••••••••"
+      onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">
+      <span id="loginBtnText">เข้าสู่ระบบ</span>
+    </button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- APP ROOT (hidden until logged in) -->
+<div id="appRoot" style="display:none">
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div style="display:flex;align-items:center">
+    <span class="topbar-title">Sawanbondin</span>
+    <span class="topbar-sub">ระบบจัดการคลัง</span>
+  </div>
+  <div id="offlineIndicator" style="display:none;align-items:center;gap:5px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:4px 10px;font-size:11px;color:#e0e0e0"></div>
+  <div class="topbar-right">
+    <a href="sawanbondin_qr_print.html" target="_blank" class="topbar-link">
+      <i class="ti ti-printer" style="font-size:13px"></i> พิมพ์
+    </a>
+    <button onclick="manualRefresh()" title="โหลดข้อมูลใหม่" style="padding:4px 9px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#6e6e73;font-size:11px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px">
+      <i class="ti ti-refresh" style="font-size:12px"></i>
+    </button>
+    <div class="alert-bell" onclick="openAlertPanel()">
+      <i class="ti ti-bell" style="font-size:16px"></i>
+      <div class="alert-dot" id="alertDot"></div>
+      <span id="alertCount" style="position:absolute;top:-2px;right:-4px;min-width:16px;height:16px;background:#e24b4a;border-radius:8px;font-size:9px;color:#fff;display:none;align-items:center;justify-content:center;font-weight:600;padding:0 3px"></span>
+    </div>
+    <!-- Alert Panel -->
+    <div id="alertPanelWrap" style="position:fixed;top:46px;right:10px;z-index:400;display:none">
+      <div style="background:#fff;border:1px solid var(--line2);border-radius:var(--rlg);box-shadow:0 8px 32px rgba(0,0,0,.15);width:300px;max-height:420px;overflow-y:auto">
+        <div style="padding:10px 14px 8px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:500;color:var(--ink)"><i class="ti ti-alert-triangle" style="color:var(--warn);margin-right:5px"></i>สต็อกต่ำ / หมด</span>
+          <button onclick="document.getElementById('alertPanelWrap').classList.remove('show')" style="background:none;border:none;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
+        </div>
+        <div id="alertPanel"></div>
+      </div>
+    </div>
+    <div class="topbar-date" id="topbarDate"></div>
+    <span id="topbarUser" style="font-size:10px;color:#6e6e73;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" onclick="promptDisplayName()" title="คลิกเพื่อเปลี่ยนชื่อ"></span>
+    <button onclick="doLogout()" style="padding:4px 9px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#6e6e73;font-size:11px;cursor:pointer;font-family:inherit" title="ออกจากระบบ">
+      <i class="ti ti-logout" style="font-size:12px"></i>
+    </button>
+  </div>
+</div>
+
+<!-- NAV — เพิ่มคลังใหม่ที่นี่พร้อมกับ WAREHOUSE_CONFIG ใน app.js -->
+<nav class="nav">
+  <div class="nav-item active" onclick="switchPage('master')" data-page="master">
+    <i class="ti ti-database"></i> Master
+  </div>
+  <div class="nav-item" onclick="switchPage('raw')"       data-page="raw">วัตถุดิบ</div>
+  <div class="nav-item" onclick="switchPage('matcha')"    data-page="matcha">ชาบดผงมัตจะ</div>
+  <div class="nav-item" onclick="switchPage('pack')"      data-page="pack">บรรจุภัณฑ์ภายใน</div>
+  <div class="nav-item" onclick="switchPage('packaging')" data-page="packaging">บรรจุภัณฑ์ภายนอก</div>
+  <div class="nav-item" onclick="switchPage('equip')"     data-page="equip">อุปกรณ์</div>
+  <div class="nav-item" onclick="switchPage('finish')"    data-page="finish">สินค้าสำเร็จรูป</div>
+  <div class="nav-item" onclick="switchPage('sample')" "    data-page="sample">ชาตัวอย่าง</div>
+  <div class="nav-item" onclick="switchPage('dashboard')" data-page="dashboard" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
+    <i class="ti ti-chart-bar"></i> Dashboard
+  </div>
+  <div class="nav-item" onclick="switchPage('stockcount')"" data-page="stockcount" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
+    <i class="ti ti-clipboard-check"></i> ตรวจนับ
+  </div>
+
+</nav>
+
+<!-- PAGE CONTAINERS -->
+<div class="main">
+  <div id="page-master"      class="page-visible"></div>
+  <div id="page-raw"         class="page-hidden"></div>
+  <div id="page-matcha"      class="page-hidden"></div>
+  <div id="page-pack"        class="page-hidden"></div>
+  <div id="page-packaging"   class="page-hidden"></div>
+  <div id="page-equip"       class="page-hidden"></div>
+  <div id="page-finish"      class="page-hidden"></div>
+  <div id="page-sample"      class="page-hidden"></div>
+  <div id="page-stockcount"  class="page-hidden"></div>
+  <div id="page-dashboard"   class="page-hidden"></div>
+</div>
+
+<!-- CAMERA OVERLAY -->
+<div class="cam-overlay" id="camOverlay">
+  <button class="cam-close" onclick="closeCamera()">✕</button>
+  <div class="cam-box"><div id="cam-reader"></div></div>
+  <div class="cam-result" id="camResult">พุ่งกล้องไปที่ QR หรือ Barcode</div>
+  <div class="cam-controls">
+    <select class="cam-action-select" id="camAction">
+      <option value="receive">รับเข้า</option>
+      <option value="withdraw">เบิก</option>
+      <option value="return_good">คืนดี</option>
+      <option value="return_bad">คืนเสีย</option>
+    </select>
+    <input class="cam-qty" id="camQty" type="number" value="1" min="0.01" step="0.01" inputmode="decimal">
+    <button class="cam-confirm" onclick="confirmCamScan()">ยืนยัน</button>
+  </div>
+  <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:3px">
+      <span style="font-size:10px;color:rgba(255,255,255,.6)">แผนก</span>
+      <select id="camDept" style="padding:5px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;font-family:inherit;font-size:12px;outline:none">
+        <option value="คลัง">คลัง</option>
+        <option value="ผลิต">ผลิต</option>
+        <option value="บรรจุ">บรรจุ</option>
+        <option value="Tea House">Tea House</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:3px">
+      <span style="font-size:10px;color:rgba(255,255,255,.6)">Lot SW (ถ้ามี)</span>
+      <input type="date" id="camLotSWInput" style="padding:5px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#fff;font-family:inherit;font-size:12px">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:3px">
+      <span style="font-size:10px;color:rgba(255,255,255,.6)">Lot Supplier (ถ้ามี)</span>
+      <input type="date" id="camLotSPInput" style="padding:5px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#fff;font-family:inherit;font-size:12px">
+    </div>
+  </div>
+  <div id="camLotSW" style="display:none;margin-top:6px;padding:4px 10px;background:rgba(44,82,130,.6);border-radius:5px;font-size:11px;color:#fff">
+    <i class="ti ti-tag" style="font-size:10px"></i> Lot: <span id="camLotSWVal"></span>
+  </div>
+  <!-- Lot picker popup สำหรับกล้อง -->
+  <div id="camLotPickerCam" style="display:none;margin-top:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px 12px">
+    <div style="font-size:10px;color:rgba(255,255,255,.6);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">
+      <i class="ti ti-layers-subtract" style="font-size:10px"></i> เลือก Lot (ไม่บังคับ)
+    </div>
+    <div id="camLotPickerList" style="display:flex;flex-direction:column;gap:5px;max-height:160px;overflow-y:auto"></div>
+  </div>
+  <input type="hidden" id="camLotHidden">
+</div>
+
+<!-- QR SIDEBAR -->
+<div class="qr-sidebar" id="qrSidebar">
+  <div class="qr-overlay" onclick="closeQR()"></div>
+  <div class="qr-panel">
+    <div class="qr-panel-header">
+      <div class="qr-panel-title">
+        <i class="ti ti-qrcode" style="font-size:16px"></i>
+        <span id="qrPanelTitle">QR Code</span>
+      </div>
+      <button class="btn btn-sm" onclick="closeQR()">ปิด</button>
+    </div>
+    <div class="qr-panel-body">
+      <div class="qr-action-form">
+        <div class="qr-action-title"><i class="ti ti-barcode"></i> สแกนเพื่อทำรายการ</div>
+        <div class="qr-action-row">
+          <input class="qr-action-input" id="qr-scan-input"
+            placeholder="สแกน หรือพิมพ์รหัส"
+            onkeydown="if(event.key==='Enter')doQRScan()">
+          <div class="qr-action-row2">
+            <select class="qr-action-select" id="qr-scan-action">
+              <option value="receive">รับเข้า</option>
+              <option value="withdraw">เบิก</option>
+              <option value="return_good">คืนดี</option>
+              <option value="return_bad">คืนเสีย</option>
+            </select>
+            <input class="qr-action-qty" id="qr-scan-qty" type="number" min="0.01" step="0.01" value="1">
+          </div>
+          <button class="qr-action-btn" onclick="doQRScan()">
+            <i class="ti ti-check"></i> ยืนยันรายการ</button>
+          <div class="qr-result" id="qr-scan-result"></div>
+        </div>
+      </div>
+      <div class="qr-list-title">รายการ QR ทั้งหมด</div>
+      <div class="qr-list" id="qrList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-wrap" id="editStockModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-edit"></i> แก้ไขสต็อก</div>
+    <button class="btn btn-sm" onclick="closeModal('editStockModal')">ยกเลิก</button>
+  </div>
+  <div class="fg" style="margin-bottom:10px"><label class="fl">รายการ</label>
+    <div id="editStockName" style="font-size:12px;font-weight:500;padding:5px 0"></div></div>
+  <div class="fg" style="margin-bottom:12px"><label class="fl">สต็อก <span class="req">*</span></label>
+    <input class="fi" id="editStockVal" type="number" min="0" step="0.01"></div>
+  <input type="hidden" id="editStockId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('editStockModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveEditStock()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
+<div class="modal-wrap" id="editMinMaxModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-adjustments-horizontal"></i> ตั้งค่า Min / Max</div>
+    <button class="btn btn-sm" onclick="closeModal('editMinMaxModal')">ยกเลิก</button>
+  </div>
+  <div class="fg" style="margin-bottom:10px"><label class="fl">รายการ</label>
+    <div id="editMMName" style="font-size:12px;font-weight:500;padding:5px 0"></div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+    <div class="fg"><label class="fl">Min <span class="req">*</span></label>
+      <input class="fi" id="editMMMin" type="number" min="0" step="0.01"></div>
+    <div class="fg"><label class="fl">Max <span class="req">*</span></label>
+      <input class="fi" id="editMMMax" type="number" min="0" step="0.01"></div>
+  </div>
+  <input type="hidden" id="editMMId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('editMinMaxModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveEditMinMax()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
+<div class="modal-wrap" id="editNameModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-pencil"></i> แก้ไขชื่อรายการ</div>
+    <button class="btn btn-sm" onclick="closeModal('editNameModal')">ยกเลิก</button>
+  </div>
+  <div class="fg" style="margin-bottom:12px"><label class="fl">ชื่อใหม่ <span class="req">*</span></label>
+    <input class="fi" id="editNameVal" type="text"></div>
+  <input type="hidden" id="editNameId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('editNameModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveEditName()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
+<div class="modal-wrap" id="editSubcatModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-folder-symlink"></i> ย้ายหมวดหมู่</div>
+    <button class="btn btn-sm" onclick="closeModal('editSubcatModal')">ยกเลิก</button>
+  </div>
+  <div class="fg" style="margin-bottom:10px"><label class="fl">รายการ</label>
+    <div id="editSubcatName" style="font-size:12px;font-weight:500;padding:5px 0"></div></div>
+  <div class="fg" style="margin-bottom:10px"><label class="fl">หมวดหมู่ปัจจุบัน</label>
+    <div id="editSubcatCurrent" style="font-size:12px;color:var(--ink3);padding:5px 0"></div></div>
+  <div class="fg" style="margin-bottom:8px"><label class="fl">ย้ายไปหมวดหมู่ <span class="req">*</span></label>
+    <select class="fi" id="editSubcatSelect" style="padding:7px 9px" onchange="onEditSubcatSelectChange()"></select></div>
+  <div class="fg" id="editSubcatNewRow" style="display:none;margin-bottom:12px">
+    <label class="fl">ชื่อหมวดหมู่ใหม่ <span class="req">*</span></label>
+    <input class="fi" id="editSubcatNewName" placeholder="เช่น OEM - บริษัท ชำนาญทาง จำกัด"></div>
+  <input type="hidden" id="editSubcatId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('editSubcatModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveEditSubcat()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
+<div class="modal-wrap" id="editLocModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-map-pin"></i> สถานที่จัดเก็บ</div>
+    <button class="btn btn-sm" onclick="closeModal('editLocModal')">ยกเลิก</button>
+  </div>
+  <div class="fg" style="margin-bottom:10px"><label class="fl">รายการ</label>
+    <div id="editLocName" style="font-size:12px;font-weight:500;padding:5px 0"></div></div>
+  <div class="fg" style="margin-bottom:12px"><label class="fl">สถานที่จัดเก็บ</label>
+    <input class="fi" id="editLocVal" placeholder="เช่น ชั้น A1, ห้องเย็น"></div>
+  <input type="hidden" id="editLocId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('editLocModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveEditLoc()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
+<div class="modal-wrap" id="editTxModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-pencil"></i> แก้ไขรายการประวัติ</div>
+    <button class="btn btn-sm" onclick="closeModal('editTxModal')">ยกเลิก</button>
+  </div>
+  <div class="info-bar warn" style="margin-bottom:10px">
+    <i class="ti ti-alert-triangle"></i> การแก้ไขจะ "ย้อนผลเดิม" แล้ว "ใช้ค่าใหม่" กับสต็อกปัจจุบันทันที
+  </div>
+  <div class="fg" style="margin-bottom:10px"><label class="fl">รายการ</label>
+    <div id="editTxItem" style="font-size:12px;font-weight:500;padding:5px 0"></div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div class="fg"><label class="fl">ประเภท <span class="req">*</span></label>
+      <select class="fi" id="editTxType" style="padding:7px 9px" onchange="onEditTxTypeChange()">
+        <option value="receive">รับเข้า</option>
+        <option value="withdraw">เบิก</option>
+        <option value="return_good">คืนดี</option>
+        <option value="return_bad">คืนเสีย</option>
+      </select></div>
+    <div class="fg"><label class="fl">จำนวน <span class="req">*</span></label>
+      <input class="fi" id="editTxQty" type="number" min="0.01" step="0.01" inputmode="decimal"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div class="fg"><label class="fl">ผู้ทำรายการ <span class="req">*</span></label>
+      <input class="fi" id="editTxName" type="text"></div>
+    <div class="fg"><label class="fl">แผนก <span class="req">*</span></label>
+      <select class="fi" id="editTxDept" style="padding:7px 9px"></select></div>
+  </div>
+  <div id="editTxLotRow" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div class="fg"><label class="fl">Lot Sawanbondin</label>
+      <select class="fi" id="editTxLot" style="padding:7px 9px"></select>
+      <div class="fhint">ถ้าไม่เลือก ระบบจะสร้าง/ใช้ Lot ตามวันที่</div></div>
+    <div class="fg" id="editTxLotDateWrap" style="display:none">
+      <label class="fl">วันที่ Lot ใหม่</label>
+      <input class="fi" id="editTxLotDate" type="date"></div>
+  </div>
+  <div class="fg" style="margin-bottom:12px"><label class="fl">หมายเหตุ</label>
+    <textarea class="fta" id="editTxNote"></textarea></div>
+  <div class="fg" id="editTxDateRow" style="display:none;margin-bottom:12px">
+    <label class="fl">วันที่/เวลาทำรายการ <span style="color:var(--ink4);font-weight:400">(admin เท่านั้น)</span></label>
+    <input class="fi" id="editTxDate" type="datetime-local" style="padding:7px 9px"></div>
+  <input type="hidden" id="editTxId">
+  <input type="hidden" id="editTxPg">
+  <input type="hidden" id="editTxOrigJson">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('editTxModal')">ยกเลิก</button>
+    <button class="btn btn-primary" id="editTxSaveBtn" onclick="saveEditTx()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
+<div class="modal-wrap" id="assignPendingModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-tag" style="color:var(--warn)"></i> ตั้งชื่อสินค้า</div>
+    <button class="btn btn-sm" onclick="closeModal('assignPendingModal')">ยกเลิก</button>
+  </div>
+  <div class="fg" style="margin-bottom:10px">
+    <div id="assignPendingInfo" style="font-size:11px;font-weight:500;color:var(--warn);padding:5px 9px;background:#fff8ee;border-radius:var(--r);border:1px solid var(--warn-bdr)"></div>
+  </div>
+  <div class="add-form-grid" style="margin-bottom:9px">
+    <div class="fg"><label class="fl">ชื่อรายการ <span class="req">*</span></label>
+      <input class="fi" id="assignPendingName" placeholder="ชื่อสินค้า"></div>
+    <div class="fg"><label class="fl">คลัง / หมวดหมู่ <span class="req">*</span></label>
+      <select class="fi" id="assignPendingCat" style="padding:7px 9px"
+        onchange="onAssignCatChange()">
+        <option value="">-- เลือกคลัง --</option>
+      </select></div>
+  </div>
+  <div id="assignNewSubcatRow" style="display:none;margin-bottom:9px">
+    <div class="fg"><label class="fl">ชื่อหมวดหมู่ใหม่ <span class="req">*</span></label>
+      <input class="fi" id="assignNewSubcat" placeholder="เช่น Herbal, Special"></div>
+  </div>
+  <div class="fg" style="margin-bottom:12px"><label class="fl">สถานที่จัดเก็บ</label>
+    <input class="fi" id="assignPendingLoc" placeholder="เช่น ชั้น A1, ห้องเย็น"></div>
+  <input type="hidden" id="assignPendingId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('assignPendingModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="confirmAssignPending()">
+      <i class="ti ti-check"></i> ยืนยันตั้งชื่อ</button>
+  </div>
+</div></div>
+
+<!-- SCRIPTS — โหลด data.js ก่อน app.js เสมอ -->
+<script src="data.js"></script>
+<script src="app.js"></script>
+
+<script>
+// Helper สำหรับ assign pending modal
+function onAssignCatChange() {
+  const val = document.getElementById('assignPendingCat')?.value || '';
+  const [, subcat] = val.split('|');
+  const row = document.getElementById('assignNewSubcatRow');
+  if (row) row.style.display = subcat==='' ? 'block' : 'none';
+}
+
+// ปิด alert panel เมื่อคลิกนอก
+document.addEventListener('click', function(e) {
+  const wrap = document.getElementById('alertPanelWrap');
+  const bell = e.target.closest('.alert-bell');
+  if (wrap && !bell && !wrap.contains(e.target)) {
+    wrap.classList.remove('show');
+  }
+});
+
+// Refresh ข้อมูลจาก DB ทันที
+async function manualRefresh() {
+  const btn = document.querySelector('[onclick="manualRefresh()"]');
+  if (btn) { btn.style.opacity='.5'; btn.disabled=true; }
+  await dbLoadItems();
+  checkAlerts();
+  if (curPage === 'master') { renderMasterPage(); }
+  else {
+    renderWarehousePage(curPage);
+    const recs = await dbLoadTransactions(curPage);
+    if (recs) { txState[curPage].records = recs; renderHistory(curPage); }
+  }
+  if (btn) { btn.style.opacity='1'; btn.disabled=false; }
+  showToast('โหลดข้อมูลใหม่แล้ว');
+}
+
+// แก้ชื่อผู้ใช้
+function promptDisplayName() {
+  const current = document.getElementById('topbarUser')?.textContent || '';
+  const name = prompt('ชื่อที่จะแสดงในรายการ:', current);
+  if (name && name.trim()) setDisplayName(name.trim());
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => console.log('SW registered'))
+      .catch(e => console.warn('SW failed:', e));
+  });
+}
+</script>
+
+</div><!-- /appRoot -->
