@@ -5,10 +5,11 @@
  * - ข้อมูลจริง (Supabase API) ยังต้องใช้อินเทอร์เน็ตอยู่
  */
 
-const CACHE_NAME   = 'swbd-wms-v2';
+const CACHE_NAME   = 'swbd-wms-v4';
 const CACHE_ASSETS = [
   './',
   './index.html',
+  './config.js',
   './app.js',
   './data.js',
   './manifest.json',
