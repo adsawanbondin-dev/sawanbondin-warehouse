@@ -20,8 +20,13 @@ const _CFG = window.WMS_CONFIG || {};
 const SB_URL = _CFG.SB_URL || 'https://rsmcrshvcbtcxvvhdmnk.supabase.co';
 const SB_KEY = _CFG.SB_KEY || 'sb_publishable__RK27ReptMhtMdc8EdA-KQ_K4zfhMwJ';
 const PREFIX  = _CFG.PREFIX || 'SWBD';
+// UNIFIED_CODE: ถ้าตั้งเป็นค่า เช่น 'TH' จะสร้างรหัสแบบ {PREFIX}_{UNIFIED_CODE}_0001
+// รันเลขต่อเนื่องรวมทุกคลัง แทนการแยก prefix/เลขรันตามคลังแบบปกติ
+const UNIFIED_CODE = _CFG.UNIFIED_CODE || null;
 
-const WAREHOUSE_CONFIG = {
+// WAREHOUSE_CONFIG เริ่มต้น (Factory) — Tea House override ทั้งก้อนผ่าน
+// window.WMS_CONFIG.WAREHOUSE_CONFIG ใน config.js ของตัวเอง
+const WAREHOUSE_CONFIG = _CFG.WAREHOUSE_CONFIG || {
   raw:       { label:'วัตถุดิบ',          prefix:'RM', hasLot:true,  lotSupplier:true,  rawFields:true,  depts:['ผลิต','คลัง'] },
   matcha:    { label:'ชาบดผงมัตจะ',       prefix:'MC', hasLot:true,  lotSupplier:true,  rawFields:false, depts:['ผลิต','คลัง'] },
   pack:      { label:'บรรจุภัณฑ์ภายใน',    prefix:'PK', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
@@ -169,12 +174,16 @@ async function setDisplayName(name) {
    CODE GENERATION
 ═══════════════════════════════════════════ */
 function buildCode(pg, subcat, seq) {
+  const n = String(seq).padStart(4, '0');
+  if (UNIFIED_CODE) return `${PREFIX}_${UNIFIED_CODE}_${n}`;
   const pfx = WAREHOUSE_CONFIG[pg].prefix;
-  const n   = String(seq).padStart(4, '0');
   return pg === 'raw' ? `${PREFIX}_RM_${subcat}_${n}` : `${PREFIX}_${pfx}_${n}`;
 }
 function nextSeq(pg, subcat) {
-  const matches = masterDB.filter(m => m.pg === pg && (pg === 'raw' ? m.subcat === subcat : true));
+  // UNIFIED_CODE: นับเลขรันรวมทุกคลัง ไม่แยกตาม pg
+  const matches = UNIFIED_CODE
+    ? masterDB
+    : masterDB.filter(m => m.pg === pg && (pg === 'raw' ? m.subcat === subcat : true));
   return matches.length ? Math.max(...matches.map(m => m.seq || 0)) + 1 : 1;
 }
 
@@ -484,7 +493,7 @@ function handleScanResult(raw, pg) {
     if (sw) sw.value = parsed.lotSW;
     // autofill lot picker
     const pickerList = document.getElementById(pg+'-lot-picker-list');
-    if (pickerList && (pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')) {
+    if (pickerList && (WAREHOUSE_CONFIG[pg]?.hasLot)) {
       buildLotPickerHtml(m.code, pg).then(html => {
         pickerList.innerHTML = html;
         const action = txState[pg]?.action;
@@ -1091,7 +1100,7 @@ function renderForm(pg) {
   // Lot fields
   if (cfg.hasLot) {
     h += '<div class="divider"></div>';
-    if (!isRecv && (pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')) {
+    if (!isRecv && (WAREHOUSE_CONFIG[pg]?.hasLot)) {
       // เบิก/คืน raw, finish และ matcha: แสดง lot picker
       h += `<div class="fg">
         <label class="fl">Lot Sawanbondin</label>
@@ -1427,7 +1436,7 @@ function switchAction(pg, action) {
     });
   }
   // ── ถ้ามีรายการที่เลือกอยู่แล้ว และ action เป็นเบิก/คืน → โหลด Lot picker + auto-select ──
-  if (sv.ival && (pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')) {
+  if (sv.ival && (WAREHOUSE_CONFIG[pg]?.hasLot)) {
     const m = masterDB.find(x=>x.code===sv.ival || x.name===sv.idisp);
     const pickerList = document.getElementById(pg+'-lot-picker-list');
     if (m && pickerList && (action==='withdraw'||action==='return_good'||action==='return_bad')) {
@@ -1493,7 +1502,7 @@ function selItem(pg, item, code) {
     if(sel){const opt=[...sel.options].find(o=>o.value===locationDB[m.code]);sel.value=opt?locationDB[m.code]:'';}
   }
   const pickerList=document.getElementById(pg+'-lot-picker-list');
-  if(m&&pickerList&&(pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')) {
+  if(m&&pickerList&&(WAREHOUSE_CONFIG[pg]?.hasLot)) {
     pickerList.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด Lot...</div>';
     buildLotPickerHtml(m.code,pg).then(html=>{
       pickerList.innerHTML=html;
@@ -1582,7 +1591,7 @@ async function submitF(pg) {
     if (action !== 'return_bad') {
       // หา lotId จาก lotDB cache ถ้าเป็นการเบิก/คืน
       let lotId = null;
-      if ((pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample') && lotSW && (action==='withdraw'||action==='return_good')) {
+      if ((WAREHOUSE_CONFIG[pg]?.hasLot) && lotSW && (action==='withdraw'||action==='return_good')) {
         const cached = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
         if (cached) lotId = cached.id;
       }
@@ -1678,7 +1687,7 @@ async function submitBatch(pg){
       // ── RPC เดียว: items.stock + lots.stock พร้อมกัน ──
       if(r.action!=='return_bad'){
         let lotId=null;
-        if((pg==='raw'||pg==='finish'||pg==='matcha'||pg==='sample')&&r.lotSW&&(r.action==='withdraw'||r.action==='return_good')){
+        if((WAREHOUSE_CONFIG[pg]?.hasLot)&&r.lotSW&&(r.action==='withdraw'||r.action==='return_good')){
           const cached=(lotDB[code]||[]).find(l=>l.lot_sw===r.lotSW);
           if(cached)lotId=cached.id;
         }
@@ -2364,7 +2373,7 @@ function renderMasterContent(){
     const sI=st==='out'?'ti-circle-x':st==='low'?'ti-alert-triangle':'ti-check';
     const cls=st==='out'?'out-stock':st==='low'?'low-stock':'';
     const loc=locationDB[m.code]||'';
-    const hasLotPg=(m.pg==='raw'||m.pg==='finish'||m.pg==='matcha'||m.pg==='sample');
+    const hasLotPg=(WAREHOUSE_CONFIG[m.pg]?.hasLot);
     const allLots=hasLotPg?(lotDB[m.code]||[]):[];
     const activeLots=allLots.filter(l=>l.stock>0);
     const zeroLots=allLots.filter(l=>l.stock<=0);
@@ -2750,7 +2759,7 @@ async function boot(){
 
   // Preload lots สำหรับ raw และ finish
   try{
-    const lotCodes=masterDB.filter(m=>m.pg==='raw'||m.pg==='finish'||m.pg==='matcha'||m.pg==='sample').map(m=>m.code);
+    const lotCodes=masterDB.filter(m=>WAREHOUSE_CONFIG[m.pg]?.hasLot).map(m=>m.code);
     if(lotCodes.length){
       const{data}=await sb.from('lots').select('*').in('item_code',lotCodes).order('lot_sw',{ascending:true});
       if(data)data.forEach(r=>{
