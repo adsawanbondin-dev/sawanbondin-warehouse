@@ -486,6 +486,12 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div class="nav-item" onclick="switchPage('raw')"         data-page="raw">คลังวัตถุดิบ</div>
   <div class="nav-item" onclick="switchPage('equip_th')"    data-page="equip_th">คลังอุปกรณ์ Tea House</div>
   <div class="nav-item" onclick="switchPage('equip_boot')"  data-page="equip_boot">คลังอุปกรณ์ Boot</div>
+  <div class="nav-item" onclick="switchPage('alert-purchase')" data-page="alert-purchase" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
+    <i class="ti ti-shopping-cart"></i> รายการจัดซื้อ
+  </div>
+  <div class="nav-item" onclick="switchPage('alert-withdraw')" data-page="alert-withdraw">
+    <i class="ti ti-package-export"></i> รายการเบิก
+  </div>
   <div class="nav-item" onclick="switchPage('dashboard')" data-page="dashboard" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
     <i class="ti ti-chart-bar"></i> Dashboard
   </div>
@@ -502,6 +508,8 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div id="page-raw"         class="page-hidden"></div>
   <div id="page-equip_th"    class="page-hidden"></div>
   <div id="page-equip_boot"  class="page-hidden"></div>
+  <div id="page-alert-purchase" class="page-hidden"></div>
+  <div id="page-alert-withdraw" class="page-hidden"></div>
   <div id="page-stockcount"  class="page-hidden"></div>
   <div id="page-dashboard"   class="page-hidden"></div>
 </div>
