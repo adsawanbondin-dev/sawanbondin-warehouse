@@ -457,7 +457,7 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
     <button onclick="manualRefresh()" title="โหลดข้อมูลใหม่" style="padding:4px 9px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#6e6e73;font-size:11px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px">
       <i class="ti ti-refresh" style="font-size:12px"></i>
     </button>
-    <div class="alert-bell" onclick="openAlertPanel()">
+    <div class="alert-bell" onclick="toggleAlertPanel()">
       <i class="ti ti-bell" style="font-size:16px"></i>
       <div class="alert-dot" id="alertDot"></div>
       <span id="alertCount" style="position:absolute;top:-2px;right:-4px;min-width:16px;height:16px;background:#e24b4a;border-radius:8px;font-size:9px;color:#fff;display:none;align-items:center;justify-content:center;font-weight:600;padding:0 3px"></span>
@@ -629,6 +629,12 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       <input class="fi" id="editMMMin" type="number" min="0" step="0.01"></div>
     <div class="fg"><label class="fl">Max <span class="req">*</span></label>
       <input class="fi" id="editMMMax" type="number" min="0" step="0.01"></div>
+  </div>
+  <div id="editMMSupplierFields" style="display:none;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+    <div class="fg"><label class="fl">ผู้จำหน่าย</label>
+      <input class="fi" id="editMMSupplier" type="text" placeholder="ชื่อผู้จำหน่าย"></div>
+    <div class="fg"><label class="fl">Lead time (วัน)</label>
+      <input class="fi" id="editMMLeadTime" type="number" min="0" step="1"></div>
   </div>
   <input type="hidden" id="editMMId">
   <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
