@@ -454,9 +454,6 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
     <a href="../sawanbondin_qr_print.html" target="_blank" class="topbar-link">
       <i class="ti ti-printer" style="font-size:13px"></i> พิมพ์
     </a>
-    <button onclick="manualRefresh()" title="โหลดข้อมูลใหม่" style="padding:4px 9px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#6e6e73;font-size:11px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px">
-      <i class="ti ti-refresh" style="font-size:12px"></i>
-    </button>
     <div class="alert-bell" onclick="toggleAlertPanel()">
       <i class="ti ti-bell" style="font-size:16px"></i>
       <div class="alert-dot" id="alertDot"></div>
@@ -825,22 +822,6 @@ document.addEventListener('click', function(e) {
     wrap.classList.remove('show');
   }
 });
-
-// Refresh ข้อมูลจาก DB ทันที
-async function manualRefresh() {
-  const btn = document.querySelector('[onclick="manualRefresh()"]');
-  if (btn) { btn.style.opacity='.5'; btn.disabled=true; }
-  await dbLoadItems();
-  checkAlerts();
-  if (curPage === 'master') { renderMasterPage(); }
-  else {
-    renderWarehousePage(curPage);
-    const recs = await dbLoadTransactions(curPage);
-    if (recs) { txState[curPage].records = recs; renderHistory(curPage); }
-  }
-  if (btn) { btn.style.opacity='1'; btn.disabled=false; }
-  showToast('โหลดข้อมูลใหม่แล้ว');
-}
 
 // แก้ชื่อผู้ใช้
 function promptDisplayName() {
