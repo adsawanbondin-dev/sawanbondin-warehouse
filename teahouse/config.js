@@ -20,5 +20,14 @@ window.WMS_CONFIG = {
     equip_th:   { label:'คลังอุปกรณ์ Tea House',   prefix:'TH', hasLot:false, lotSupplier:false, rawFields:false, depts:['คลัง'] },
     equip_boot: { label:'คลังอุปกรณ์ Boot',         prefix:'TH', hasLot:false, lotSupplier:false, rawFields:false, depts:['คลัง'] },
   },
+
+  // แจ้งเตือนแบ่ง 2 กลุ่ม: สั่งซื้อ (วัตถุดิบ+อุปกรณ์ทั้ง2คลัง) / เบิก (สินค้าสำเร็จรูป)
+  ALERT_GROUPS: {
+    purchase: ['raw', 'equip_th', 'equip_boot'],
+    withdraw: ['finish'],
+  },
+
+  // แสดงช่องผู้จำหน่าย/lead time ในฟอร์มตั้งค่า Min/Max
+  SUPPLIER_FIELDS: true,
 };
 
