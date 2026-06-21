@@ -638,6 +638,31 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
 </div></div>
 
+<div class="modal-wrap" id="alertReceiveModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-package-import"></i> ยืนยันรับของ</div>
+    <button class="btn btn-sm" onclick="closeModal('alertReceiveModal')">ยกเลิก</button>
+  </div>
+  <div class="fg" style="margin-bottom:10px">
+    <div id="arName" style="font-size:13px;font-weight:600"></div>
+    <div id="arSub" style="font-size:11px;color:var(--ink3);margin-top:2px"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+    <div class="fg"><label class="fl">จำนวนที่ได้รับ <span class="req">*</span></label>
+      <input class="fi" id="arQty" type="number" min="0" step="0.01" placeholder="0"></div>
+    <div class="fg"><label class="fl">วันที่รับเข้า (Lot) <span class="req">*</span></label>
+      <input class="fi" id="arDate" type="date"></div>
+  </div>
+  <div class="fg" style="margin-bottom:12px"><label class="fl">หมายเหตุ</label>
+    <input class="fi" id="arNote" type="text" placeholder="ไม่บังคับ"></div>
+  <input type="hidden" id="arCode">
+  <input type="hidden" id="arGroup">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('alertReceiveModal')">ยกเลิก</button>
+    <button class="btn btn-primary" id="arSubmitBtn" onclick="submitAlertReceiveModal()"><i class="ti ti-check"></i> ยืนยันรับเข้า</button>
+  </div>
+</div></div>
+
 <div class="modal-wrap" id="editNameModal"><div class="modal">
   <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
     <div class="card-title-left"><i class="ti ti-pencil"></i> แก้ไขชื่อรายการ</div>
