@@ -23,6 +23,11 @@ const PREFIX  = _CFG.PREFIX || 'SWBD';
 // UNIFIED_CODE: ถ้าตั้งเป็นค่า เช่น 'TH' จะสร้างรหัสแบบ {PREFIX}_{UNIFIED_CODE}_0001
 // รันเลขต่อเนื่องรวมทุกคลัง แทนการแยก prefix/เลขรันตามคลังแบบปกติ
 const UNIFIED_CODE = _CFG.UNIFIED_CODE || null;
+// ALERT_GROUPS: แบ่งแจ้งเตือนเป็นหลายกลุ่มตามคลัง เช่น { purchase:['raw','equip_th'], withdraw:['finish'] }
+// ถ้าไม่ตั้งไว้ (Factory) ระบบใช้แจ้งเตือนแบบเดียวรวมทุกคลังเหมือนเดิม
+const ALERT_GROUPS = _CFG.ALERT_GROUPS || null;
+// SUPPLIER_FIELDS: true = แสดงช่องผู้จำหน่าย/lead time ในฟอร์มตั้งค่า Min/Max (ใช้กับแจ้งเตือนสั่งซื้อ)
+const SUPPLIER_FIELDS = !!_CFG.SUPPLIER_FIELDS;
 
 // WAREHOUSE_CONFIG เริ่มต้น (Factory) — Tea House override ทั้งก้อนผ่าน
 // window.WMS_CONFIG.WAREHOUSE_CONFIG ใน config.js ของตัวเอง
@@ -194,13 +199,18 @@ function nextSeq(pg, subcat) {
 /* DB functions defined below after dbAdjustStockWithLot */
 async function dbUpsertItem(m) {
   // upsert ทั้ง stock และ metadata — stock ถูก update โดย RPC แล้ว แต่ต้อง sync กลับ DB ด้วย
-  const { error } = await sb.from('items').upsert({
+  const payload = {
     code:m.code, name:m.name, pg:m.pg, subcat:m.subcat||'',
     stock:m.stock,           // ← include stock ที่ sync มาจาก RPC
     min_stock:m.min, max_stock:m.max,
     note:locationDB[m.code]||'', seq:m.seq||0,
     is_active:true,          // ← สำคัญ: ป้องกันรายการใหม่หายเพราะถูกกรองด้วย is_active=true
-  }, { onConflict:'code' });
+  };
+  if (SUPPLIER_FIELDS) {
+    payload.supplier_name = m.supplier_name || null;
+    payload.lead_time_days = m.lead_time_days ?? null;
+  }
+  const { error } = await sb.from('items').upsert(payload, { onConflict:'code' });
   if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
 }
@@ -282,8 +292,10 @@ async function dbLoadLotsForItem(code) {
 }
 
 async function dbLoadItems() {
+  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,seq,updated_at'
+    + (SUPPLIER_FIELDS ? ',supplier_name,lead_time_days' : '');
   const { data, error } = await sb.from('items')
-    .select('code,name,pg,subcat,stock,min_stock,max_stock,note,seq,updated_at')
+    .select(cols)
     .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
     .order('seq', { ascending: true });
   if (error) { console.error('dbLoadItems:', error.message); return false; }
@@ -291,6 +303,7 @@ async function dbLoadItems() {
     code:r.code, name:r.name, pg:r.pg||'', subcat:r.subcat||'',
     stock:parseFloat(r.stock)||0, min:parseFloat(r.min_stock)||0,
     max:parseFloat(r.max_stock)||0, seq:r.seq||0, updated_at:r.updated_at,
+    supplier_name:r.supplier_name||null, lead_time_days:r.lead_time_days??null,
   }));
   (data||[]).forEach(r => { if (r.note) locationDB[r.code] = r.note; });
   return true;
@@ -561,9 +574,13 @@ function stockStatus(m) {
   if (m.stock<=m.min) return 'low';
   return 'ok';
 }
-function getAlertItems(pg) {
+function getAlertItems(pg, group) {
   return masterDB.filter(m => {
     if (pg && m.pg!==pg) return false;
+    if (group && ALERT_GROUPS) {
+      const g = ALERT_GROUPS[group];
+      if (!g || !g.includes(m.pg)) return false;
+    }
     if (m.min <= 0) return false;           // ไม่นับถ้าไม่ได้ตั้ง Min
     return m.stock < m.min;                  // ต่ำกว่า Min (ไม่รวม stock === min)
   });
@@ -847,33 +864,65 @@ function checkAlerts() {
   }
 }
 
-function openAlertPanel() {
-  const panel = document.getElementById('alertPanel');
-  if (!panel) return;
-  const alerts = getAlertItems(null);
+function renderAlertList(alerts) {
   if (!alerts.length) {
-    panel.innerHTML = '<div style="padding:16px;text-align:center;font-size:12px;color:var(--ink3)"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:8px;opacity:.5"></i>ไม่มีรายการสต็อกต่ำ</div>';
-  } else {
-    panel.innerHTML = alerts.map(m => {
-      const cfg = WAREHOUSE_CONFIG[m.pg];
-      const pct = m.max > 0 ? Math.min(100, Math.round(m.stock/m.max*100)) : 0;
-      const cls = m.stock <= 0 ? 'fill-out' : 'fill-low';
-      return `<div style="padding:9px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;cursor:pointer" onclick="document.getElementById('alertPanelWrap').classList.remove('show');switchPage('${m.pg}')">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:12px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
-          <div style="font-size:10px;color:var(--ink3);margin-top:1px">${cfg?.label||m.pg} · Min ${m.min}</div>
-          <div class="stock-bar" style="width:100%;margin-top:4px"><div class="stock-bar-fill ${cls}" style="width:${pct}%"></div></div>
-        </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:14px;font-weight:600;color:${m.stock<=0?'var(--red)':'var(--warn)'}">${m.stock}</div>
-          <div style="font-size:9px;color:var(--ink4)">${m.stock<=0?'หมด':'ต่ำ'}</div>
-        </div>
-      </div>`;
-    }).join('');
+    return '<div style="padding:16px;text-align:center;font-size:12px;color:var(--ink3)"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:8px;opacity:.5"></i>ไม่มีรายการ</div>';
   }
+  return alerts.map(m => {
+    const cfg = WAREHOUSE_CONFIG[m.pg];
+    const pct = m.max > 0 ? Math.min(100, Math.round(m.stock/m.max*100)) : 0;
+    const cls = m.stock <= 0 ? 'fill-out' : 'fill-low';
+    const supplierLine = (m.supplier_name || m.lead_time_days)
+      ? `<div style="font-size:10px;color:var(--ink3);margin-top:1px">${m.supplier_name ? 'ผจห. '+m.supplier_name : ''}${m.supplier_name && m.lead_time_days ? ' · ' : ''}${m.lead_time_days ? 'Lead '+m.lead_time_days+' วัน' : ''}</div>`
+      : '';
+    return `<div style="padding:9px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;cursor:pointer" onclick="document.getElementById('alertPanelWrap').classList.remove('show');switchPage('${m.pg}')">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
+        <div style="font-size:10px;color:var(--ink3);margin-top:1px">${cfg?.label||m.pg} · Min ${m.min}</div>
+        ${supplierLine}
+        <div class="stock-bar" style="width:100%;margin-top:4px"><div class="stock-bar-fill ${cls}" style="width:${pct}%"></div></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:14px;font-weight:600;color:${m.stock<=0?'var(--red)':'var(--warn)'}">${m.stock}</div>
+        <div style="font-size:9px;color:var(--ink4)">${m.stock<=0?'หมด':'ต่ำ'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleAlertPanel() {
   const wrap = document.getElementById('alertPanelWrap');
   if (!wrap) return;
-  wrap.classList.toggle('show');
+  if (wrap.classList.contains('show')) {
+    wrap.classList.remove('show');
+  } else {
+    openAlertPanel();
+  }
+}
+
+function openAlertPanel(tab) {
+  const panel = document.getElementById('alertPanel');
+  if (!panel) return;
+
+  if (ALERT_GROUPS) {
+    // โหมดแบ่งกลุ่ม (เช่น Tea House: สั่งซื้อ / เบิก)
+    window._alertTab = tab || window._alertTab || Object.keys(ALERT_GROUPS)[0];
+    const tabLabels = { purchase:'สั่งซื้อ', withdraw:'เบิก' };
+    const tabsHtml = Object.keys(ALERT_GROUPS).map(g => {
+      const active = g === window._alertTab;
+      return `<div onclick="openAlertPanel('${g}')" style="flex:1;text-align:center;padding:7px 0;font-size:11px;font-weight:500;cursor:pointer;border-bottom:2px solid ${active?'var(--ink)':'transparent'};color:${active?'var(--ink)':'var(--ink3)'}">${tabLabels[g]||g}</div>`;
+    }).join('');
+    const alerts = getAlertItems(null, window._alertTab);
+    panel.innerHTML = `<div style="display:flex;border-bottom:1px solid var(--line)">${tabsHtml}</div><div>${renderAlertList(alerts)}</div>`;
+  } else {
+    // โหมดเดิม — แจ้งเตือนรวมทุกคลัง
+    const alerts = getAlertItems(null);
+    panel.innerHTML = renderAlertList(alerts);
+  }
+
+  const wrap = document.getElementById('alertPanelWrap');
+  if (!wrap) return;
+  wrap.classList.add('show');
 }
 
 function showToast(msg, type='ok') {
@@ -2259,8 +2308,8 @@ async function addMasterItem(){
 /* ── EDIT ── */
 function editStock(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editStockId').value=code;document.getElementById('editStockName').textContent=m.name;document.getElementById('editStockVal').value=m.stock;document.getElementById('editStockModal').classList.add('show'); }
 async function saveEditStock(){ const code=document.getElementById('editStockId').value;const val=parseFloat(document.getElementById('editStockVal').value);if(isNaN(val)||val<0){showToast('ค่าไม่ถูกต้อง','err');return;}const m=masterDB.find(x=>x.code===code);if(m){m.stock=val;await dbUpsertItem(m);}checkAlerts();closeModal('editStockModal');renderMasterContent(); }
-function editMinMax(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editMMId').value=code;document.getElementById('editMMName').textContent=m.name;document.getElementById('editMMMin').value=m.min;document.getElementById('editMMMax').value=m.max;document.getElementById('editMinMaxModal').classList.add('show'); }
-async function saveEditMinMax(){ const code=document.getElementById('editMMId').value;const mn=parseFloat(document.getElementById('editMMMin').value);const mx=parseFloat(document.getElementById('editMMMax').value);if(isNaN(mn)||isNaN(mx)){showToast('ค่าไม่ถูกต้อง','err');return;}const m=masterDB.find(x=>x.code===code);if(m){m.min=mn;m.max=mx;await dbUpsertItem(m);}checkAlerts();closeModal('editMinMaxModal');renderMasterContent(); }
+function editMinMax(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editMMId').value=code;document.getElementById('editMMName').textContent=m.name;document.getElementById('editMMMin').value=m.min;document.getElementById('editMMMax').value=m.max;const sf=document.getElementById('editMMSupplierFields');if(sf){sf.style.display=SUPPLIER_FIELDS?'grid':'none';document.getElementById('editMMSupplier').value=m.supplier_name||'';document.getElementById('editMMLeadTime').value=m.lead_time_days||'';}document.getElementById('editMinMaxModal').classList.add('show'); }
+async function saveEditMinMax(){ const code=document.getElementById('editMMId').value;const mn=parseFloat(document.getElementById('editMMMin').value);const mx=parseFloat(document.getElementById('editMMMax').value);if(isNaN(mn)||isNaN(mx)){showToast('ค่าไม่ถูกต้อง','err');return;}const m=masterDB.find(x=>x.code===code);if(m){m.min=mn;m.max=mx;if(SUPPLIER_FIELDS){m.supplier_name=(document.getElementById('editMMSupplier')?.value||'').trim()||null;const lt=parseInt(document.getElementById('editMMLeadTime')?.value);m.lead_time_days=isNaN(lt)?null:lt;}await dbUpsertItem(m);}checkAlerts();closeModal('editMinMaxModal');renderMasterContent(); }
 function editName(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editNameId').value=code;document.getElementById('editNameVal').value=m.name;document.getElementById('editNameModal').classList.add('show'); }
 async function saveEditName(){
   const code = document.getElementById('editNameId').value;
