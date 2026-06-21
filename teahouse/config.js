@@ -27,7 +27,7 @@ window.WMS_CONFIG = {
     withdraw: ['finish'],
   },
 
-  // แสดงช่องผู้จำหน่าย/lead time ในฟอร์มตั้งค่า Min/Max — 'days' = แบบจำนวนวัน
-  SUPPLIER_FIELDS: 'days',
+  // แสดงช่องผู้จำหน่าย/วันที่ส่งของรอบถัดไป ในฟอร์มตั้งค่า Min/Max — 'date' = แบบเลือกวันที่จริง
+  SUPPLIER_FIELDS: 'date',
 };
 
