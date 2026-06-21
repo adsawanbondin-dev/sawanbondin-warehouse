@@ -3734,6 +3734,7 @@ function renderAlertGroupPage(group) {
   const meta = labels[group] || { title:group, sub:'' };
   const alerts = getAlertItems(null, group);
   const showSupplier = group === 'purchase' && SUPPLIER_FIELDS;
+  const showMax = group === 'withdraw';
 
   const rows = alerts.map((m,i) => {
     const cfg = WAREHOUSE_CONFIG[m.pg];
@@ -3744,6 +3745,7 @@ function renderAlertGroupPage(group) {
       <td>${cfg?.label||m.pg}</td>
       <td style="text-align:right;font-weight:600;color:${stockColor}">${m.stock}</td>
       <td style="text-align:right;color:var(--ink3)">${m.min}</td>
+      ${showMax ? `<td style="text-align:right;color:var(--ink3)">${m.max||'<span style="color:var(--ink4)">—</span>'}</td>` : ''}
       ${showSupplier ? `<td>${m.supplier_name||'<span style="color:var(--ink4)">—</span>'}</td>
       <td style="text-align:center">${m.lead_time_days!=null ? m.lead_time_days+' วัน' : '<span style="color:var(--ink4)">—</span>'}</td>` : ''}
       <td style="text-align:center;white-space:nowrap">
@@ -3751,7 +3753,7 @@ function renderAlertGroupPage(group) {
         <button class="btn btn-sm" onclick="editMinMax('${m.code}')" title="แก้ไข Min/Max"><i class="ti ti-pencil"></i></button>
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="${showSupplier?8:6}" style="padding:24px;text-align:center;color:var(--ink4);font-size:12px"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</td></tr>`;
+  }).join('') || `<tr><td colspan="${showSupplier?8:(showMax?7:6)}" style="padding:24px;text-align:center;color:var(--ink4);font-size:12px"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</td></tr>`;
 
   div.innerHTML = `
     <div class="page-header">
@@ -3766,6 +3768,7 @@ function renderAlertGroupPage(group) {
           <th>คลัง</th>
           <th style="text-align:right">คงเหลือ</th>
           <th style="text-align:right">Min</th>
+          ${showMax ? '<th style="text-align:right">Max</th>' : ''}
           ${showSupplier ? '<th>ผู้จำหน่าย</th><th style="text-align:center">Lead time</th>' : ''}
           <th style="width:40px"></th>
         </tr></thead>
