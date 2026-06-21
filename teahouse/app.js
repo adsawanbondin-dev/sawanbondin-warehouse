@@ -967,13 +967,16 @@ function switchPage(p) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelector(`[data-page="${p}"]`)?.classList.add('active');
   // รวมทุกหน้าเพื่อให้ซ่อนครบ
-  ['master', ...WAREHOUSE_PAGES, 'stockcount', 'dashboard'].forEach(pg => {
+  const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
+  ['master', ...WAREHOUSE_PAGES, 'stockcount', 'dashboard', ...alertGroupPages].forEach(pg => {
     const el = document.getElementById('page-'+pg);
     if (el) el.className = pg===p ? 'page-visible' : 'page-hidden';
   });
   curPage = p;
   if (p==='master') {
     renderMasterPage();
+  } else if (p.startsWith('alert-')) {
+    renderAlertGroupPage(p.replace('alert-',''));
   } else {
     renderWarehousePage(p);
     dbLoadTransactions(p).then(recs => {
@@ -1917,7 +1920,7 @@ function openCamera(pg){
           document.getElementById('camLotHidden').value='';
         }
         // แสดง lot picker ถ้าคลังนี้มี lot และมี lots อยู่
-        const hasLotPg = ['raw','finish','matcha','sample'].includes(m.pg);
+        const hasLotPg = !!WAREHOUSE_CONFIG[m.pg]?.hasLot;
         const lots = hasLotPg ? (lotDB[m.code]||[]).filter(l=>l.stock>0) : [];
         // เรียงเก่าก่อน (FIFO)
         lots.sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
@@ -1974,7 +1977,7 @@ async function confirmCamScan(){
   const m=masterDB.find(x=>x.code===parsed.itemCode);
   if(!m){alert('ไม่พบรหัสในระบบ');return;}
   const pg=m.pg;
-  const hasLotPg=['raw','finish','matcha','sample'].includes(pg);
+  const hasLotPg=!!WAREHOUSE_CONFIG[pg]?.hasLot;
 
   if(action!=='return_bad'){
     // ดึง lot SW จากทุกแหล่ง — picker > hidden > input > QR
@@ -2858,6 +2861,7 @@ async function boot(){
     _realtimeDebounce = setTimeout(() => {
       checkAlerts();
       if (curPage === 'master') renderMasterContent();
+      else if (curPage.startsWith('alert-')) renderAlertGroupPage(curPage.replace('alert-',''));
       else if (WAREHOUSE_PAGES.includes(curPage)) renderWarehousePage(curPage);
       else if (curPage === 'dashboard') renderDashboardPage();
     }, 400);
@@ -3020,7 +3024,7 @@ async function renderStockCountPage() {
   if (!div) return;
 
   const cfg   = WAREHOUSE_CONFIG[scPg];
-  const hasLotPg = ['raw','finish','matcha','sample'].includes(scPg);
+  const hasLotPg = !!WAREHOUSE_CONFIG[scPg]?.hasLot;
   const items = masterDB.filter(m => m.pg === scPg);
 
   // โหลด lots สำหรับคลังที่มี lot
@@ -3187,7 +3191,7 @@ async function renderStockCountPage() {
 
 async function scSave() {
   const cfg      = WAREHOUSE_CONFIG[scPg];
-  const hasLotPg = ['raw','finish','matcha','sample'].includes(scPg);
+  const hasLotPg = !!WAREHOUSE_CONFIG[scPg]?.hasLot;
   const items    = masterDB.filter(m => m.pg === scPg);
   const rows     = [];
 
@@ -3302,7 +3306,7 @@ function scClearAll() {
 }
 
 function renderScKpi() {
-  const hasLotPg = ['raw','finish','matcha','sample'].includes(scPg);
+  const hasLotPg = !!WAREHOUSE_CONFIG[scPg]?.hasLot;
   const items = masterDB.filter(m => m.pg === scPg);
   let counted = 0, diffs = 0, totalDiff = 0;
   items.forEach(m => {
@@ -3357,7 +3361,8 @@ switchPage = async function(p) {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.querySelector('[data-page="stockcount"]')?.classList.add('active');
     // ซ่อนทุกหน้ารวมถึง dashboard
-    const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard'];
+    const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
+    const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', ...alertGroupPages];
     allPages.forEach(pg => {
       const el = document.getElementById('page-' + pg);
       if (el) el.className = pg === p ? 'page-visible' : 'page-hidden';
@@ -3715,6 +3720,59 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
 </div>`;
 }
 
+/* ═══════════════════════════════════════════
+   ALERT GROUP PAGES — หน้าเต็มสำหรับ "รายการจัดซื้อ" / "รายการเบิก"
+   ใช้เฉพาะระบบที่ตั้ง ALERT_GROUPS ไว้ (เช่น Tea House)
+═══════════════════════════════════════════ */
+function renderAlertGroupPage(group) {
+  const div = document.getElementById('page-alert-'+group);
+  if (!div) return;
+  if (!ALERT_GROUPS || !ALERT_GROUPS[group]) { div.innerHTML = ''; return; }
+
+  const labels = { purchase:{title:'รายการจัดซื้อ', sub:'รายการที่สต็อกต่ำกว่า Min — ต้องสั่งซื้อเพิ่ม'},
+                    withdraw:{title:'รายการเบิก',   sub:'รายการที่สต็อกต่ำกว่า Min — ต้องเบิกจากคลังอื่น'} };
+  const meta = labels[group] || { title:group, sub:'' };
+  const alerts = getAlertItems(null, group);
+  const showSupplier = group === 'purchase' && SUPPLIER_FIELDS;
+
+  const rows = alerts.map((m,i) => {
+    const cfg = WAREHOUSE_CONFIG[m.pg];
+    const stockColor = m.stock<=0 ? 'var(--red)' : 'var(--warn)';
+    return `<tr>
+      <td style="color:var(--ink4)">${i+1}</td>
+      <td style="font-weight:500">${m.name}<div style="font-size:10px;color:var(--ink4)">${m.code}</div></td>
+      <td>${cfg?.label||m.pg}</td>
+      <td style="text-align:right;font-weight:600;color:${stockColor}">${m.stock}</td>
+      <td style="text-align:right;color:var(--ink3)">${m.min}</td>
+      ${showSupplier ? `<td>${m.supplier_name||'<span style="color:var(--ink4)">—</span>'}</td>
+      <td style="text-align:center">${m.lead_time_days!=null ? m.lead_time_days+' วัน' : '<span style="color:var(--ink4)">—</span>'}</td>` : ''}
+      <td style="text-align:center">
+        <button class="btn btn-sm" onclick="editMinMax('${m.code}')"><i class="ti ti-pencil"></i></button>
+      </td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="${showSupplier?8:6}" style="padding:24px;text-align:center;color:var(--ink4);font-size:12px"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</td></tr>`;
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">${meta.title}</div>
+        <div class="page-sub">${meta.sub}${alerts.length ? ` · พบ ${alerts.length} รายการ` : ''}</div></div>
+    </div>
+    <div class="sc-table-wrap">
+      <table class="sc-table">
+        <thead><tr>
+          <th style="width:28px">#</th>
+          <th>รายการ</th>
+          <th>คลัง</th>
+          <th style="text-align:right">คงเหลือ</th>
+          <th style="text-align:right">Min</th>
+          ${showSupplier ? '<th>ผู้จำหน่าย</th><th style="text-align:center">Lead time</th>' : ''}
+          <th style="width:40px"></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
 
 function dbScrollTo(id) {
   const el = document.getElementById(id);
@@ -3730,7 +3788,7 @@ async function manualRefresh() {
   try {
     await dbLoadItems();
     // โหลด lots ใหม่สำหรับคลังที่มี lot
-    const lotCodes = masterDB.filter(m=>['raw','finish','matcha','sample'].includes(m.pg)).map(m=>m.code);
+    const lotCodes = masterDB.filter(m=>WAREHOUSE_CONFIG[m.pg]?.hasLot).map(m=>m.code);
     if (lotCodes.length) {
       const { data } = await sb.from('lots').select('*').in('item_code', lotCodes).order('lot_sw',{ascending:true});
       if (data) {
@@ -3876,7 +3934,8 @@ switchPage = async function(p) {
   if (p === 'dashboard') {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.querySelector('[data-page="dashboard"]')?.classList.add('active');
-    [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard'].forEach(pg => {
+    const alertGroupPages2 = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
+    [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', ...alertGroupPages2].forEach(pg => {
       const el = document.getElementById('page-' + pg);
       if (el) el.className = pg === p ? 'page-visible' : 'page-hidden';
     });
