@@ -492,8 +492,11 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div class="nav-item" onclick="switchPage('equip')"     data-page="equip">อุปกรณ์</div>
   <div class="nav-item" onclick="switchPage('finish')"    data-page="finish">สินค้าสำเร็จรูป</div>
   <div class="nav-item" onclick="switchPage('sample')" "    data-page="sample">ชาตัวอย่าง</div>
-  <div class="nav-item" onclick="switchPage('dashboard')" data-page="dashboard" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
-    <i class="ti ti-chart-bar"></i> Dashboard
+  <div class="nav-item" onclick="switchPage('alert-purchase')" data-page="alert-purchase" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
+    <i class="ti ti-shopping-cart"></i> รายการจัดซื้อ
+  </div>
+  <div class="nav-item" onclick="switchPage('alert-withdraw')" data-page="alert-withdraw">
+    <i class="ti ti-clipboard-list"></i> รายการแจ้งผลิต
   </div>
   <div class="nav-item" onclick="switchPage('stockcount')"" data-page="stockcount" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
     <i class="ti ti-clipboard-check"></i> ตรวจนับ
@@ -512,7 +515,8 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div id="page-finish"      class="page-hidden"></div>
   <div id="page-sample"      class="page-hidden"></div>
   <div id="page-stockcount"  class="page-hidden"></div>
-  <div id="page-dashboard"   class="page-hidden"></div>
+  <div id="page-alert-purchase" class="page-hidden"></div>
+  <div id="page-alert-withdraw" class="page-hidden"></div>
 </div>
 
 <!-- CAMERA OVERLAY -->
@@ -633,13 +637,38 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div id="editMMSupplierFields" style="display:none;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
     <div class="fg"><label class="fl">ผู้จำหน่าย</label>
       <input class="fi" id="editMMSupplier" type="text" placeholder="ชื่อผู้จำหน่าย"></div>
-    <div class="fg"><label class="fl">Lead time (วัน)</label>
+    <div class="fg"><label class="fl" id="editMMLeadTimeLabel">Lead time (วัน)</label>
       <input class="fi" id="editMMLeadTime" type="number" min="0" step="1"></div>
   </div>
   <input type="hidden" id="editMMId">
   <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
     <button class="btn" onclick="closeModal('editMinMaxModal')">ยกเลิก</button>
     <button class="btn btn-primary" onclick="saveEditMinMax()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
+<div class="modal-wrap" id="alertReceiveModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-package-import"></i> ยืนยันรับของ</div>
+    <button class="btn btn-sm" onclick="closeModal('alertReceiveModal')">ยกเลิก</button>
+  </div>
+  <div class="fg" style="margin-bottom:10px">
+    <div id="arName" style="font-size:13px;font-weight:600"></div>
+    <div id="arSub" style="font-size:11px;color:var(--ink3);margin-top:2px"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+    <div class="fg"><label class="fl">จำนวนที่ได้รับ <span class="req">*</span></label>
+      <input class="fi" id="arQty" type="number" min="0" step="0.01" placeholder="0"></div>
+    <div class="fg"><label class="fl">วันที่รับเข้า (Lot) <span class="req">*</span></label>
+      <input class="fi" id="arDate" type="date"></div>
+  </div>
+  <div class="fg" style="margin-bottom:12px"><label class="fl">หมายเหตุ</label>
+    <input class="fi" id="arNote" type="text" placeholder="ไม่บังคับ"></div>
+  <input type="hidden" id="arCode">
+  <input type="hidden" id="arGroup">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('alertReceiveModal')">ยกเลิก</button>
+    <button class="btn btn-primary" id="arSubmitBtn" onclick="submitAlertReceiveModal()"><i class="ti ti-check"></i> ยืนยันรับเข้า</button>
   </div>
 </div></div>
 
