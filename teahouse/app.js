@@ -3746,8 +3746,9 @@ function renderAlertGroupPage(group) {
       <td style="text-align:right;color:var(--ink3)">${m.min}</td>
       ${showSupplier ? `<td>${m.supplier_name||'<span style="color:var(--ink4)">—</span>'}</td>
       <td style="text-align:center">${m.lead_time_days!=null ? m.lead_time_days+' วัน' : '<span style="color:var(--ink4)">—</span>'}</td>` : ''}
-      <td style="text-align:center">
-        <button class="btn btn-sm" onclick="editMinMax('${m.code}')"><i class="ti ti-pencil"></i></button>
+      <td style="text-align:center;white-space:nowrap">
+        <button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','${group}')" title="ยืนยันรับของ"><i class="ti ti-check"></i> รับเข้า</button>
+        <button class="btn btn-sm" onclick="editMinMax('${m.code}')" title="แก้ไข Min/Max"><i class="ti ti-pencil"></i></button>
       </td>
     </tr>`;
   }).join('') || `<tr><td colspan="${showSupplier?8:6}" style="padding:24px;text-align:center;color:var(--ink4);font-size:12px"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</td></tr>`;
@@ -3771,6 +3772,64 @@ function renderAlertGroupPage(group) {
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+}
+
+/* ── ยืนยันรับของจากหน้าแจ้งเตือน (จัดซื้อ/เบิก) — modal เล็ก กรอกจำนวน+วันที่ lot ──
+   ใช้ logic เดียวกับฟอร์มรับเข้าปกติ (dbAdjustStockWithLot action='receive') */
+function openAlertReceiveModal(code, group) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  const cfg = WAREHOUSE_CONFIG[m.pg];
+  document.getElementById('arCode').value = code;
+  document.getElementById('arGroup').value = group;
+  document.getElementById('arName').textContent = m.name;
+  document.getElementById('arSub').textContent = `${cfg?.label||m.pg} · คงเหลือปัจจุบัน ${m.stock} · Min ${m.min}`;
+  document.getElementById('arQty').value = '';
+  document.getElementById('arDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('arNote').value = '';
+  document.getElementById('alertReceiveModal').classList.add('show');
+  setTimeout(() => document.getElementById('arQty')?.focus(), 50);
+}
+
+async function submitAlertReceiveModal() {
+  const code  = document.getElementById('arCode').value;
+  const qty   = parseFloat(document.getElementById('arQty').value);
+  const lotSW = document.getElementById('arDate').value;
+  const note  = (document.getElementById('arNote').value || '').trim();
+
+  if (isNaN(qty) || qty <= 0) { showToast('กรุณากรอกจำนวนให้ถูกต้อง', 'err'); return; }
+  if (!lotSW) { showToast('กรุณาเลือกวันที่', 'err'); return; }
+
+  const mi = masterDB.find(x => x.code === code);
+  if (!mi) { showToast('ไม่พบรายการสินค้า', 'err'); closeModal('alertReceiveModal'); return; }
+  const cfg = WAREHOUSE_CONFIG[mi.pg];
+
+  setLoading('arSubmitBtn', true);
+  const rpcResult = await dbAdjustStockWithLot(code, 'receive', qty, {
+    lotSW: cfg?.hasLot ? lotSW : null,
+    name: mi.name,
+    note: note || null,
+  });
+  if (!rpcResult.ok) { setLoading('arSubmitBtn', false); return; }
+  if (rpcResult.new_stock !== undefined) mi.stock = rpcResult.new_stock;
+  await dbUpsertItem(mi);
+
+  const rec = {
+    time: dateToday(), timeDetail: timeNow(), type: 'receive', typeLabel: ACTION_LABELS.receive,
+    name: window._operatorName || '', dept: 'คลัง', item: mi.name, code, qty,
+    lotSW: cfg?.hasLot ? lotSW : '-', lotSP: '', note, pg: mi.pg, via: 'alert',
+    oldStock: rpcResult.new_stock - qty, newStock: rpcResult.new_stock,
+  };
+  txState[mi.pg].records.unshift(rec);
+  rec.id = await dbInsertTransaction(rec);
+
+  checkAlerts();
+  if (curPage === 'master') renderMasterContent();
+  if (curPage.startsWith('alert-')) renderAlertGroupPage(curPage.replace('alert-',''));
+
+  setLoading('arSubmitBtn', false);
+  closeModal('alertReceiveModal');
+  showToast(`"${mi.name}" รับเข้า ${qty} สำเร็จ`);
 }
 
 
