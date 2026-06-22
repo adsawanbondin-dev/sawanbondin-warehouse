@@ -212,6 +212,7 @@ async function dbUpsertItem(m) {
     if (SUPPLIER_FIELDS === 'days') payload.lead_time_days = m.lead_time_days ?? null;
     if (SUPPLIER_FIELDS === 'date') payload.next_delivery_date = m.next_delivery_date || null;
   }
+  payload.purchase_status = m.purchase_status || null;
   const { error } = await sb.from('items').upsert(payload, { onConflict:'code' });
   if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
@@ -297,7 +298,7 @@ async function dbLoadItems() {
   const supplierCols = SUPPLIER_FIELDS === 'days' ? ',supplier_name,lead_time_days'
                       : SUPPLIER_FIELDS === 'date' ? ',supplier_name,next_delivery_date'
                       : '';
-  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,seq,updated_at' + supplierCols;
+  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,seq,updated_at,purchase_status' + supplierCols;
   const { data, error } = await sb.from('items')
     .select(cols)
     .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
@@ -310,6 +311,7 @@ async function dbLoadItems() {
     supplier_name:r.supplier_name||null,
     lead_time_days:r.lead_time_days??null,
     next_delivery_date:r.next_delivery_date||null,
+    purchase_status:r.purchase_status||null,
   }));
   (data||[]).forEach(r => { if (r.note) locationDB[r.code] = r.note; });
   return true;
@@ -3777,6 +3779,34 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
    ALERT GROUP PAGES — หน้าเต็มสำหรับ "รายการจัดซื้อ" / "รายการเบิก"
    ใช้เฉพาะระบบที่ตั้ง ALERT_GROUPS ไว้ (เช่น Tea House)
 ═══════════════════════════════════════════ */
+/* ── Purchase Status helpers ── */
+const PURCHASE_STATUS_CFG = {
+  waiting: { label:'รอของ',           color:'var(--warn)',  next:'checked', nextLabel:'ตรวจบิลแล้ว' },
+  checked: { label:'ตรวจบิลแล้ว',    color:'#5b8fe8',      next:'paid',    nextLabel:'ส่งเบิกจ่ายแล้ว' },
+  paid:    { label:'ส่งเบิกจ่ายแล้ว', color:'var(--green)', next:null,      nextLabel:null },
+};
+
+async function setPurchaseStatus(code, status) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  m.purchase_status = status || null;
+  await dbUpsertItem(m);
+  // re-render หน้าปัจจุบัน
+  if (curPage.startsWith('alert-')) renderAlertGroupPage(curPage.replace('alert-',''));
+}
+
+function _purchaseStatusBtn(m) {
+  const st = m.purchase_status;
+  const cfg = PURCHASE_STATUS_CFG[st];
+  if (!st) {
+    return `<button class="btn btn-sm" style="font-size:10px;white-space:nowrap" onclick="setPurchaseStatus('${m.code}','waiting')">+ รอของ</button>`;
+  }
+  const nextBtn = cfg.next
+    ? `<button class="btn btn-sm btn-primary" style="font-size:10px;white-space:nowrap;background:${cfg.next==='paid'?'var(--green)':'var(--accent)'}" onclick="setPurchaseStatus('${m.code}','${cfg.next}')">${cfg.nextLabel}</button>`
+    : `<button class="btn btn-sm" style="font-size:10px;white-space:nowrap;color:var(--ink4)" onclick="if(confirm('รีเซ็ต status กลับ?'))setPurchaseStatus('${m.code}',null)">✓ เสร็จแล้ว</button>`;
+  return `<span style="font-size:10px;font-weight:600;color:${cfg.color};margin-right:4px">${cfg.label}</span>${nextBtn}`;
+}
+
 function renderAlertGroupPage(group) {
   const div = document.getElementById('page-alert-'+group);
   if (!div) return;
@@ -3788,10 +3818,12 @@ function renderAlertGroupPage(group) {
   const meta = labels[group] || { title:group, sub:'' };
   const alerts = getAlertItems(null, group);
   const showSupplier = group === 'purchase' && SUPPLIER_FIELDS;
+  const showStatus  = group === 'purchase';
   const showMax = group === 'withdraw';
   const leadColLabel = SUPPLIER_FIELDS === 'date' ? 'ส่งของรอบถัดไป' : 'Lead time';
+  const colCount = showSupplier ? (showStatus?9:8) : (showMax?7:(showStatus?7:6));
 
-  const rows = alerts.map((m,i) => {
+  const makeRow = (m, i) => {
     const cfg = WAREHOUSE_CONFIG[m.pg];
     const stockColor = m.stock<=0 ? 'var(--red)' : 'var(--warn)';
     const leadCell = SUPPLIER_FIELDS === 'date'
@@ -3806,17 +3838,57 @@ function renderAlertGroupPage(group) {
       ${showMax ? `<td style="text-align:right;color:var(--ink3)">${m.max||'<span style="color:var(--ink4)">—</span>'}</td>` : ''}
       ${showSupplier ? `<td>${m.supplier_name||'<span style="color:var(--ink4)">—</span>'}</td>
       <td style="text-align:center">${leadCell}</td>` : ''}
+      ${showStatus ? `<td style="white-space:nowrap">${_purchaseStatusBtn(m)}</td>` : ''}
       <td style="text-align:center;white-space:nowrap">
         <button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','${group}')" title="ยืนยันรับของ"><i class="ti ti-check"></i> รับเข้า</button>
         <button class="btn btn-sm" onclick="editMinMax('${m.code}')" title="แก้ไข Min/Max"><i class="ti ti-pencil"></i></button>
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="${showSupplier?8:(showMax?7:6)}" style="padding:24px;text-align:center;color:var(--ink4);font-size:12px"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</td></tr>`;
+  };
+
+  const rows = alerts.map((m,i) => makeRow(m,i)).join('')
+    || `<tr><td colspan="${colCount}" style="padding:24px;text-align:center;color:var(--ink4);font-size:12px"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</td></tr>`;
+
+  // ตารางค้างดำเนินการ (purchase_status มีค่า แต่ไม่อยู่ใน alert แล้ว = stock พ้น Min)
+  const inProgress = showStatus
+    ? masterDB.filter(m => m.purchase_status && ALERT_GROUPS[group].includes(m.pg) && m.stock >= m.min && m.min > 0)
+    : [];
+  const progressRows = inProgress.map((m,i) => {
+    const cfg = WAREHOUSE_CONFIG[m.pg];
+    const stCfg = PURCHASE_STATUS_CFG[m.purchase_status];
+    const leadCell = SUPPLIER_FIELDS === 'date'
+      ? (m.next_delivery_date ? new Date(m.next_delivery_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '—')
+      : (m.lead_time_days!=null ? m.lead_time_days+' วัน' : '—');
+    return `<tr>
+      <td style="color:var(--ink4)">${i+1}</td>
+      <td style="font-weight:500">${m.name}<div style="font-size:10px;color:var(--ink4)">${m.code}</div></td>
+      <td>${cfg?.label||m.pg}</td>
+      <td style="text-align:right;color:var(--ink3)">${m.stock}</td>
+      ${showSupplier ? `<td>${m.supplier_name||'—'}</td><td style="text-align:center">${leadCell}</td>` : ''}
+      <td style="white-space:nowrap">${_purchaseStatusBtn(m)}</td>
+      <td></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="${colCount}" style="padding:16px;text-align:center;color:var(--ink4);font-size:11px">ไม่มีรายการค้างดำเนินการ</td></tr>`;
+
+  const progressSection = showStatus ? `
+    <div style="margin-top:20px">
+      <div style="font-size:12px;font-weight:500;color:var(--ink);margin-bottom:8px"><i class="ti ti-clock" style="color:var(--warn)"></i> ค้างดำเนินการ (stock พ้น Min แล้ว)</div>
+      <div class="sc-table-wrap">
+        <table class="sc-table">
+          <thead><tr>
+            <th style="width:28px">#</th><th>รายการ</th><th>คลัง</th><th style="text-align:right">คงเหลือ</th>
+            ${showSupplier ? `<th>ผู้จำหน่าย</th><th style="text-align:center">${leadColLabel}</th>` : ''}
+            <th>สถานะ</th><th style="width:8px"></th>
+          </tr></thead>
+          <tbody>${progressRows}</tbody>
+        </table>
+      </div>
+    </div>` : '';
 
   div.innerHTML = `
     <div class="page-header">
       <div><div class="page-title">${meta.title}</div>
-        <div class="page-sub">${meta.sub}${alerts.length ? ` · พบ ${alerts.length} รายการ` : ''}</div></div>
+        <div class="page-sub">${meta.sub}${alerts.length ? ` · พบ ${alerts.length} รายการ` : ''}${inProgress.length ? ` · ค้างดำเนินการ ${inProgress.length} รายการ` : ''}</div></div>
     </div>
     <div class="sc-table-wrap">
       <table class="sc-table">
@@ -3828,11 +3900,13 @@ function renderAlertGroupPage(group) {
           <th style="text-align:right">Min</th>
           ${showMax ? '<th style="text-align:right">Max</th>' : ''}
           ${showSupplier ? `<th>ผู้จำหน่าย</th><th style="text-align:center">${leadColLabel}</th>` : ''}
+          ${showStatus ? '<th>สถานะ</th>' : ''}
           <th style="width:40px"></th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
-    </div>`;
+    </div>
+    ${progressSection}`;
 }
 
 /* ── ยืนยันรับของจากหน้าแจ้งเตือน (จัดซื้อ/เบิก) — modal เล็ก กรอกจำนวน+วันที่ lot ──
