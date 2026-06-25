@@ -596,12 +596,19 @@ function getAlertItems(pg, group) {
 ═══════════════════════════════════════════ */
 function canEditHistory() {
   const role = window._operatorRole || '';
-  return role === 'admin' || role === 'manager';
+  return role === 'admin' || role === 'manager' || role === 'warehouse';
 }
 
-/** แก้ไขวันที่ทำรายการ — เฉพาะ admin เท่านั้น */
+/** แก้ไขวันที่ทำรายการ — เฉพาะ admin/warehouse เท่านั้น */
 function canEditDate() {
-  return (window._operatorRole || '') === 'admin';
+  const role = window._operatorRole || '';
+  return role === 'admin' || role === 'warehouse';
+}
+
+/** จัดการ Master (เพิ่ม/แก้ไข/ลบสินค้า, ตั้งค่า Min/Max) — เฉพาะ admin/warehouse */
+function canManageMaster() {
+  const role = window._operatorRole || '';
+  return role === 'admin' || role === 'warehouse';
 }
 
 /**
@@ -2145,8 +2152,8 @@ function renderMasterPage(){
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-sm" onclick="exportAllCsv()" title="Export ทุกอย่าง: สต็อก + ประวัติ + Lot">
           <i class="ti ti-table-export"></i> Export ทั้งหมด</button>
-        <button class="btn btn-primary btn-sm" onclick="showAddForm()">
-          <i class="ti ti-plus"></i> เพิ่มรายการ</button>
+        ${canManageMaster() ? `<button class="btn btn-primary btn-sm" onclick="showAddForm()">
+          <i class="ti ti-plus"></i> เพิ่มรายการ</button>` : ''}
       </div>
     </div>
     <div class="card" style="margin-bottom:11px">
@@ -2393,7 +2400,7 @@ async function saveEditName(){
 }
 function editLoc(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editLocId').value=code;document.getElementById('editLocName').textContent=m.name;document.getElementById('editLocVal').value=locationDB[code]||'';document.getElementById('editLocModal').classList.add('show'); }
 async function saveEditLoc(){ const code=document.getElementById('editLocId').value;const loc=(document.getElementById('editLocVal').value||'').trim();locationDB[code]=loc;const m=masterDB.find(x=>x.code===code);if(m)await dbUpsertItem(m);closeModal('editLocModal');renderMasterContent(); }
-async function deleteMasterItem(code){ if(!confirm('ลบรายการนี้? ข้อมูลจะหายถาวร'))return;masterDB=masterDB.filter(m=>m.code!==code);delete locationDB[code];await dbDeleteItem(code);checkAlerts();renderMasterContent(); }
+async function deleteMasterItem(code){ if(!canManageMaster()){showToast('ไม่มีสิทธิ์ลบรายการ','err');return;} if(!confirm('ลบรายการนี้? ข้อมูลจะหายถาวร'))return;masterDB=masterDB.filter(m=>m.code!==code);delete locationDB[code];await dbDeleteItem(code);checkAlerts();renderMasterContent(); }
 
 /* ── ย้ายหมวดหมู่ (subcat) ── */
 function editSubcat(code){
@@ -2526,11 +2533,13 @@ function renderMasterContent(){
         </div>`:''}
       </div>
       <div class="ir-actions">
+        ${canManageMaster() ? `
         <button class="icon-btn" onclick="editName('${m.code}')" title="แก้ไขชื่อ"><i class="ti ti-pencil"></i></button>
         <button class="icon-btn" onclick="editSubcat('${m.code}')" title="ย้ายหมวดหมู่"><i class="ti ti-folder-symlink"></i></button>
         <button class="icon-btn" onclick="editStock('${m.code}')" title="สต็อก"><i class="ti ti-edit"></i></button>
         <button class="icon-btn" onclick="editMinMax('${m.code}')" title="Min/Max"><i class="ti ti-adjustments-horizontal"></i></button>
         <button class="icon-btn danger" onclick="deleteMasterItem('${m.code}')" title="ลบ"><i class="ti ti-trash"></i></button>
+        ` : ''}
       </div>
     </div>`;
   }
