@@ -217,6 +217,8 @@ async function dbUpsertItem(m) {
   if (WAREHOUSE_CONFIG[m.pg]?.hasSpec) {
     payload.spec = specDB[m.code] || null;
   }
+  payload.pay_status  = m.pay_status  || null;
+  payload.ship_status = m.ship_status || null;
   const { error } = await sb.from('items').upsert(payload, { onConflict:'code' });
   if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
@@ -302,7 +304,7 @@ async function dbLoadItems() {
   const supplierCols = SUPPLIER_FIELDS === 'days' ? ',supplier_name,lead_time_days'
                       : SUPPLIER_FIELDS === 'date' ? ',supplier_name,next_delivery_date'
                       : '';
-  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at' + supplierCols;
+  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at,pay_status,ship_status' + supplierCols;
   const { data, error } = await sb.from('items')
     .select(cols)
     .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
@@ -315,6 +317,8 @@ async function dbLoadItems() {
     supplier_name:r.supplier_name||null,
     lead_time_days:r.lead_time_days??null,
     next_delivery_date:r.next_delivery_date||null,
+    pay_status:r.pay_status||null,
+    ship_status:r.ship_status||null,
   }));
   (data||[]).forEach(r => {
     if (r.note) locationDB[r.code] = r.note;
@@ -3843,6 +3847,55 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
    ALERT GROUP PAGES — หน้าเต็มสำหรับ "รายการจัดซื้อ" / "รายการเบิก"
    ใช้เฉพาะระบบที่ตั้ง ALERT_GROUPS ไว้ (เช่น Tea House)
 ═══════════════════════════════════════════ */
+/* ── Purchase Tracking Status ── */
+const PAY_STATUS_OPTS = {
+  '': '— การชำระ —',
+  ordered: 'สั่งแล้ว',
+  waiting_payment: 'รอชำระ',
+  paid: 'ชำระแล้ว',
+};
+const SHIP_STATUS_OPTS = {
+  '': '— การจัดส่ง —',
+  shipping: 'กำลังจัดส่ง',
+  received: 'ได้รับของแล้ว',
+  stocked: 'รับเข้าคลังแล้ว',
+};
+
+async function setPurchaseTracking(code, field, value) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  m[field] = value || null;
+  // ถ้ากด "รับเข้าคลังแล้ว" reset ทั้ง 2 status
+  if (field === 'ship_status' && value === 'stocked') {
+    m.pay_status = null;
+    m.ship_status = null;
+  }
+  const { error } = await sb.from('items')
+    .update({ pay_status: m.pay_status, ship_status: m.ship_status })
+    .eq('code', code);
+  if (error) { showToast('บันทึกไม่สำเร็จ', 'err'); return; }
+  if (curPage.startsWith('alert-')) renderAlertGroupPage(curPage.replace('alert-', ''));
+}
+
+function _trackingDropdowns(m) {
+  const payOpts = Object.entries(PAY_STATUS_OPTS).map(([v,l]) =>
+    `<option value="${v}" ${(m.pay_status||'')=== v?'selected':''}>${l}</option>`).join('');
+  const shipOpts = Object.entries(SHIP_STATUS_OPTS).map(([v,l]) =>
+    `<option value="${v}" ${(m.ship_status||'')=== v?'selected':''}>${l}</option>`).join('');
+  const payColor = m.pay_status==='paid'?'var(--green)':m.pay_status?'var(--warn)':'var(--ink4)';
+  const shipColor = m.ship_status==='stocked'?'var(--green)':m.ship_status?'#5b8fe8':'var(--ink4)';
+  return `<div style="display:flex;flex-direction:column;gap:4px">
+    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${payColor};cursor:pointer"
+      onchange="setPurchaseTracking('${m.code}','pay_status',this.value)">
+      ${payOpts}
+    </select>
+    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${shipColor};cursor:pointer"
+      onchange="setPurchaseTracking('${m.code}','ship_status',this.value)">
+      ${shipOpts}
+    </select>
+  </div>`;
+}
+
 function renderAlertGroupPage(group) {
   const div = document.getElementById('page-alert-'+group);
   if (!div) return;
@@ -3856,6 +3909,8 @@ function renderAlertGroupPage(group) {
   const showSupplier = group === 'purchase' && SUPPLIER_FIELDS;
   const showMax = group === 'withdraw';
   const leadColLabel = SUPPLIER_FIELDS === 'date' ? 'ส่งของรอบถัดไป' : 'Lead time';
+
+  const showTracking = group === 'purchase';
 
   const rows = alerts.map((m,i) => {
     const cfg = WAREHOUSE_CONFIG[m.pg];
@@ -3872,12 +3927,13 @@ function renderAlertGroupPage(group) {
       ${showMax ? `<td style="text-align:right;color:var(--ink3)">${m.max||'<span style="color:var(--ink4)">—</span>'}</td>` : ''}
       ${showSupplier ? `<td>${m.supplier_name||'<span style="color:var(--ink4)">—</span>'}</td>
       <td style="text-align:center">${leadCell}</td>` : ''}
+      ${showTracking ? `<td>${_trackingDropdowns(m)}</td>` : ''}
       <td style="text-align:center;white-space:nowrap">
         <button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','${group}')" title="ยืนยันรับของ"><i class="ti ti-check"></i> รับเข้า</button>
         <button class="btn btn-sm" onclick="editMinMax('${m.code}')" title="แก้ไข Min/Max"><i class="ti ti-pencil"></i></button>
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="${showSupplier?8:(showMax?7:6)}" style="padding:24px;text-align:center;color:var(--ink4);font-size:12px"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</td></tr>`;
+  }).join('') || `<tr><td colspan="${showSupplier?9:(showMax?7:(showTracking?7:6))}" style="padding:24px;text-align:center;color:var(--ink4);font-size:12px"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</td></tr>`;
 
   div.innerHTML = `
     <div class="page-header">
@@ -3894,6 +3950,7 @@ function renderAlertGroupPage(group) {
           <th style="text-align:right">Min</th>
           ${showMax ? '<th style="text-align:right">Max</th>' : ''}
           ${showSupplier ? `<th>ผู้จำหน่าย</th><th style="text-align:center">${leadColLabel}</th>` : ''}
+          ${showTracking ? '<th style="min-width:120px">ติดตาม</th>' : ''}
           <th style="width:40px"></th>
         </tr></thead>
         <tbody>${rows}</tbody>
@@ -3950,6 +4007,13 @@ async function submitAlertReceiveModal() {
   };
   txState[mi.pg].records.unshift(rec);
   rec.id = await dbInsertTransaction(rec);
+
+  // reset สถานะติดตามเมื่อรับเข้าคลังแล้ว
+  if (mi.pay_status || mi.ship_status) {
+    mi.pay_status = null;
+    mi.ship_status = null;
+    await sb.from('items').update({ pay_status: null, ship_status: null }).eq('code', code);
+  }
 
   checkAlerts();
   if (curPage === 'master') renderMasterContent();
