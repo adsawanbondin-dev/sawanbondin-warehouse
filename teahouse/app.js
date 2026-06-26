@@ -61,6 +61,7 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY, {
 ═══════════════════════════════════════════ */
 let masterDB        = [];
 let locationDB      = {};    // { code: string }
+let specDB          = {};    // { code: string } — สเปกอุปกรณ์
 let lotDB           = {};    // { code: [{id,lot_sw,stock,updated_at}] }
 let masterCatFilter = 'all';
 let curPage         = 'master';
@@ -212,6 +213,10 @@ async function dbUpsertItem(m) {
     if (SUPPLIER_FIELDS === 'days') payload.lead_time_days = m.lead_time_days ?? null;
     if (SUPPLIER_FIELDS === 'date') payload.next_delivery_date = m.next_delivery_date || null;
   }
+  // บันทึก spec ถ้าคลังนี้มี hasSpec
+  if (WAREHOUSE_CONFIG[m.pg]?.hasSpec) {
+    payload.spec = specDB[m.code] || null;
+  }
   const { error } = await sb.from('items').upsert(payload, { onConflict:'code' });
   if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
@@ -297,7 +302,7 @@ async function dbLoadItems() {
   const supplierCols = SUPPLIER_FIELDS === 'days' ? ',supplier_name,lead_time_days'
                       : SUPPLIER_FIELDS === 'date' ? ',supplier_name,next_delivery_date'
                       : '';
-  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,seq,updated_at' + supplierCols;
+  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at' + supplierCols;
   const { data, error } = await sb.from('items')
     .select(cols)
     .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
@@ -311,7 +316,10 @@ async function dbLoadItems() {
     lead_time_days:r.lead_time_days??null,
     next_delivery_date:r.next_delivery_date||null,
   }));
-  (data||[]).forEach(r => { if (r.note) locationDB[r.code] = r.note; });
+  (data||[]).forEach(r => {
+    if (r.note) locationDB[r.code] = r.note;
+    if (r.spec) specDB[r.code] = r.spec;
+  });
   return true;
 }
 
@@ -1238,6 +1246,14 @@ function renderForm(pg) {
       <textarea class="fta" id="${pg}-note"
         placeholder="${isRB?'ระบุสาเหตุ...':'หมายเหตุเพิ่มเติม...'}"></textarea>
     </div>`;
+    if(cfg?.hasSpec && action==='receive'){
+      h += `<div class="fg" style="margin-top:10px">
+        <label class="fl"><i class="ti ti-file-description" style="font-size:11px"></i> สเปกอุปกรณ์</label>
+        <textarea class="fta" id="${pg}-spec" rows="4"
+          placeholder="รายละเอียดและคุณสมบัติของอุปกรณ์..."></textarea>
+        <div class="fhint">จะอัปเดตข้อมูลสเปกในหน้า Master ด้วย</div>
+      </div>`;
+    }
   }
 
   // ข้อ 3: location ใช้ได้ทุก action (เพื่อดู/แก้ไข) แต่ save เฉพาะ receive
@@ -1678,6 +1694,11 @@ async function submitF(pg) {
       if (rpcResult.new_stock !== undefined) mi.stock = rpcResult.new_stock;
     }
     if (action==='receive' && loc) locationDB[code] = loc;
+    // บันทึก spec ถ้าเป็นคลังอุปกรณ์และเป็นการรับเข้า
+    if (action==='receive' && cfg?.hasSpec) {
+      const spec=(document.getElementById(pg+'-spec')?.value||'').trim();
+      if(spec) specDB[code]=spec;
+    }
     await dbUpsertItem(mi);  // ตอนนี้ mi.stock เป็นค่าถูกต้องแล้ว
   }
 
@@ -2275,6 +2296,10 @@ function buildAddForm(){
       <div class="fg"><label class="fl">Max</label>
         <input class="fi" id="new-max" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal"></div>
     </div>
+    <div id="new-spec-row" style="display:none;margin-bottom:9px">
+      <div class="fg"><label class="fl">สเปกอุปกรณ์</label>
+        <textarea class="fta" id="new-spec" rows="4" placeholder="รายละเอียดและคุณสมบัติของอุปกรณ์..."></textarea></div>
+    </div>
     <div style="display:flex;justify-content:flex-end">
       <button class="btn btn-primary" id="add-item-btn" onclick="addMasterItem()">
         <i class="ti ti-check"></i> บันทึก</button>
@@ -2282,9 +2307,12 @@ function buildAddForm(){
 }
 function onNewCatChange(){
   const val=document.getElementById('new-cat')?.value||'';
+  const[pg]=val.split('|');
   const[,subcat]=val.split('|');
   const row=document.getElementById('new-subcat-row');
   if(row)row.style.display=subcat===''?'block':'none';
+  const specRow=document.getElementById('new-spec-row');
+  if(specRow)specRow.style.display=(pg&&WAREHOUSE_CONFIG[pg]?.hasSpec)?'block':'none';
 }
 function showAddForm(){ const c=document.getElementById('addFormCard');if(c){c.style.display='block';c.scrollIntoView({behavior:'smooth',block:'nearest'});} }
 function hideAddForm(){ const c=document.getElementById('addFormCard');if(c)c.style.display='none'; }
@@ -2315,6 +2343,11 @@ async function addMasterItem(){
   }
 
   const newItem={code,name,pg,subcat,stock,min,max,seq};
+  // บันทึก spec ถ้าเป็นคลังอุปกรณ์
+  if(WAREHOUSE_CONFIG[pg]?.hasSpec){
+    const spec=(document.getElementById('new-spec')?.value||'').trim();
+    if(spec) specDB[code]=spec;
+  }
   const ok=await dbUpsertItem(newItem);
   setLoading('add-item-btn',false);
   if(ok){
@@ -2373,6 +2406,24 @@ async function saveEditMinMax(){
   }
   checkAlerts();closeModal('editMinMaxModal');renderMasterContent();
 }
+function editSpec(code){
+  const m=masterDB.find(x=>x.code===code);if(!m)return;
+  document.getElementById('editSpecId').value=code;
+  document.getElementById('editSpecName').textContent=m.name;
+  document.getElementById('editSpecVal').value=specDB[code]||'';
+  document.getElementById('editSpecModal').classList.add('show');
+}
+async function saveEditSpec(){
+  const code=document.getElementById('editSpecId').value;
+  const spec=(document.getElementById('editSpecVal').value||'').trim();
+  specDB[code]=spec||'';
+  const m=masterDB.find(x=>x.code===code);
+  if(m)await dbUpsertItem(m);
+  closeModal('editSpecModal');
+  renderMasterContent();
+  showToast('บันทึกสเปกเรียบร้อย');
+}
+
 function editName(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editNameId').value=code;document.getElementById('editNameVal').value=m.name;document.getElementById('editNameModal').classList.add('show'); }
 async function saveEditName(){
   const code = document.getElementById('editNameId').value;
@@ -2510,6 +2561,7 @@ function renderMasterContent(){
       <div class="ir-main">
         <div class="ir-name" title="${m.name}">${m.name}</div>
         <div class="ir-code">${m.code}</div>
+        ${(WAREHOUSE_CONFIG[m.pg]?.hasSpec && specDB[m.code])?`<div style="font-size:11px;color:var(--ink3);margin-top:2px;margin-bottom:4px;line-height:1.5;white-space:pre-wrap">${specDB[m.code]}</div>`:''}
         <div class="ir-meta">
           <span class="ir-stock"><strong>${m.stock}</strong></span>
           ${(m.min>0||m.max>0)?`
@@ -2538,6 +2590,7 @@ function renderMasterContent(){
         <button class="icon-btn" onclick="editSubcat('${m.code}')" title="ย้ายหมวดหมู่"><i class="ti ti-folder-symlink"></i></button>
         <button class="icon-btn" onclick="editStock('${m.code}')" title="สต็อก"><i class="ti ti-edit"></i></button>
         <button class="icon-btn" onclick="editMinMax('${m.code}')" title="Min/Max"><i class="ti ti-adjustments-horizontal"></i></button>
+        ${WAREHOUSE_CONFIG[m.pg]?.hasSpec ? `<button class="icon-btn" onclick="editSpec('${m.code}')" title="แก้ไขสเปก"><i class="ti ti-file-description"></i></button>` : ''}
         <button class="icon-btn danger" onclick="deleteMasterItem('${m.code}')" title="ลบ"><i class="ti ti-trash"></i></button>
         ` : ''}
       </div>
