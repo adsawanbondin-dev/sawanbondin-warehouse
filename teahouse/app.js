@@ -3849,23 +3849,23 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
 ═══════════════════════════════════════════ */
 /* ── Purchase Tracking Status ── */
 const PAY_STATUS_OPTS = {
-  '': '— การชำระ —',
-  ordered: 'สั่งแล้ว',
-  waiting_payment: 'รอชำระ',
-  paid: 'ชำระแล้ว',
+  '':        { label:'— การชำระ —',     color:'var(--ink4)' },
+  ordered:   { label:'จัดซื้อแล้ว',     color:'#5b8fe8' },
+  waiting:   { label:'รอชำระเงิน',      color:'var(--warn)' },
+  paid:      { label:'ชำระแล้ว',        color:'var(--green)' },
 };
 const SHIP_STATUS_OPTS = {
-  '': '— การจัดส่ง —',
-  shipping: 'กำลังจัดส่ง',
-  received: 'ได้รับของแล้ว',
-  stocked: 'รับเข้าคลังแล้ว',
+  '':        { label:'— การจัดส่ง —',   color:'var(--ink4)' },
+  shipping:  { label:'กำลังจัดส่ง',     color:'#5b8fe8' },
+  received:  { label:'ได้รับของแล้ว',   color:'#9b6fe8' },
+  qc:        { label:'รอ QC',           color:'var(--warn)' },
+  stocked:   { label:'รับเข้าคลังแล้ว', color:'var(--green)' },
 };
 
 async function setPurchaseTracking(code, field, value) {
   const m = masterDB.find(x => x.code === code);
   if (!m) return;
   m[field] = value || null;
-  // ถ้ากด "รับเข้าคลังแล้ว" reset ทั้ง 2 status
   if (field === 'ship_status' && value === 'stocked') {
     m.pay_status = null;
     m.ship_status = null;
@@ -3878,18 +3878,22 @@ async function setPurchaseTracking(code, field, value) {
 }
 
 function _trackingDropdowns(m) {
-  const payOpts = Object.entries(PAY_STATUS_OPTS).map(([v,l]) =>
-    `<option value="${v}" ${(m.pay_status||'')=== v?'selected':''}>${l}</option>`).join('');
-  const shipOpts = Object.entries(SHIP_STATUS_OPTS).map(([v,l]) =>
-    `<option value="${v}" ${(m.ship_status||'')=== v?'selected':''}>${l}</option>`).join('');
-  const payColor = m.pay_status==='paid'?'var(--green)':m.pay_status?'var(--warn)':'var(--ink4)';
-  const shipColor = m.ship_status==='stocked'?'var(--green)':m.ship_status?'#5b8fe8':'var(--ink4)';
+  const payVal = m.pay_status || '';
+  const shipVal = m.ship_status || '';
+  const payColor = PAY_STATUS_OPTS[payVal]?.color || 'var(--ink4)';
+  const shipColor = SHIP_STATUS_OPTS[shipVal]?.color || 'var(--ink4)';
+
+  const payOpts = Object.entries(PAY_STATUS_OPTS).map(([v,o]) =>
+    `<option value="${v}" ${payVal===v?'selected':''}>${o.label}</option>`).join('');
+  const shipOpts = Object.entries(SHIP_STATUS_OPTS).map(([v,o]) =>
+    `<option value="${v}" ${shipVal===v?'selected':''}>${o.label}</option>`).join('');
+
   return `<div style="display:flex;flex-direction:column;gap:4px">
-    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${payColor};cursor:pointer"
+    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${payColor};font-weight:500;cursor:pointer"
       onchange="setPurchaseTracking('${m.code}','pay_status',this.value)">
       ${payOpts}
     </select>
-    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${shipColor};cursor:pointer"
+    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${shipColor};font-weight:500;cursor:pointer"
       onchange="setPurchaseTracking('${m.code}','ship_status',this.value)">
       ${shipOpts}
     </select>
