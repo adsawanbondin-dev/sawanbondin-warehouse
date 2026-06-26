@@ -217,8 +217,9 @@ async function dbUpsertItem(m) {
   if (WAREHOUSE_CONFIG[m.pg]?.hasSpec) {
     payload.spec = specDB[m.code] || null;
   }
-  payload.pay_status  = m.pay_status  || null;
-  payload.ship_status = m.ship_status || null;
+  payload.pay_status   = m.pay_status   || null;
+  payload.ship_status  = m.ship_status  || null;
+  payload.tracking_url = m.tracking_url || null;
   const { error } = await sb.from('items').upsert(payload, { onConflict:'code' });
   if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
@@ -304,7 +305,7 @@ async function dbLoadItems() {
   const supplierCols = SUPPLIER_FIELDS === 'days' ? ',supplier_name,lead_time_days'
                       : SUPPLIER_FIELDS === 'date' ? ',supplier_name,next_delivery_date'
                       : '';
-  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at,pay_status,ship_status' + supplierCols;
+  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at,pay_status,ship_status,tracking_url' + supplierCols;
   const { data, error } = await sb.from('items')
     .select(cols)
     .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
@@ -319,6 +320,7 @@ async function dbLoadItems() {
     next_delivery_date:r.next_delivery_date||null,
     pay_status:r.pay_status||null,
     ship_status:r.ship_status||null,
+    tracking_url:r.tracking_url||null,
   }));
   (data||[]).forEach(r => {
     if (r.note) locationDB[r.code] = r.note;
@@ -3877,18 +3879,24 @@ async function setPurchaseTracking(code, field, value) {
   if (curPage.startsWith('alert-')) renderAlertGroupPage(curPage.replace('alert-', ''));
 }
 
-function _trackingDropdowns(m) {
-  const payVal = m.pay_status || '';
-  const shipVal = m.ship_status || '';
-  const payColor = PAY_STATUS_OPTS[payVal]?.color || 'var(--ink4)';
-  const shipColor = SHIP_STATUS_OPTS[shipVal]?.color || 'var(--ink4)';
+async function setTrackingUrl(code, url) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  m.tracking_url = url.trim() || null;
+  await sb.from('items').update({ tracking_url: m.tracking_url }).eq('code', code);
+}
 
-  const payOpts = Object.entries(PAY_STATUS_OPTS).map(([v,o]) =>
+function _trackingDropdowns(m) {
+  const payVal  = m.pay_status  || '';
+  const shipVal = m.ship_status || '';
+  const payColor  = PAY_STATUS_OPTS[payVal]?.color  || 'var(--ink4)';
+  const shipColor = SHIP_STATUS_OPTS[shipVal]?.color || 'var(--ink4)';
+  const payOpts  = Object.entries(PAY_STATUS_OPTS).map(([v,o]) =>
     `<option value="${v}" ${payVal===v?'selected':''}>${o.label}</option>`).join('');
   const shipOpts = Object.entries(SHIP_STATUS_OPTS).map(([v,o]) =>
     `<option value="${v}" ${shipVal===v?'selected':''}>${o.label}</option>`).join('');
-
-  return `<div style="display:flex;flex-direction:column;gap:4px">
+  const trackUrl = m.tracking_url || '';
+  return `<div style="display:flex;flex-direction:column;gap:4px;min-width:160px">
     <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${payColor};font-weight:500;cursor:pointer"
       onchange="setPurchaseTracking('${m.code}','pay_status',this.value)">
       ${payOpts}
@@ -3897,6 +3905,14 @@ function _trackingDropdowns(m) {
       onchange="setPurchaseTracking('${m.code}','ship_status',this.value)">
       ${shipOpts}
     </select>
+    <div style="display:flex;gap:3px;align-items:center">
+      <input type="url" placeholder="ลิงก์ Tracking..." value="${trackUrl}"
+        style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);flex:1;min-width:0"
+        onchange="setTrackingUrl('${m.code}',this.value)"
+        onblur="setTrackingUrl('${m.code}',this.value)">
+      ${trackUrl ? `<a href="${trackUrl}" target="_blank" title="เปิดลิงก์ Tracking"
+        style="color:var(--acc);font-size:14px;line-height:1;text-decoration:none"><i class="ti ti-external-link"></i></a>` : ''}
+    </div>
   </div>`;
 }
 
