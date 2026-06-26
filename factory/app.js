@@ -2326,6 +2326,12 @@ function buildAddForm(){
       <div class="fg"><label class="fl">Max</label>
         <input class="fi" id="new-max" type="number" min="0" step="0.01" placeholder="0" inputmode="decimal"></div>
     </div>
+    <div class="fg" style="margin-bottom:9px">
+      <label class="fl"><i class="ti ti-map-pin" style="font-size:11px"></i> พิกัดชั้นวาง</label>
+      <select class="fi" id="new-bin" style="padding:7px 9px">
+        ${buildBinSelectHtml()}
+      </select>
+    </div>
     <div style="display:flex;justify-content:flex-end">
       <button class="btn btn-primary" id="add-item-btn" onclick="addMasterItem()">
         <i class="ti ti-check"></i> บันทึก</button>
@@ -2366,6 +2372,8 @@ async function addMasterItem(){
   }
 
   const newItem={code,name,pg,subcat,stock,min,max,seq};
+  const bin=(document.getElementById('new-bin')?.value||'').trim();
+  if(bin) locationDB[code]=bin;
   const ok=await dbUpsertItem(newItem);
   setLoading('add-item-btn',false);
   if(ok){
