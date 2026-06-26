@@ -2450,7 +2450,17 @@ async function saveEditName(){
   showToast(`เปลี่ยนชื่อเป็น "${nm}" สำเร็จ`);
 }
 function editLoc(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editLocId').value=code;document.getElementById('editLocName').textContent=m.name;document.getElementById('editLocVal').value=locationDB[code]||'';document.getElementById('editLocModal').classList.add('show'); }
-async function saveEditLoc(){ const code=document.getElementById('editLocId').value;const loc=(document.getElementById('editLocVal').value||'').trim();locationDB[code]=loc;const m=masterDB.find(x=>x.code===code);if(m)await dbUpsertItem(m);closeModal('editLocModal');renderMasterContent(); }
+async function saveEditLoc(){
+  const code=document.getElementById('editLocId').value;
+  const loc=(document.getElementById('editLocVal').value||'').trim();
+  locationDB[code]=loc;
+  // update เฉพาะ note column โดยตรง ไม่ต้องผ่าน dbUpsertItem
+  const { error } = await sb.from('items').update({ note: loc }).eq('code', code);
+  if(error){ console.error('saveEditLoc:', error.message); showToast('บันทึกไม่สำเร็จ','err'); return; }
+  closeModal('editLocModal');
+  renderMasterContent();
+  showToast('บันทึกพิกัดเรียบร้อย');
+}
 async function deleteMasterItem(code){ if(!canManageMaster()){showToast('ไม่มีสิทธิ์ลบรายการ','err');return;} if(!confirm('ลบรายการนี้? ข้อมูลจะหายถาวร'))return;masterDB=masterDB.filter(m=>m.code!==code);delete locationDB[code];await dbDeleteItem(code);checkAlerts();renderMasterContent(); }
 
 /* ── ย้ายหมวดหมู่ (subcat) ── */
