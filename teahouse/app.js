@@ -2285,6 +2285,12 @@ function buildAddForm(){
       <div class="fg"><label class="fl">สเปกอุปกรณ์</label>
         <textarea class="fta" id="new-spec" rows="4" placeholder="รายละเอียดและคุณสมบัติของอุปกรณ์..."></textarea></div>
     </div>
+    <div class="fg" style="margin-bottom:9px">
+      <label class="fl"><i class="ti ti-map-pin" style="font-size:11px"></i> พิกัดชั้นวาง</label>
+      <select class="fi" id="new-bin" style="padding:7px 9px">
+        ${buildBinSelectHtml()}
+      </select>
+    </div>
     <div style="display:flex;justify-content:flex-end">
       <button class="btn btn-primary" id="add-item-btn" onclick="addMasterItem()">
         <i class="ti ti-check"></i> บันทึก</button>
@@ -2333,6 +2339,9 @@ async function addMasterItem(){
     const spec=(document.getElementById('new-spec')?.value||'').trim();
     if(spec) specDB[code]=spec;
   }
+  // บันทึกพิกัดชั้นวางถ้าเลือกไว้
+  const bin=(document.getElementById('new-bin')?.value||'').trim();
+  if(bin) locationDB[code]=bin;
   const ok=await dbUpsertItem(newItem);
   setLoading('add-item-btn',false);
   if(ok){
