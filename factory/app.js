@@ -2539,23 +2539,23 @@ function renderMasterContent(){
     const hasLotPg=(WAREHOUSE_CONFIG[m.pg]?.hasLot);
     const allLots=hasLotPg?(lotDB[m.code]||[]):[];
     const activeLots=allLots.filter(l=>l.stock>0);
-    const zeroLots=allLots.filter(l=>l.stock<=0);
     const lotSubHtml=allLots.length
-      ?[...activeLots,...zeroLots].map(l=>{
-          const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):' ?';
-          const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
-          const ex=l.expiry_date?new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
-          const isEmpty=l.stock<=0;
-          const isExpired=l.expiry_date&&new Date(l.expiry_date)<new Date();
-          const noteHtml=(m.pg==='raw'&&l.note)?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">${l.note}</span>`:'';
-          return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}${isExpired?';background:#fdf2f2':''}">
-            <span class="lot-date">${sw}${isEmpty?' <span style="font-size:9px;color:var(--red)">หมด</span>':''}</span>
-            <span class="lot-stock-val">คงเหลือ ${l.stock}</span>
-            ${noteHtml}
-            ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">Sup: ${sp}</span>`:''}
-            ${ex?`<span style="font-size:10px;color:${isExpired?'var(--red)':'var(--ink4)'};margin-left:8px">${isExpired?'⚠️ หมดอายุ':'หมดอายุ'}: ${ex}</span>`:''}
-          </div>`;
-        }).join('')
+      ?activeLots.length
+        ?activeLots.map(l=>{
+            const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):' ?';
+            const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
+            const ex=l.expiry_date?new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
+            const isExpired=l.expiry_date&&new Date(l.expiry_date)<new Date();
+            const noteHtml=l.note?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">${l.note}</span>`:'';
+            return`<div class="lot-sub-row">
+              <span class="lot-date">${sw}</span>
+              <span class="lot-stock-val">คงเหลือ ${l.stock.toLocaleString()}</span>
+              ${noteHtml}
+              ${sp?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">Sup: ${sp}</span>`:''}
+              ${ex?`<span style="font-size:10px;color:${isExpired?'var(--red)':'var(--ink4)'};margin-left:8px">${isExpired?'⚠️ หมดอายุ':'หมดอายุ'}: ${ex}</span>`:''}
+            </div>`;
+          }).join('')
+        :'<div class="lot-empty" style="color:var(--ink4);font-size:11px;padding:4px 0">ทุก Lot หมดแล้ว</div>'
       :'<div class="lot-empty">ยังไม่มี Lot</div>';
     return`<div class="item-row ${cls}">
       <div class="ir-main">
