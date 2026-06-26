@@ -2161,10 +2161,6 @@ function renderMasterPage(){
       <div class="alert-items">${alerts.slice(0,6).map(i=>`<span class="alert-chip">${i.name} (${i.stock})</span>`).join('')}${alerts.length>6?`<span class="alert-chip">+${alerts.length-6}</span>`:''}</div>
     </div></div>`;
   }
-  const namingRows=Object.entries(WAREHOUSE_CONFIG).map(([pg,cfg])=>{
-    if(pg==='raw')return['PD','RW','FW','LL'].map(s=>`<div class="naming-rule">SWBD_RM_${s}_XXXX</div>`).join('');
-    return`<div class="naming-rule">SWBD_${cfg.prefix}_XXXX</div>`;
-  }).join('');
 
   div.innerHTML=`
     <div class="page-header">
@@ -2178,20 +2174,7 @@ function renderMasterPage(){
       </div>
     </div>
     <div class="card" style="margin-bottom:11px">
-      <div class="card-title" style="cursor:pointer;user-select:none;margin-bottom:0" onclick="toggleAccordion('namingBody','namingChev')">
-        <div class="card-title-left"><i class="ti ti-hash" style="color:var(--ink3)"></i>
-          <span style="color:var(--ink2)">รูปแบบรหัส</span>
-        </div>
-        <i class="ti ti-chevron-down" id="namingChev" style="color:var(--ink4);font-size:13px;transition:transform .2s;transform:rotate(-90deg)"></i>
-      </div>
-      <div id="namingBody" style="display:none;margin-top:12px">
-        <div class="naming-grid">${namingRows}</div>
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:11px">
-      <div class="card-title" style="cursor:pointer;user-select:none;margin-bottom:0" onclick="toggleAccordion('binBody','binChev')">
-        <div class="card-title-left"><i class="ti ti-map-pin" style="color:var(--ink3)"></i>
-          <span style="color:var(--ink2)">พิกัดชั้นวาง (Bin Location)</span>
+      <div class="card-title" style="cursor:pointer;user-select:none;margin-bottom:0" onclick="toggleAccordion('binBody','binChev')">\n        <div class="card-title-left"><i class="ti ti-map-pin" style="color:var(--ink3)"></i>\n          <span style="color:var(--ink2)">พิกัดชั้นวาง (Bin Location)</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <button class="btn btn-sm btn-primary" onclick="event.stopPropagation();showBinForm()">
