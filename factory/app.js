@@ -45,8 +45,8 @@ const WAREHOUSE_CONFIG = _CFG.WAREHOUSE_CONFIG || {
 };
 const WAREHOUSE_PAGES = Object.keys(WAREHOUSE_CONFIG);
 
-const ACTION_LABELS = { receive:'รับเข้า', withdraw:'เบิก', return_good:'คืนดี', return_bad:'คืนเสีย', transform_lot:'แปรรูป' };
-const ACTION_BADGE  = { receive:'badge-receive', withdraw:'badge-withdraw', return_good:'badge-return-good', return_bad:'badge-return-bad', transform_lot:'badge-transform' };
+const ACTION_LABELS = { receive:'รับเข้า', withdraw:'เบิก', return_good:'คืนดี', return_bad:'คืนเสีย', transform_lot:'แปรรูป', transform_out:'แปรรูปออก', transform_in:'แปรรูปเข้า' };
+const ACTION_BADGE  = { receive:'badge-receive', withdraw:'badge-withdraw', return_good:'badge-return-good', return_bad:'badge-return-bad', transform_lot:'badge-transform', transform_out:'badge-transform', transform_in:'badge-receive' };
 const DEPT_PILL_CLS = { 'ผลิต':'dept-prod', 'คลัง':'dept-ware', 'บรรจุ':'dept-pack', 'Tea House':'dept-tea' };
 
 /* ═══════════════════════════════════════════
@@ -1322,7 +1322,7 @@ function renderTransformForm(pg) {
     </div>
   </div><div class="divider"></div>`;
 
-  // Lot ต้นทาง
+  // Lot ต้นทาง + จำนวนที่นำไปแปรรูป
   h += `<div class="form-grid">
     <div class="fg form-full">
       <label class="fl">Lot ต้นทาง <span class="req">*</span></label>
@@ -1331,35 +1331,26 @@ function renderTransformForm(pg) {
       </select>
       <div class="fhint">เฉพาะ Lot ที่มียอดคงเหลือมากกว่า 0</div>
     </div>
-  </div>`;
-
-  // จำนวนที่นำไปแปรรูป + น้ำหนักหลังแปรรูป
-  h += `<div class="form-grid">
+  </div>
+  <div class="form-grid">
     <div class="fg">
-      <label class="fl">จำนวนที่นำไปแปรรูป <span class="req">*</span></label>
+      <label class="fl">จำนวนที่นำไปแปรรูปทั้งหมด <span class="req">*</span></label>
       <input class="fi" id="${pg}-tf-qtyout" type="number" min="0.01" step="0.01"
-        placeholder="0.00" inputmode="decimal">
+        placeholder="0.00" inputmode="decimal" oninput="updateTransformSummary('${pg}')">
       <div class="fhint" id="${pg}-tf-avail"></div>
-    </div>
-    <div class="fg">
-      <label class="fl">น้ำหนักหลังแปรรูป <span class="req">*</span></label>
-      <input class="fi" id="${pg}-tf-qtyin" type="number" min="0.01" step="0.01"
-        placeholder="0.00" inputmode="decimal">
-      <div class="fhint">น้ำหนักจริงหลังอบ/แปรรูป (อาจไม่เท่าเดิม)</div>
     </div>
   </div><div class="divider"></div>`;
 
-  // Lot ใหม่
-  h += `<div class="form-grid">
-    <div class="fg">
-      <label class="fl">วันที่ Lot ใหม่ <span class="req">*</span></label>
-      <input class="fi" id="${pg}-tf-newlot" type="date">
-      <div class="fhint">ถ้าตรงกับ Lot เดิม จะรวมยอดเข้าด้วยกัน</div>
+  // Batch ย่อย
+  h += `<div style="margin-bottom:8px">
+    <div style="font-size:12px;font-weight:500;color:var(--ink);margin-bottom:8px">
+      <i class="ti ti-git-branch"></i> Batch ผลลัพธ์ (B1, B2, ...)
+      <span style="font-size:10px;color:var(--ink3);margin-left:6px">เพิ่มได้หลาย batch</span>
     </div>
-    <div class="fg">
-      <label class="fl">หมายเหตุ Lot ใหม่</label>
-      <input class="fi" id="${pg}-tf-note" placeholder="เช่น อบเพิ่ม 40 องศา">
-    </div>
+    <div id="${pg}-tf-batches"></div>
+    <button class="btn btn-sm" style="margin-top:8px" onclick="addTransformBatch('${pg}')">
+      <i class="ti ti-plus"></i> เพิ่ม Batch
+    </button>
   </div>`;
 
   // สรุปยอด
@@ -1375,13 +1366,43 @@ function renderTransformForm(pg) {
   body.innerHTML = h;
   buildDDList(pg, '', true);
 
-  // bind live summary update
-  ['${pg}-tf-qtyout','${pg}-tf-qtyin'.replace('${pg}',pg)].forEach(()=>{});
-  [pg+'-tf-qtyout', pg+'-tf-qtyin'].forEach(id=>{
+  // เพิ่ม batch แรกอัตโนมัติ
+  addTransformBatch(pg);
+
+  [pg+'-tf-qtyout'].forEach(id=>{
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', ()=>updateTransformSummary(pg));
   });
 }
+
+function addTransformBatch(pg) {
+  const container = document.getElementById(pg+'-tf-batches');
+  if (!container) return;
+  const idx = container.children.length + 1;
+  const div = document.createElement('div');
+  div.className = 'form-grid';
+  div.style.cssText = 'background:var(--s2);border-radius:var(--r);padding:10px;margin-bottom:8px;position:relative';
+  div.innerHTML = `
+    <div class="fg">
+      <label class="fl">B${idx} — วันที่ Lot ใหม่ <span class="req">*</span></label>
+      <input class="fi tf-batch-date" type="date" oninput="updateTransformSummary('${pg}')">
+    </div>
+    <div class="fg">
+      <label class="fl">น้ำหนักหลังแปรรูป <span class="req">*</span></label>
+      <input class="fi tf-batch-qty" type="number" min="0.01" step="0.01" placeholder="0.00"
+        inputmode="decimal" oninput="updateTransformSummary('${pg}')">
+    </div>
+    <div class="fg form-full">
+      <label class="fl">หมายเหตุ Batch นี้</label>
+      <input class="fi tf-batch-note" placeholder="เช่น B${idx} — อบ 100 องศา / 1 ชั่วโมง">
+    </div>
+    ${idx > 1 ? `<button onclick="this.closest('.form-grid').remove();updateTransformSummary('${pg}')"
+      style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px">✕</button>` : ''}
+  `;
+  container.appendChild(div);
+  updateTransformSummary(pg);
+}
+
 
 // เมื่อเลือกสินค้าจาก dropdown ในโหมดแปรรูป — โหลด Lot ของสินค้านั้น
 async function onTransformItemSelect(pg, code, name) {
@@ -1420,12 +1441,22 @@ function updateTransformSummary(pg) {
   const sel = document.getElementById(pg+'-tf-fromlot');
   const opt = sel?.options[sel.selectedIndex];
   const qtyOut = parseFloat(document.getElementById(pg+'-tf-qtyout')?.value)||0;
-  const qtyIn  = parseFloat(document.getElementById(pg+'-tf-qtyin')?.value)||0;
   const box = document.getElementById(pg+'-tf-summary');
-  if (!m || !opt?.value) { box.style.display='none'; return; }
-  const newTotal = m.stock - qtyOut + qtyIn;
+  if (!m || !opt?.value) { if(box) box.style.display='none'; return; }
+
+  // รวม qty จาก batches ทั้งหมด
+  const batchQtys = [...document.querySelectorAll(`#${pg}-tf-batches .tf-batch-qty`)]
+    .map(el=>parseFloat(el.value)||0);
+  const totalBatchQty = batchQtys.reduce((a,b)=>a+b, 0);
+  const remaining = qtyOut - totalBatchQty;
+
+  if (!box) return;
   box.style.display = '';
-  box.innerHTML = `<i class="ti ti-calculator"></i> ยอดรวม "${m.name}": ${m.stock.toLocaleString()} − ${qtyOut.toLocaleString()} + ${qtyIn.toLocaleString()} = <strong>${newTotal.toLocaleString()}</strong>`;
+  const color = Math.abs(remaining) < 0.001 ? 'var(--green)' : remaining < 0 ? 'var(--red)' : 'var(--warn)';
+  box.innerHTML = `<i class="ti ti-calculator"></i>
+    นำไปแปรรูป <strong>${qtyOut.toLocaleString()}</strong> →
+    Batch รวม <strong>${totalBatchQty.toLocaleString()}</strong>
+    <span style="color:${color};margin-left:6px">${remaining > 0.001 ? `ยังขาด ${remaining.toLocaleString()}` : remaining < -0.001 ? `เกิน ${Math.abs(remaining).toLocaleString()}` : '✓ ครบพอดี'}</span>`;
 }
 
 async function submitTransform(pg) {
@@ -1436,46 +1467,67 @@ async function submitTransform(pg) {
   const fromLotId = sel?.value;
   const fromOpt   = sel?.options[sel.selectedIndex];
   const qtyOut = parseFloat(document.getElementById(pg+'-tf-qtyout')?.value);
-  const qtyIn  = parseFloat(document.getElementById(pg+'-tf-qtyin')?.value);
-  const newLotSW = document.getElementById(pg+'-tf-newlot')?.value;
-  const note     = (document.getElementById(pg+'-tf-note')?.value||'').trim();
   const opName   = window._operatorName || '';
   const opDept   = window._operatorDept || '';
 
   if (!code) { showToast('กรุณาเลือกรายการ','err'); return; }
   if (!fromLotId) { showToast('กรุณาเลือก Lot ต้นทาง','err'); return; }
   if (!qtyOut || qtyOut<=0) { showToast('กรุณาระบุจำนวนที่นำไปแปรรูป','err'); return; }
-  if (!qtyIn || qtyIn<=0) { showToast('กรุณาระบุน้ำหนักหลังแปรรูป','err'); return; }
-  if (!newLotSW) { showToast('กรุณาระบุวันที่ Lot ใหม่','err'); return; }
 
   const avail = parseFloat(fromOpt?.dataset?.stock)||0;
   if (qtyOut > avail) { showToast(`Lot ต้นทางมีไม่พอ (มี ${avail.toLocaleString()} เหลือ)`,'err'); return; }
 
-  const btn = document.getElementById(pg+'-tf-submit-btn');
+  // เก็บ batch ย่อยทั้งหมด
+  const batchContainers = [...document.querySelectorAll(`#${pg}-tf-batches .form-grid`)];
+  const batches = batchContainers.map((div, i) => ({
+    date: div.querySelector('.tf-batch-date')?.value,
+    qty:  parseFloat(div.querySelector('.tf-batch-qty')?.value),
+    note: (div.querySelector('.tf-batch-note')?.value||'').trim(),
+    label: `B${i+1}`,
+  }));
+
+  for (const b of batches) {
+    if (!b.date) { showToast('กรุณาระบุวันที่ Lot ทุก Batch','err'); return; }
+    if (!b.qty || b.qty <= 0) { showToast('กรุณาระบุน้ำหนักทุก Batch','err'); return; }
+  }
+
+  const totalQtyIn = batches.reduce((s,b)=>s+b.qty, 0);
+  if (Math.abs(totalQtyIn - qtyOut) > 0.001) {
+    if (!confirm(`น้ำหนัก batch รวม (${totalQtyIn.toLocaleString()}) ไม่ตรงกับที่นำไปแปรรูป (${qtyOut.toLocaleString()})\nบันทึกต่อไปหรือไม่?`)) return;
+  }
+
   setLoading(pg+'-tf-submit-btn', true, 'กำลังบันทึก...');
 
   const fromLotSW = fromOpt?.dataset?.sw || '';
   const fromDateStr = fromLotSW ? new Date(fromLotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
-  const newDateStr  = new Date(newLotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const baseTx = { item_code:code, item_name:name, pg, operator_name:opName, department:opDept, via:'manual' };
 
-  const result = await dbTransformStockLot(code, parseInt(fromLotId), qtyOut, newLotSW, qtyIn, note);
+  // บันทึก transform_out ครั้งเดียว
+  const result = await dbTransformStockLot(code, parseInt(fromLotId), qtyOut, batches[0].date, batches[0].qty, batches[0].note);
   setLoading(pg+'-tf-submit-btn', false);
   if (!result.ok) return;
 
-  // บันทึก transaction 2 รายการ — transform_out / transform_in
-  const baseTx = { item_code:code, item_name:name, pg, operator_name:opName, department:opDept, via:'manual' };
   await dbInsertTransaction({
     ...baseTx, action_type:'transform_out', quantity:qtyOut,
-    lot_sw:fromLotSW, note:`แปรรูปออก → Lot ${newDateStr}${note?' ('+note+')':''}`,
-    old_stock:result.old_stock, new_stock:result.new_stock,
-  });
-  await dbInsertTransaction({
-    ...baseTx, action_type:'transform_in', quantity:qtyIn,
-    lot_sw:newLotSW, note:`แปรรูปเข้า ← Lot ${fromDateStr}${note?' — '+note:''}`,
+    lot_sw:fromLotSW, note:`แปรรูปออก ${qtyOut.toLocaleString()} → ${batches.length} Batch`,
     old_stock:result.old_stock, new_stock:result.new_stock,
   });
 
-  showToast(`แปรรูปสำเร็จ — Lot ${fromDateStr} → Lot ${newDateStr}`);
+  // บันทึก transform_in แยกตาม batch
+  for (const b of batches) {
+    const newDateStr = new Date(b.date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+    // สำหรับ batch ที่ 2 เป็นต้นไป ต้องเรียก RPC แยก
+    if (batches.indexOf(b) > 0) {
+      await dbTransformStockLot(code, parseInt(fromLotId), 0, b.date, b.qty, b.note);
+    }
+    await dbInsertTransaction({
+      ...baseTx, action_type:'transform_in', quantity:b.qty,
+      lot_sw:b.date, note:`${b.label} ← Lot ${fromDateStr}${b.note?' — '+b.note:''}`,
+      old_stock:result.old_stock, new_stock:result.new_stock,
+    });
+  }
+
+  showToast(`แปรรูปสำเร็จ — ${batches.length} Batch`);
   checkAlerts();
   if (curPage===pg) {
     const recs = await dbLoadTransactions(pg);
@@ -1484,6 +1536,12 @@ async function submitTransform(pg) {
     renderHistory(pg,1);
   }
 }
+
+  if (!code) { showToast('กรุณาเลือกรายการ','err'); return; }
+  if (!fromLotId) { showToast('กรุณาเลือก Lot ต้นทาง','err'); return; }
+  if (!qtyOut || qtyOut<=0) { showToast('กรุณาระบุจำนวนที่นำไปแปรรูป','err'); return; }
+  if (!qtyIn || qtyIn<=0) { showToast('กรุณาระบุน้ำหนักหลังแปรรูป','err'); return; }
+  if (!newLotSW) { showToast('กรุณาระบุวันที่ Lot ใหม่','err'); return; }
 
 
 function switchAction(pg, action) {
