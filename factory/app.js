@@ -1537,13 +1537,6 @@ async function submitTransform(pg) {
   }
 }
 
-  if (!code) { showToast('กรุณาเลือกรายการ','err'); return; }
-  if (!fromLotId) { showToast('กรุณาเลือก Lot ต้นทาง','err'); return; }
-  if (!qtyOut || qtyOut<=0) { showToast('กรุณาระบุจำนวนที่นำไปแปรรูป','err'); return; }
-  if (!qtyIn || qtyIn<=0) { showToast('กรุณาระบุน้ำหนักหลังแปรรูป','err'); return; }
-  if (!newLotSW) { showToast('กรุณาระบุวันที่ Lot ใหม่','err'); return; }
-
-
 function switchAction(pg, action) {
   const sv = {
     name: document.getElementById(pg+'-name')?.value||'',
