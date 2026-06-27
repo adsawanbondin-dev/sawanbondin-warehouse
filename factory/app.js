@@ -668,14 +668,39 @@ function updatePkgPreview() {
   const r = bomRecipes.find(x=>x.id===recipeId);
   if (!r || qty<=0) { document.getElementById('pkgPreview').innerHTML=''; return; }
 
-  const rows = (r.bom_items||[]).map(item => {
+  const rows = (r.bom_items||[]).map((item,idx) => {
     const needed = item.qty_per_unit * qty;
     const m = masterDB.find(x=>x.code===item.item_code);
     const avail = m?.stock||0;
     const ok = avail >= needed;
+    const cfg = WAREHOUSE_CONFIG[item.pg];
+    const hasLot = cfg?.hasLot;
+
+    let lotCell = '';
+    if (hasLot) {
+      const lots = (lotDB[item.item_code]||[]).filter(l=>l.stock>0)
+        .sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
+      if (lots.length) {
+        const opts = lots.map(l => {
+          const sw = new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+          return `<option value="${l.id}" data-sw="${l.lot_sw}" data-stock="${l.stock}">${sw} (เหลือ ${l.stock.toLocaleString()})</option>`;
+        }).join('');
+        lotCell = `<select class="fi pkg-lot-sel" data-code="${item.item_code}" data-idx="${idx}"
+          style="font-size:11px;padding:3px 6px;margin-top:4px">
+          <option value="auto">เลือกอัตโนมัติ (FIFO)</option>
+          ${opts}
+        </select>`;
+      } else {
+        lotCell = '<span style="font-size:10px;color:var(--red)">ไม่มี Lot</span>';
+      }
+    }
+
     return `<tr>
-      <td>${item.item_name}</td>
-      <td style="text-align:center;color:var(--ink3)">${WAREHOUSE_CONFIG[item.pg]?.label||item.pg}</td>
+      <td>
+        <div style="font-weight:500">${item.item_name}</div>
+        ${lotCell}
+      </td>
+      <td style="text-align:center;color:var(--ink3);font-size:11px">${cfg?.label||item.pg}</td>
       <td style="text-align:right;font-weight:600">${needed.toLocaleString()}</td>
       <td style="text-align:right;color:${ok?'var(--green)':'var(--red)'}">${avail.toLocaleString()}</td>
       <td style="text-align:center">${ok?'<i class="ti ti-check" style="color:var(--green)"></i>':'<i class="ti ti-x" style="color:var(--red)"></i>'}</td>
@@ -685,7 +710,7 @@ function updatePkgPreview() {
   document.getElementById('pkgPreview').innerHTML = `
     <table class="hist-table" style="margin-top:10px">
       <thead><tr>
-        <th>รายการ</th><th style="text-align:center">คลัง</th>
+        <th>รายการ / Lot</th><th style="text-align:center">คลัง</th>
         <th style="text-align:right">ต้องการ</th><th style="text-align:right">มีอยู่</th><th style="text-align:center">สถานะ</th>
       </tr></thead>
       <tbody>${rows}</tbody>
@@ -726,14 +751,26 @@ async function submitPackaging() {
     const hasLot = cfg?.hasLot;
 
     if (hasLot) {
-      // หา lot ที่มีของพอ (เลือก lot เก่าสุดก่อน FIFO)
-      const lots = (lotDB[item.item_code]||[]).filter(l=>l.stock>0).sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
-      let remaining = needed;
-      for (const lot of lots) {
-        if (remaining <= 0) break;
-        const take = Math.min(lot.stock, remaining);
-        await dbAdjustStockWithLot(item.item_code, 'withdraw', take, { lotId: lot.id, lotSW: lot.lot_sw });
-        remaining -= take;
+      const lotSelEl = document.querySelector(`.pkg-lot-sel[data-code="${item.item_code}"]`);
+      const lotSelVal = lotSelEl?.value || 'auto';
+
+      if (lotSelVal !== 'auto') {
+        // ใช้ lot ที่เลือก
+        const lot = (lotDB[item.item_code]||[]).find(l=>String(l.id)===lotSelVal);
+        if (lot) {
+          const sw = lotSelEl.options[lotSelEl.selectedIndex]?.dataset?.sw || lot.lot_sw;
+          await dbAdjustStockWithLot(item.item_code, 'withdraw', needed, { lotId: lot.id, lotSW: sw });
+        }
+      } else {
+        // FIFO อัตโนมัติ
+        const lots = (lotDB[item.item_code]||[]).filter(l=>l.stock>0).sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
+        let remaining = needed;
+        for (const lot of lots) {
+          if (remaining <= 0) break;
+          const take = Math.min(lot.stock, remaining);
+          await dbAdjustStockWithLot(item.item_code, 'withdraw', take, { lotId: lot.id, lotSW: lot.lot_sw });
+          remaining -= take;
+        }
       }
     } else {
       await dbAdjustStockWithLot(item.item_code, 'withdraw', needed, {});
