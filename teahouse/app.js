@@ -3868,12 +3868,14 @@ async function setPurchaseTracking(code, field, value) {
   const m = masterDB.find(x => x.code === code);
   if (!m) return;
   m[field] = value || null;
+  // ถ้ากด "รับเข้าคลังแล้ว" reset ทั้ง status และ tracking_url
   if (field === 'ship_status' && value === 'stocked') {
-    m.pay_status = null;
-    m.ship_status = null;
+    m.pay_status   = null;
+    m.ship_status  = null;
+    m.tracking_url = null;
   }
   const { error } = await sb.from('items')
-    .update({ pay_status: m.pay_status, ship_status: m.ship_status })
+    .update({ pay_status: m.pay_status, ship_status: m.ship_status, tracking_url: m.tracking_url })
     .eq('code', code);
   if (error) { showToast('บันทึกไม่สำเร็จ', 'err'); return; }
   if (curPage.startsWith('alert-')) renderAlertGroupPage(curPage.replace('alert-', ''));
