@@ -15,8 +15,8 @@ window.WMS_CONFIG = {
 
   // โครงสร้างคลังของ Tea House — แทนที่ WAREHOUSE_CONFIG เริ่มต้นของ Factory ทั้งก้อน
   WAREHOUSE_CONFIG: {
-    finish:     { label:'คลังสินค้าสำเร็จรูป',     prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'] },
-    raw:        { label:'คลังวัตถุดิบ',             prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'] },
+    finish:     { label:'คลังสินค้าสำเร็จรูป',     prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
+    raw:        { label:'คลังวัตถุดิบ',             prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
     equip_th:   { label:'คลังอุปกรณ์ Tea House',   prefix:'TH', hasLot:false, lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
     equip_boot: { label:'คลังอุปกรณ์ Boot',         prefix:'TH', hasLot:false, lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
   },
