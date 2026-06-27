@@ -4099,10 +4099,11 @@ async function submitAlertReceiveModal() {
   rec.id = await dbInsertTransaction(rec);
 
   // reset สถานะติดตามเมื่อรับเข้าคลังแล้ว
-  if (mi.pay_status || mi.ship_status) {
-    mi.pay_status = null;
-    mi.ship_status = null;
-    await sb.from('items').update({ pay_status: null, ship_status: null }).eq('code', code);
+  if (mi.pay_status || mi.ship_status || mi.tracking_url) {
+    mi.pay_status   = null;
+    mi.ship_status  = null;
+    mi.tracking_url = null;
+    await sb.from('items').update({ pay_status: null, ship_status: null, tracking_url: null }).eq('code', code);
   }
 
   checkAlerts();
