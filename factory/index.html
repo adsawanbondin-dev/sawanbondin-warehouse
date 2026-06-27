@@ -711,8 +711,11 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
   <div class="fg" style="margin-bottom:10px"><label class="fl">รายการ</label>
     <div id="editLocName" style="font-size:12px;font-weight:500;padding:5px 0"></div></div>
-  <div class="fg" style="margin-bottom:12px"><label class="fl">สถานที่จัดเก็บ</label>
-    <input class="fi" id="editLocVal" placeholder="เช่น ชั้น A1, ห้องเย็น"></div>
+  <div class="fg" style="margin-bottom:12px"><label class="fl">พิกัดชั้นวาง</label>
+    <select class="fi" id="editLocVal" style="padding:7px 9px">
+      <option value="">— ไม่ระบุพิกัด —</option>
+    </select>
+  </div>
   <input type="hidden" id="editLocId">
   <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
     <button class="btn" onclick="closeModal('editLocModal')">ยกเลิก</button>
