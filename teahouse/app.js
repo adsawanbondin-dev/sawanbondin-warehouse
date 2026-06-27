@@ -458,7 +458,11 @@ async function dbLoadBinLocations() {
   const { data, error } = await sb.from('bin_locations')
     .select('*').order('code', { ascending: true });
   if (error) { console.error('dbLoadBins:', error.message); return; }
-  binLocations = data || [];
+  binLocations = (data || []).sort((a,b) => {
+    if (a.zone !== b.zone) return a.zone.localeCompare(b.zone);
+    if (a.row  !== b.row)  return a.row.localeCompare(b.row);
+    return String(a.level).localeCompare(String(b.level), undefined, {numeric:true});
+  });
 }
 
 async function dbSaveBinLocation(zone, row, level, label='') {
@@ -2446,7 +2450,18 @@ async function saveEditName(){
   renderMasterContent();
   showToast(`เปลี่ยนชื่อเป็น "${nm}" สำเร็จ`);
 }
-function editLoc(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editLocId').value=code;document.getElementById('editLocName').textContent=m.name;document.getElementById('editLocVal').value=locationDB[code]||'';document.getElementById('editLocModal').classList.add('show'); }
+function editLoc(code){
+  const m=masterDB.find(x=>x.code===code);if(!m)return;
+  document.getElementById('editLocId').value=code;
+  document.getElementById('editLocName').textContent=m.name;
+  // สร้าง dropdown จาก binLocations
+  const sel=document.getElementById('editLocVal');
+  if(sel){
+    sel.innerHTML='<option value="">— ไม่ระบุพิกัด —</option>'+
+      binLocations.map(b=>`<option value="${b.code}" ${locationDB[code]===b.code?'selected':''}>${b.code}${b.label?' — '+b.label:''}</option>`).join('');
+  }
+  document.getElementById('editLocModal').classList.add('show');
+}
 async function saveEditLoc(){
   const code=document.getElementById('editLocId').value;
   const loc=(document.getElementById('editLocVal').value||'').trim();
