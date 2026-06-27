@@ -2213,6 +2213,7 @@ function renderMasterPage(){
             `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:var(--acc-bg);border:1px solid var(--line);border-radius:6px;margin-bottom:3px">
               <span style="font-size:11px;color:var(--acc);font-family:monospace;font-weight:500">${b.code}</span>
               ${b.label?`<span style="font-size:10px;color:var(--ink3)">${b.label}</span>`:''}
+              <button onclick="editBinLocation(${b.id},'${b.zone}','${b.row}','${b.level}','${(b.label||'').replace(/'/g,"\\'")}')" style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:0;font-size:12px;line-height:1" title="แก้ไข"><i class="ti ti-pencil"></i></button>
               <button onclick="deleteBinLocation(${b.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:0;font-size:12px;line-height:1" title="ลบ"><i class="ti ti-x"></i></button>
             </div>`
           ).join('') : '<span style="font-size:12px;color:var(--ink3)">ยังไม่มีพิกัด — กด "+ เพิ่มพิกัด" เพื่อเริ่มต้น</span>'}
@@ -2509,8 +2510,64 @@ async function saveEditSubcat(){
 /* ── MASTER CONTENT ── */
 function showBinForm(){
   const f=document.getElementById('binAddForm');
-  if(f) f.style.display=f.style.display==='none'?'block':'none';
+  if (!f) return;
+  const isVisible = f.style.display !== 'none';
+  f.style.display = isVisible ? 'none' : 'block';
+  if (!isVisible) {
+    ['bin-zone','bin-row','bin-level','bin-label'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    delete f.dataset.editId;
+    const btn=f.querySelector('button.btn-primary');
+    if(btn){btn.innerHTML='<i class="ti ti-check"></i> บันทึกพิกัด';btn.onclick=addBinLocation;}
+  }
 }
+function editBinLocation(id, zone, row, level, label) {
+  // เติมข้อมูลเดิมลงในฟอร์ม แล้วเปลี่ยนปุ่มเป็น "บันทึกการแก้ไข"
+  document.getElementById('bin-zone').value  = zone;
+  document.getElementById('bin-row').value   = row;
+  document.getElementById('bin-level').value = level;
+  document.getElementById('bin-label').value = label;
+  document.getElementById('binAddForm').style.display = 'block';
+  document.getElementById('binAddForm').dataset.editId = id;
+  // เปลี่ยนปุ่มบันทึก
+  const btn = document.querySelector('#binAddForm button.btn-primary');
+  if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> บันทึกการแก้ไข'; btn.onclick = saveBinLocation; }
+}
+
+async function saveBinLocation() {
+  const id    = parseInt(document.getElementById('binAddForm').dataset.editId);
+  const zone  = (document.getElementById('bin-zone')?.value||'').trim().toUpperCase();
+  const row   = (document.getElementById('bin-row')?.value||'').trim().toUpperCase();
+  const level = (document.getElementById('bin-level')?.value||'').trim();
+  const label = (document.getElementById('bin-label')?.value||'').trim();
+  if (!zone||!row||!level){ showToast('กรุณากรอก โซน แถว และชั้นให้ครบ','err'); return; }
+
+  const { data, error } = await sb.from('bin_locations')
+    .update({ zone, row, level, label })
+    .eq('id', id)
+    .select().single();
+  if (error) { showToast('แก้ไขไม่สำเร็จ','err'); return; }
+
+  // อัปเดต locationDB ของสินค้าที่ใช้พิกัดเดิม
+  const oldBin = binLocations.find(b => b.id === id);
+  if (oldBin) {
+    const oldCode = oldBin.code;
+    const newCode = data.code;
+    if (oldCode !== newCode) {
+      // อัปเดตสินค้าที่ใช้พิกัดเดิมให้ชี้ไปพิกัดใหม่
+      Object.keys(locationDB).forEach(k => {
+        if (locationDB[k] === oldCode) locationDB[k] = newCode;
+      });
+      await sb.from('items').update({ note: newCode }).eq('note', oldCode);
+    }
+  }
+
+  // รีเซ็ตฟอร์ม
+  binLocations = binLocations.map(b => b.id === id ? {...b, ...data} : b);
+  showBinForm();
+  renderMasterPage();
+  showToast('แก้ไขพิกัดเรียบร้อย');
+}
+
 async function addBinLocation(){
   const zone=(document.getElementById('bin-zone')?.value||'').trim().toUpperCase();
   const row=(document.getElementById('bin-row')?.value||'').trim().toUpperCase();
