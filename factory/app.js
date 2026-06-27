@@ -60,6 +60,7 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY, {
    STATE
 ═══════════════════════════════════════════ */
 let masterDB        = [];
+let bomRecipes      = []; // cache สูตรการผลิตทั้งหมด
 let locationDB      = {};    // { code: string }
 let lotDB           = {};    // { code: [{id,lot_sw,stock,updated_at}] }
 let masterCatFilter = 'all';
@@ -439,6 +440,321 @@ async function dbTransformStockLot(code, fromLotId, qtyOut, newLotSW, qtyIn, not
    BIN LOCATION — ระบบพิกัดชั้นวาง
 ═══════════════════════════════════════════ */
 let binLocations = []; // cache [{id, zone, row, level, code, label}]
+
+/* ═══════════════════════════════════════════════════════════════
+   BOM — สูตรการผลิต
+   ═══════════════════════════════════════════════════════════════ */
+
+async function dbLoadBomRecipes() {
+  const { data, error } = await sb.from('bom_recipes')
+    .select('*, bom_items(*)')
+    .eq('is_active', true)
+    .order('name');
+  if (error) { console.error('dbLoadBomRecipes:', error.message); return false; }
+  bomRecipes = data || [];
+  return true;
+}
+
+async function dbSaveBomRecipe(recipe) {
+  const { data, error } = await sb.from('bom_recipes')
+    .insert({ name:recipe.name, description:recipe.description||'', output_qty:recipe.output_qty, output_unit:recipe.output_unit })
+    .select().single();
+  if (error) { showToast('บันทึกสูตรไม่สำเร็จ','err'); return null; }
+  // บันทึก items
+  if (recipe.items?.length) {
+    const rows = recipe.items.map(i => ({
+      recipe_id: data.id, item_code: i.code, item_name: i.name,
+      pg: i.pg, qty_per_unit: i.qty
+    }));
+    await sb.from('bom_items').insert(rows);
+  }
+  return data.id;
+}
+
+async function dbUpdateBomRecipe(id, recipe) {
+  await sb.from('bom_recipes').update({
+    name:recipe.name, description:recipe.description||'',
+    output_qty:recipe.output_qty, output_unit:recipe.output_unit, updated_at:new Date().toISOString()
+  }).eq('id', id);
+  // ลบ items เดิมแล้วใส่ใหม่
+  await sb.from('bom_items').delete().eq('recipe_id', id);
+  if (recipe.items?.length) {
+    const rows = recipe.items.map(i => ({
+      recipe_id: id, item_code: i.code, item_name: i.name,
+      pg: i.pg, qty_per_unit: i.qty
+    }));
+    await sb.from('bom_items').insert(rows);
+  }
+}
+
+async function dbDeleteBomRecipe(id) {
+  await sb.from('bom_recipes').update({ is_active: false }).eq('id', id);
+}
+
+/* ── render หน้า BOM ── */
+function renderBomPage() {
+  const div = document.getElementById('page-bom');
+  if (!div) return;
+  dbLoadBomRecipes().then(() => _renderBomContent(div));
+}
+
+function _renderBomContent(div) {
+  const recipeCards = bomRecipes.map(r => {
+    const items = (r.bom_items||[]).map(i =>
+      `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line);font-size:12px">
+        <span style="color:var(--ink2)">${i.item_name}</span>
+        <span style="color:var(--ink3);font-family:monospace">${i.qty_per_unit} × ${r.output_qty} ${r.output_unit}</span>
+      </div>`
+    ).join('');
+    return `<div class="card" style="margin-bottom:10px">
+      <div class="card-title">
+        <div class="card-title-left">
+          <i class="ti ti-clipboard-list" style="color:var(--acc)"></i>
+          <span style="font-weight:600">${r.name}</span>
+          <span class="mcount" style="font-size:10px">${r.output_qty} ${r.output_unit}</span>
+        </div>
+        ${canManageMaster()?`<div style="display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="openBomEdit(${r.id})"><i class="ti ti-pencil"></i> แก้ไข</button>
+          <button class="btn btn-sm" style="color:var(--red)" onclick="deleteBomRecipe(${r.id})"><i class="ti ti-trash"></i></button>
+        </div>`:''}
+      </div>
+      ${r.description?`<div style="font-size:11px;color:var(--ink3);margin-bottom:8px">${r.description}</div>`:''}
+      <div style="margin-bottom:10px">${items}</div>
+      <button class="btn btn-primary" style="width:100%" onclick="openPackaging(${r.id})">
+        <i class="ti ti-package"></i> ทำแพคเกจ
+      </button>
+    </div>`;
+  }).join('') || `<div style="text-align:center;padding:40px;color:var(--ink4)">
+    <i class="ti ti-clipboard-list" style="font-size:40px;display:block;margin-bottom:10px;opacity:.3"></i>
+    ยังไม่มีสูตรการผลิต — กด "+ สร้างสูตร" เพื่อเริ่มต้น
+  </div>`;
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">สูตรการผลิต (BOM)</div>
+        <div class="page-sub">จัดการสูตร และทำแพคเกจ</div></div>
+      <div>
+        ${canManageMaster()?`<button class="btn btn-primary btn-sm" onclick="openBomEdit(null)">
+          <i class="ti ti-plus"></i> สร้างสูตร</button>`:''}
+      </div>
+    </div>
+    <div style="max-width:600px;margin:0 auto">${recipeCards}</div>`;
+}
+
+/* ── modal แก้ไข/สร้างสูตร ── */
+function openBomEdit(id) {
+  const r = id ? bomRecipes.find(x=>x.id===id) : null;
+  const items = r?.bom_items || [];
+  document.getElementById('bomEditId').value = id||'';
+  document.getElementById('bomEditName').value = r?.name||'';
+  document.getElementById('bomEditDesc').value = r?.description||'';
+  document.getElementById('bomEditQty').value = r?.output_qty||1;
+  document.getElementById('bomEditUnit').value = r?.output_unit||'ชุด';
+  // render items
+  _renderBomEditItems(items);
+  document.getElementById('bomEditModal').classList.add('show');
+}
+
+function _renderBomEditItems(items) {
+  const container = document.getElementById('bomEditItems');
+  container.innerHTML = items.map((item,i) => _bomItemRow(i, item)).join('');
+}
+
+function _bomItemRow(i, item={}) {
+  const pgOpts = Object.entries(WAREHOUSE_CONFIG).map(([k,v]) =>
+    `<option value="${k}" ${item.pg===k?'selected':''}>${v.label}</option>`).join('');
+  const itemOpts = masterDB
+    .filter(m => !item.pg || m.pg === item.pg)
+    .map(m => `<option value="${m.code}" data-name="${m.name}" data-pg="${m.pg}" ${item.item_code===m.code?'selected':''}>${m.name}</option>`)
+    .join('');
+  return `<div class="form-grid bom-item-row" style="background:var(--s2);border-radius:var(--r);padding:10px;margin-bottom:8px;position:relative" data-idx="${i}">
+    <div class="fg">
+      <label class="fl">คลัง</label>
+      <select class="fi" onchange="onBomPgChange(this,${i})" style="padding:7px 9px">
+        <option value="">-- เลือกคลัง --</option>
+        ${pgOpts}
+      </select>
+    </div>
+    <div class="fg form-full">
+      <label class="fl">รายการ <span class="req">*</span></label>
+      <select class="fi bom-item-sel" style="padding:7px 9px">
+        <option value="">-- เลือกรายการ --</option>
+        ${itemOpts}
+      </select>
+    </div>
+    <div class="fg">
+      <label class="fl">จำนวนต่อหน่วยผลิต <span class="req">*</span></label>
+      <input class="fi bom-item-qty" type="number" min="0.001" step="0.001" value="${item.qty_per_unit||''}" placeholder="0.00" inputmode="decimal">
+    </div>
+    <button onclick="this.closest('.bom-item-row').remove()"
+      style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px">✕</button>
+  </div>`;
+}
+
+function onBomPgChange(sel, idx) {
+  const pg = sel.value;
+  const row = sel.closest('.bom-item-row');
+  const itemSel = row.querySelector('.bom-item-sel');
+  const opts = masterDB.filter(m => !pg || m.pg===pg)
+    .map(m=>`<option value="${m.code}" data-name="${m.name}" data-pg="${m.pg}">${m.name}</option>`).join('');
+  itemSel.innerHTML = '<option value="">-- เลือกรายการ --</option>' + opts;
+}
+
+function addBomItem() {
+  const container = document.getElementById('bomEditItems');
+  const idx = container.children.length;
+  container.insertAdjacentHTML('beforeend', _bomItemRow(idx));
+}
+
+async function saveBomRecipe() {
+  const id = document.getElementById('bomEditId').value;
+  const name = document.getElementById('bomEditName').value.trim();
+  const description = document.getElementById('bomEditDesc').value.trim();
+  const output_qty = parseFloat(document.getElementById('bomEditQty').value)||1;
+  const output_unit = document.getElementById('bomEditUnit').value.trim()||'ชุด';
+
+  if (!name) { showToast('กรุณาใส่ชื่อสูตร','err'); return; }
+
+  // รวบรวม items
+  const rows = [...document.querySelectorAll('#bomEditItems .bom-item-row')];
+  const items = [];
+  for (const row of rows) {
+    const sel = row.querySelector('.bom-item-sel');
+    const qty = parseFloat(row.querySelector('.bom-item-qty').value);
+    if (!sel.value || !qty) continue;
+    const opt = sel.options[sel.selectedIndex];
+    items.push({ code: sel.value, name: opt.text, pg: opt.dataset.pg, qty });
+  }
+  if (!items.length) { showToast('กรุณาเพิ่มรายการในสูตรอย่างน้อย 1 รายการ','err'); return; }
+
+  const recipe = { name, description, output_qty, output_unit, items };
+  if (id) {
+    await dbUpdateBomRecipe(parseInt(id), recipe);
+  } else {
+    await dbSaveBomRecipe(recipe);
+  }
+  closeModal('bomEditModal');
+  showToast('บันทึกสูตรเรียบร้อย');
+  await dbLoadBomRecipes();
+  _renderBomContent(document.getElementById('page-bom'));
+}
+
+async function deleteBomRecipe(id) {
+  if (!confirm('ลบสูตรนี้?')) return;
+  await dbDeleteBomRecipe(id);
+  showToast('ลบสูตรเรียบร้อย');
+  await dbLoadBomRecipes();
+  _renderBomContent(document.getElementById('page-bom'));
+}
+
+/* ── หน้าทำแพคเกจ ── */
+function openPackaging(recipeId) {
+  const r = bomRecipes.find(x=>x.id===recipeId);
+  if (!r) return;
+  document.getElementById('pkgRecipeId').value = recipeId;
+  document.getElementById('pkgRecipeName').textContent = r.name;
+  document.getElementById('pkgQty').value = '';
+  document.getElementById('pkgOperator').value = window._operatorName||'';
+  document.getElementById('pkgPreview').innerHTML = '';
+  // เลือกแผนก
+  const deptEl = document.getElementById('pkgDept');
+  if (deptEl) selRadio(deptEl.querySelector('.radio-opt'), 'pkgDept');
+  document.getElementById('pkgModal').classList.add('show');
+}
+
+function updatePkgPreview() {
+  const recipeId = parseInt(document.getElementById('pkgRecipeId').value);
+  const qty = parseFloat(document.getElementById('pkgQty').value)||0;
+  const r = bomRecipes.find(x=>x.id===recipeId);
+  if (!r || qty<=0) { document.getElementById('pkgPreview').innerHTML=''; return; }
+
+  const rows = (r.bom_items||[]).map(item => {
+    const needed = item.qty_per_unit * qty;
+    const m = masterDB.find(x=>x.code===item.item_code);
+    const avail = m?.stock||0;
+    const ok = avail >= needed;
+    return `<tr>
+      <td>${item.item_name}</td>
+      <td style="text-align:center;color:var(--ink3)">${WAREHOUSE_CONFIG[item.pg]?.label||item.pg}</td>
+      <td style="text-align:right;font-weight:600">${needed.toLocaleString()}</td>
+      <td style="text-align:right;color:${ok?'var(--green)':'var(--red)'}">${avail.toLocaleString()}</td>
+      <td style="text-align:center">${ok?'<i class="ti ti-check" style="color:var(--green)"></i>':'<i class="ti ti-x" style="color:var(--red)"></i>'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('pkgPreview').innerHTML = `
+    <table class="hist-table" style="margin-top:10px">
+      <thead><tr>
+        <th>รายการ</th><th style="text-align:center">คลัง</th>
+        <th style="text-align:right">ต้องการ</th><th style="text-align:right">มีอยู่</th><th style="text-align:center">สถานะ</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function submitPackaging() {
+  const recipeId = parseInt(document.getElementById('pkgRecipeId').value);
+  const qty = parseFloat(document.getElementById('pkgQty').value);
+  const opName = (document.getElementById('pkgOperator').value||'').trim();
+  const dept = document.querySelector('#pkgDept .radio-opt.sel')?.textContent?.trim()||'';
+  const r = bomRecipes.find(x=>x.id===recipeId);
+
+  if (!r) return;
+  if (!qty||qty<=0) { showToast('กรุณาระบุจำนวนที่ต้องการผลิต','err'); return; }
+  if (!opName) { showToast('กรุณาระบุผู้ทำรายการ','err'); return; }
+
+  // เช็คว่าของพอไหม
+  const items = r.bom_items||[];
+  for (const item of items) {
+    const needed = item.qty_per_unit * qty;
+    const m = masterDB.find(x=>x.code===item.item_code);
+    if (!m || m.stock < needed) {
+      showToast(`${item.item_name} ไม่พอ (มี ${m?.stock||0} ต้องการ ${needed})`, 'err');
+      return;
+    }
+  }
+
+  setLoading('pkgSubmitBtn', true, 'กำลังเบิก...');
+
+  // เบิกออกทุกรายการ
+  for (const item of items) {
+    const needed = item.qty_per_unit * qty;
+    const m = masterDB.find(x=>x.code===item.item_code);
+    if (!m) continue;
+
+    const cfg = WAREHOUSE_CONFIG[item.pg];
+    const hasLot = cfg?.hasLot;
+
+    if (hasLot) {
+      // หา lot ที่มีของพอ (เลือก lot เก่าสุดก่อน FIFO)
+      const lots = (lotDB[item.item_code]||[]).filter(l=>l.stock>0).sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
+      let remaining = needed;
+      for (const lot of lots) {
+        if (remaining <= 0) break;
+        const take = Math.min(lot.stock, remaining);
+        await dbAdjustStockWithLot(item.item_code, 'withdraw', take, { lotId: lot.id, lotSW: lot.lot_sw });
+        remaining -= take;
+      }
+    } else {
+      await dbAdjustStockWithLot(item.item_code, 'withdraw', needed, {});
+    }
+
+    // บันทึก transaction
+    const rec = {
+      item_code: item.item_code, item_name: item.item_name, pg: item.pg,
+      action_type: 'withdraw', quantity: needed,
+      operator_name: opName, department: dept,
+      note: `แพคเกจ: ${r.name} × ${qty} ${r.output_unit}`, via: 'manual'
+    };
+    await dbInsertTransaction(rec);
+  }
+
+  setLoading('pkgSubmitBtn', false);
+  closeModal('pkgModal');
+  showToast(`ทำแพคเกจ "${r.name}" × ${qty} ${r.output_unit} เรียบร้อย`);
+  checkAlerts();
+  if (curPage==='bom') renderBomPage();
+}
 
 async function dbLoadBinLocations() {
   const { data, error } = await sb.from('bin_locations')
@@ -990,13 +1306,15 @@ function switchPage(p) {
   document.querySelector(`[data-page="${p}"]`)?.classList.add('active');
   // รวมทุกหน้าเพื่อให้ซ่อนครบ
   const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
-  ['master', ...WAREHOUSE_PAGES, 'stockcount', 'dashboard', ...alertGroupPages].forEach(pg => {
+  ['master', ...WAREHOUSE_PAGES, 'stockcount', 'dashboard', 'bom', 'packaging', ...alertGroupPages].forEach(pg => {
     const el = document.getElementById('page-'+pg);
     if (el) el.className = pg===p ? 'page-visible' : 'page-hidden';
   });
   curPage = p;
   if (p==='master') {
     renderMasterPage();
+  } else if (p==='bom') {
+    renderBomPage();
   } else if (p.startsWith('alert-')) {
     renderAlertGroupPage(p.replace('alert-',''));
   } else {
