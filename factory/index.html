@@ -495,6 +495,9 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div class="nav-item" onclick="switchPage('alert-withdraw')" data-page="alert-withdraw">
     <i class="ti ti-clipboard-list"></i> รายการแจ้งผลิต
   </div>
+  <div class="nav-item" onclick="switchPage('bom')" data-page="bom" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
+    <i class="ti ti-package"></i> สูตรการผลิต
+  </div>
   <div class="nav-item" onclick="switchPage('stockcount')"" data-page="stockcount" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
     <i class="ti ti-clipboard-check"></i> ตรวจนับ
   </div>
@@ -514,6 +517,7 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div id="page-stockcount"  class="page-hidden"></div>
   <div id="page-alert-purchase" class="page-hidden"></div>
   <div id="page-alert-withdraw" class="page-hidden"></div>
+  <div id="page-bom"         class="page-hidden"></div>
 </div>
 
 <!-- CAMERA OVERLAY -->
@@ -843,5 +847,64 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+
+<!-- BOM Modal — สร้าง/แก้ไขสูตร -->
+<div class="modal-wrap" id="bomEditModal"><div class="modal" style="max-width:560px;width:95%">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-clipboard-list"></i> สูตรการผลิต</div>
+    <button class="btn btn-sm" onclick="closeModal('bomEditModal')">ยกเลิก</button>
+  </div>
+  <div class="form-grid" style="margin-bottom:10px">
+    <div class="fg form-full"><label class="fl">ชื่อสูตร <span class="req">*</span></label>
+      <input class="fi" id="bomEditName" placeholder="เช่น Oriental Beauty 20g"></div>
+    <div class="fg form-full"><label class="fl">คำอธิบาย</label>
+      <input class="fi" id="bomEditDesc" placeholder="รายละเอียดเพิ่มเติม..."></div>
+    <div class="fg"><label class="fl">ผลผลิต <span class="req">*</span></label>
+      <input class="fi" id="bomEditQty" type="number" min="0.001" step="0.001" value="1" inputmode="decimal"></div>
+    <div class="fg"><label class="fl">หน่วย</label>
+      <input class="fi" id="bomEditUnit" value="ชุด" placeholder="เช่น ชุด, กล่อง, แพค"></div>
+  </div>
+  <div style="font-size:12px;font-weight:500;margin-bottom:8px;color:var(--ink2)">
+    <i class="ti ti-list"></i> รายการวัตถุดิบ/บรรจุภัณฑ์
+  </div>
+  <div id="bomEditItems"></div>
+  <button class="btn btn-sm" style="margin-bottom:12px;width:100%" onclick="addBomItem()">
+    <i class="ti ti-plus"></i> เพิ่มรายการ</button>
+  <input type="hidden" id="bomEditId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('bomEditModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveBomRecipe()"><i class="ti ti-check"></i> บันทึกสูตร</button>
+  </div>
+</div></div>
+
+<!-- BOM Modal — ทำแพคเกจ -->
+<div class="modal-wrap" id="pkgModal"><div class="modal" style="max-width:520px;width:95%">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-package"></i> ทำแพคเกจ</div>
+    <button class="btn btn-sm" onclick="closeModal('pkgModal')">ยกเลิก</button>
+  </div>
+  <div style="font-size:13px;font-weight:600;color:var(--acc);margin-bottom:12px" id="pkgRecipeName"></div>
+  <div class="form-grid" style="margin-bottom:10px">
+    <div class="fg"><label class="fl">ผู้ทำรายการ <span class="req">*</span></label>
+      <input class="fi" id="pkgOperator" placeholder="ชื่อ-นามสกุล"></div>
+    <div class="fg"><label class="fl">แผนก <span class="req">*</span></label>
+      <div class="radio-grp" id="pkgDept">
+        <label class="radio-opt sel" onclick="selRadio(this,'pkgDept')"><input type="radio"> ผลิต</label>
+        <label class="radio-opt" onclick="selRadio(this,'pkgDept')"><input type="radio"> คลัง</label>
+        <label class="radio-opt" onclick="selRadio(this,'pkgDept')"><input type="radio"> บรรจุ</label>
+      </div>
+    </div>
+    <div class="fg form-full"><label class="fl">จำนวนที่ต้องการผลิต <span class="req">*</span></label>
+      <input class="fi" id="pkgQty" type="number" min="1" step="1" placeholder="0" inputmode="decimal"
+        oninput="updatePkgPreview()"></div>
+  </div>
+  <div id="pkgPreview"></div>
+  <input type="hidden" id="pkgRecipeId">
+  <div class="form-actions" style="margin-top:10px;padding-top:10px">
+    <button class="btn" onclick="closeModal('pkgModal')">ยกเลิก</button>
+    <button class="btn btn-primary" id="pkgSubmitBtn" onclick="submitPackaging()">
+      <i class="ti ti-package"></i> ยืนยันเบิก</button>
+  </div>
+</div></div>
 
 </div><!-- /appRoot -->
