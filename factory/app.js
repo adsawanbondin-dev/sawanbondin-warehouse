@@ -2609,7 +2609,7 @@ function renderMasterContent(){
         ${hasLotPg?`<div>
           <button class="lot-expand-btn" onclick="toggleLotSub('lot_sub_${m.code}','${m.code}')">
             <i class="ti ti-layers-subtract" style="font-size:11px"></i>
-            Lot <span style="font-size:10px;color:var(--ink4)">(${allLots.length})</span>
+            Lot <span style="font-size:10px;color:var(--ink4)">(${activeLots.length})</span>
           </button>
           <div class="lot-sub-list" id="lot_sub_${m.code}" style="display:none">${lotSubHtml}</div>
         </div>`:''}
