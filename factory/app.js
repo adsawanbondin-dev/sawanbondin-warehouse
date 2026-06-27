@@ -755,12 +755,16 @@ async function submitPackaging() {
       const lotSelVal = lotSelEl?.value || 'auto';
 
       if (lotSelVal !== 'auto') {
-        // ใช้ lot ที่เลือก
+        // ใช้ lot ที่เลือก — เช็คว่าพอไหม
         const lot = (lotDB[item.item_code]||[]).find(l=>String(l.id)===lotSelVal);
-        if (lot) {
-          const sw = lotSelEl.options[lotSelEl.selectedIndex]?.dataset?.sw || lot.lot_sw;
-          await dbAdjustStockWithLot(item.item_code, 'withdraw', needed, { lotId: lot.id, lotSW: sw });
+        if (!lot) { showToast(`ไม่พบ Lot ของ ${item.item_name}`,'err'); setLoading('pkgSubmitBtn',false); return; }
+        if (lot.stock < needed) {
+          showToast(`${item.item_name} — Lot ที่เลือกมีไม่พอ (มี ${lot.stock.toLocaleString()} ต้องการ ${needed.toLocaleString()})`, 'err');
+          setLoading('pkgSubmitBtn', false);
+          return;
         }
+        const sw = lotSelEl.options[lotSelEl.selectedIndex]?.dataset?.sw || lot.lot_sw;
+        await dbAdjustStockWithLot(item.item_code, 'withdraw', needed, { lotId: lot.id, lotSW: sw });
       } else {
         // FIFO อัตโนมัติ
         const lots = (lotDB[item.item_code]||[]).filter(l=>l.stock>0).sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
