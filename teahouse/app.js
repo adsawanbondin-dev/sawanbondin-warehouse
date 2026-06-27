@@ -1270,15 +1270,11 @@ function renderForm(pg) {
       : '';
     h += `<div class="fg" style="margin-top:10px">
       <label class="fl"><i class="ti ti-map-pin" style="font-size:11px"></i> สถานที่จัดเก็บ</label>
-      <div style="display:flex;gap:5px">
-        <select class="fi" id="${pg}-loc-select" style="padding:7px 9px;flex:1" onchange="syncLocFromSelect('${pg}')">
-          <option value="">-- เลือกพิกัด --</option>
-          ${binOpts}
-        </select>
-        <input class="fi" id="${pg}-loc" placeholder="หรือพิมพ์เอง" autocomplete="off" style="flex:1"
-          oninput="syncLocFromInput('${pg}')">
-      </div>
-      <div class="fhint">เลือกจาก dropdown หรือพิมพ์เองก็ได้</div>
+      <select class="fi" id="${pg}-loc-select" style="padding:7px 9px" onchange="syncLocFromSelect('${pg}')">
+        <option value="">-- เลือกพิกัด --</option>
+        ${binOpts}
+      </select>
+      <input type="hidden" id="${pg}-loc">
     </div>`;
   }
 
