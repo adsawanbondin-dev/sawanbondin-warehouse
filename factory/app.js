@@ -4559,7 +4559,7 @@ function renderAlertGroupPage(group) {
 
   const filterKey = div.dataset.filter || 'all';
   let filtered = alerts;
-  if (filterKey === 'low')      filtered = alerts.filter(m => m.stock <= m.min && m.min > 0);
+  if (filterKey === 'low')       filtered = alerts.filter(m => m.stock <= m.min && m.min > 0);
   else if (filterKey === 'ordered')  filtered = alerts.filter(m => m.pay_status === 'ordered');
   else if (filterKey === 'waiting')  filtered = alerts.filter(m => m.pay_status === 'waiting');
   else if (filterKey === 'shipping') filtered = alerts.filter(m => m.ship_status === 'shipping');
@@ -4573,14 +4573,17 @@ function renderAlertGroupPage(group) {
   const setFilter = (k) => `document.getElementById('page-alert-purchase').dataset.filter='${k}';renderAlertGroupPage('purchase')`;
 
   const statCards = [
-    {key:'low',      label:'ต้องสั่งซื้อ',   val:cLow,  color:'var(--ink2)'},
-    {key:'waiting',  label:'รอชำระเงิน',      val:cWait, color:'var(--ink2)'},
-    {key:'shipping', label:'กำลังจัดส่ง',     val:cShip, color:'var(--ink2)'},
-    {key:'qc',       label:'รอ QC',           val:cQc,   color:'var(--ink2)'},
+    {key:'low',      icon:'ti-alert-triangle', label:'ต้องสั่งซื้อ',  val:cLow},
+    {key:'waiting',  icon:'ti-clock',           label:'รอชำระเงิน',   val:cWait},
+    {key:'shipping', icon:'ti-truck',           label:'กำลังจัดส่ง',  val:cShip},
+    {key:'qc',       icon:'ti-search',          label:'รอ QC',        val:cQc},
   ].map(s => `<div onclick="${setFilter(s.key)}"
-    style="background:var(--surface);border-radius:var(--r);border:1.5px solid ${filterKey===s.key?'var(--acc)':'var(--line)'};padding:10px 14px;cursor:pointer;flex:1;transition:.15s">
-    <div style="font-size:10px;color:var(--ink4);margin-bottom:2px">${s.label}</div>
-    <div style="font-size:22px;font-weight:600;color:${filterKey===s.key?'var(--acc)':s.color}">${s.val}</div>
+    style="background:var(--surface);border-radius:var(--r);border:1px solid ${filterKey===s.key?'var(--acc)':'var(--line)'};padding:10px 14px;cursor:pointer;flex:1;transition:.12s;display:flex;align-items:center;gap:10px">
+    <i class="ti ${s.icon}" style="font-size:18px;color:${filterKey===s.key?'var(--acc)':'var(--ink4)'}"></i>
+    <div>
+      <div style="font-size:10px;color:var(--ink4)">${s.label}</div>
+      <div style="font-size:20px;font-weight:600;color:${filterKey===s.key?'var(--acc)':'var(--ink2)'};line-height:1.1">${s.val}</div>
+    </div>
   </div>`).join('');
 
   const filterBtns = [
@@ -4594,57 +4597,54 @@ function renderAlertGroupPage(group) {
     style="padding:3px 10px;border-radius:20px;font-size:10px;border:0.5px solid ${filterKey===f.key?'var(--acc)':'var(--line)'};background:${filterKey===f.key?'var(--acc-bg)':'transparent'};color:${filterKey===f.key?'var(--acc)':'var(--ink3)'};cursor:pointer;white-space:nowrap">${f.label}</button>`).join('');
 
   const SFIELDS = SUPPLIER_FIELDS;
-  const leadLabel = SFIELDS === 'date' ? 'ส่งของรอบถัดไป' : 'Lead time';
 
-  const rows = filtered.map(m => {
+  const cards = filtered.map(m => {
     const cfg = WAREHOUSE_CONFIG[m.pg];
-    const stockColor = m.stock<=0 ? 'var(--red)' : m.stock <= m.min && m.min > 0 ? 'var(--warn)' : 'var(--ink2)';
-    const leadCell = SFIELDS === 'date'
-      ? (m.next_delivery_date ? new Date(m.next_delivery_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '—')
-      : (m.lead_time_days!=null ? m.lead_time_days+' วัน' : '—');
+    const pct = m.max > 0 ? Math.min(100, Math.round(m.stock/m.max*100)) : 0;
+    const barColor = m.stock<=0 ? 'var(--red)' : m.stock<=m.min ? 'var(--warn)' : 'var(--acc)';
+    const stockColor = m.stock<=0 ? 'var(--red)' : m.stock<=m.min ? 'var(--warn)' : 'var(--ink2)';
     const canRecv = m.ship_status === 'qc' || m.ship_status === 'received';
-    return `<tr>
-      <td style="font-weight:500;font-size:12px">${m.name}
-        <div style="font-size:10px;color:var(--ink4)">${m.code} · ${cfg?.label||m.pg}</div>
-      </td>
-      <td style="font-size:11px;color:var(--ink3)">${m.supplier_name||'—'}</td>
-      <td style="text-align:right;font-weight:600;color:${stockColor}">${m.stock.toLocaleString()}</td>
-      <td style="text-align:right;color:var(--ink3)">${m.min}</td>
-      ${SFIELDS ? `<td style="font-size:11px;color:var(--ink3)">${leadCell}</td>` : ''}
-      <td>${_trackingDropdowns(m)}</td>
-      <td>${_progDots(m.pay_status||'', m.ship_status||'')}</td>
-      <td style="white-space:nowrap;text-align:right">
-        ${canRecv ? `<button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','purchase')" style="font-size:10px"><i class="ti ti-check"></i> รับเข้า</button>` : ''}
-        <button class="btn btn-sm" onclick="editMinMax('${m.code}')" style="font-size:10px"><i class="ti ti-pencil"></i></button>
-      </td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="8" style="padding:32px;text-align:center;color:var(--ink4)">
-    <i class="ti ti-inbox" style="font-size:24px;display:block;margin-bottom:8px;opacity:.3"></i>ไม่มีรายการในกลุ่มนี้</td></tr>`;
+    const leadCell = SFIELDS === 'date'
+      ? (m.next_delivery_date ? new Date(m.next_delivery_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '')
+      : (m.lead_time_days!=null ? m.lead_time_days+' วัน' : '');
+
+    return `<div style="background:var(--surface);border-radius:var(--r);border:1px solid var(--line);padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.name}</div>
+          <div style="font-size:10px;color:var(--ink4);margin-top:1px">${m.code} · ${cfg?.label||m.pg}${m.supplier_name?` · ${m.supplier_name}`:''}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:16px;font-weight:700;color:${stockColor}">${m.stock.toLocaleString()}</div>
+          <div style="font-size:9px;color:var(--ink4)">Min ${m.min}${m.max?' / Max '+m.max:''}</div>
+        </div>
+      </div>
+      ${m.max > 0 ? `<div style="height:3px;background:var(--s2);border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${barColor};border-radius:2px;transition:.3s"></div>
+      </div>` : ''}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${_progDots(m.pay_status||'', m.ship_status||'')}
+        ${leadCell ? `<span style="font-size:10px;color:var(--ink4)"><i class="ti ti-calendar" style="font-size:10px"></i> ${leadCell}</span>` : ''}
+      </div>
+      <div style="border-top:1px solid var(--line);padding-top:8px">
+        ${_trackingDropdowns(m)}
+      </div>
+      ${canRecv ? `<button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','purchase')" style="width:100%;font-size:11px">
+        <i class="ti ti-check"></i> ยืนยันรับเข้าคลัง</button>` : ''}
+    </div>`;
+  }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4);grid-column:1/-1">
+    <i class="ti ti-inbox" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>ไม่มีรายการในกลุ่มนี้</div>`;
 
   div.innerHTML = `
     <div class="page-header">
       <div><div class="page-title">รายการจัดซื้อ</div>
-        <div class="page-sub">ติดตามสถานะการจัดซื้อและการชำระเงิน · ${alerts.length} รายการ</div></div>
+        <div class="page-sub">ติดตามสถานะ · ${alerts.length} รายการ</div></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px">${statCards}</div>
-    <div class="card" style="overflow:hidden">
-      <div style="display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line);overflow-x:auto;flex-wrap:nowrap">${filterBtns}</div>
-      <div class="sc-table-wrap">
-        <table class="sc-table">
-          <thead><tr>
-            <th>รายการ</th>
-            <th>ผู้จำหน่าย</th>
-            <th style="text-align:right">คงเหลือ</th>
-            <th style="text-align:right">Min</th>
-            ${SFIELDS ? `<th>${leadLabel}</th>` : ''}
-            <th style="min-width:170px">ติดตาม</th>
-            <th style="min-width:100px">ความคืบหน้า</th>
-            <th></th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
+    <div class="card" style="overflow:hidden;margin-bottom:14px">
+      <div style="display:flex;gap:6px;padding:8px 12px;overflow-x:auto;flex-wrap:nowrap">${filterBtns}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${cards}</div>`;
 }
 
 /* ── ยืนยันรับของจากหน้าแจ้งเตือน (จัดซื้อ/เบิก) — modal เล็ก กรอกจำนวน+วันที่ lot ──
