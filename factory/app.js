@@ -217,6 +217,11 @@ async function dbUpsertItem(m) {
   if (WAREHOUSE_CONFIG[m.pg]?.hasSpec) {
     payload.spec = specDB[m.code] || null;
   }
+  payload.pay_status    = m.pay_status    || null;
+  payload.ship_status   = m.ship_status   || null;
+  payload.tracking_url  = m.tracking_url  || null;
+  payload.supplier_qty  = m.supplier_qty  || null;
+  payload.supplier_price = m.supplier_price || null;
   const { error } = await sb.from('items').upsert(payload, { onConflict:'code' });
   if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
@@ -302,7 +307,7 @@ async function dbLoadItems() {
   const supplierCols = SUPPLIER_FIELDS === 'days' ? ',supplier_name,lead_time_days'
                       : SUPPLIER_FIELDS === 'date' ? ',supplier_name,next_delivery_date'
                       : '';
-  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at' + supplierCols;
+  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at,pay_status,ship_status,tracking_url,supplier_qty,supplier_price' + supplierCols;
   const { data, error } = await sb.from('items')
     .select(cols)
     .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
@@ -315,6 +320,11 @@ async function dbLoadItems() {
     supplier_name:r.supplier_name||null,
     lead_time_days:r.lead_time_days??null,
     next_delivery_date:r.next_delivery_date||null,
+    pay_status:r.pay_status||null,
+    ship_status:r.ship_status||null,
+    tracking_url:r.tracking_url||null,
+    supplier_qty:r.supplier_qty||null,
+    supplier_price:r.supplier_price||null,
   }));
   (data||[]).forEach(r => {
     if (r.note) locationDB[r.code] = r.note;
@@ -4266,6 +4276,143 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
    ALERT GROUP PAGES — หน้าเต็มสำหรับ "รายการจัดซื้อ" / "รายการเบิก"
    ใช้เฉพาะระบบที่ตั้ง ALERT_GROUPS ไว้ (เช่น Tea House)
 ═══════════════════════════════════════════ */
+/* ── Purchase Tracking (Factory) ── */
+const PAY_STATUS_OPTS = {
+  '':        { label:'— การชำระ —',    color:'var(--ink4)' },
+  ordered:   { label:'จัดซื้อแล้ว',    color:'#5b8fe8' },
+  waiting:   { label:'รอชำระเงิน',     color:'#e8a23a' },
+  paid:      { label:'ชำระแล้ว',       color:'var(--green)' },
+};
+const SHIP_STATUS_OPTS = {
+  '':        { label:'— การจัดส่ง —',  color:'var(--ink4)' },
+  shipping:  { label:'กำลังจัดส่ง',    color:'#5b8fe8' },
+  received:  { label:'ได้รับของแล้ว',  color:'#9b6fe8' },
+  qc:        { label:'รอ QC',          color:'#e8a23a' },
+  stocked:   { label:'รับเข้าคลังแล้ว', color:'var(--green)' },
+};
+
+async function setPurchaseTracking(code, field, value) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  m[field] = value || null;
+  if (field === 'ship_status' && value === 'stocked') {
+    m.pay_status = null; m.ship_status = null;
+    m.tracking_url = null;
+  }
+  await sb.from('items').update({
+    pay_status: m.pay_status, ship_status: m.ship_status,
+    tracking_url: m.tracking_url
+  }).eq('code', code);
+  if (curPage.startsWith('alert-')) renderAlertGroupPage(curPage.replace('alert-',''));
+}
+
+async function setTrackingUrl(code, url) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  m.tracking_url = url.trim() || null;
+  await sb.from('items').update({ tracking_url: m.tracking_url }).eq('code', code);
+}
+
+function _trackingDropdowns(m) {
+  const payVal  = m.pay_status  || '';
+  const shipVal = m.ship_status || '';
+  const payColor  = PAY_STATUS_OPTS[payVal]?.color  || 'var(--ink4)';
+  const shipColor = SHIP_STATUS_OPTS[shipVal]?.color || 'var(--ink4)';
+  const payOpts  = Object.entries(PAY_STATUS_OPTS).map(([v,o]) =>
+    `<option value="${v}" ${payVal===v?'selected':''}>${o.label}</option>`).join('');
+  const shipOpts = Object.entries(SHIP_STATUS_OPTS).map(([v,o]) =>
+    `<option value="${v}" ${shipVal===v?'selected':''}>${o.label}</option>`).join('');
+  const trackUrl = m.tracking_url || '';
+  return `<div style="display:flex;flex-direction:column;gap:4px;min-width:160px">
+    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${payColor};font-weight:500;cursor:pointer"
+      onchange="setPurchaseTracking('${m.code}','pay_status',this.value)">${payOpts}</select>
+    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${shipColor};font-weight:500;cursor:pointer"
+      onchange="setPurchaseTracking('${m.code}','ship_status',this.value)">${shipOpts}</select>
+    <div style="display:flex;gap:3px;align-items:center">
+      <input type="url" placeholder="ลิงก์ Tracking..." value="${trackUrl}"
+        style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);flex:1;min-width:0"
+        onchange="setTrackingUrl('${m.code}',this.value)"
+        onblur="setTrackingUrl('${m.code}',this.value)">
+      ${trackUrl?`<a href="${trackUrl}" target="_blank" style="color:var(--acc);font-size:14px;line-height:1;text-decoration:none"><i class="ti ti-external-link"></i></a>`:''}
+    </div>
+    ${payVal==='waiting'?`<button class="btn btn-sm" onclick="openPaymentRequest('${m.code}')" style="font-size:10px;padding:3px 8px;color:var(--acc);border-color:var(--acc-mid)">
+      <i class="ti ti-file-invoice"></i> แจ้งเบิก
+    </button>`:''}
+  </div>`;
+}
+
+/* ── Payment Request Modal ── */
+function openPaymentRequest(code) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  document.getElementById('prCode').value = code;
+  document.getElementById('prTitle').value = `เบิกค่า${m.name}`;
+  document.getElementById('prShop').value = m.supplier_name || '';
+  document.getElementById('prPayType').value = 'พร้อมเพย์';
+  document.getElementById('prAccNum').value = '';
+  document.getElementById('prAccName').value = '';
+  // เคลียร์รายการ แล้วเพิ่มรายการเริ่มต้น
+  prItems = [{desc: m.name, qty: m.supplier_qty||'', price: m.supplier_price||''}];
+  renderPrItems();
+  updatePrPreview();
+  document.getElementById('paymentRequestModal').classList.add('show');
+}
+
+let prItems = [];
+
+function renderPrItems() {
+  const container = document.getElementById('prItemRows');
+  container.innerHTML = prItems.map((it, i) => `
+    <div style="display:grid;grid-template-columns:1fr 70px 90px 24px;gap:5px;margin-bottom:5px;align-items:center">
+      <input class="fi" value="${it.desc}" placeholder="ชื่อรายการ..."
+        style="padding:4px 7px;font-size:11px" oninput="prItems[${i}].desc=this.value;updatePrPreview()">
+      <input class="fi" value="${it.qty}" placeholder="จำนวน"
+        style="padding:4px 7px;font-size:11px" oninput="prItems[${i}].qty=this.value;updatePrPreview()">
+      <input class="fi" type="number" value="${it.price}" placeholder="ราคา"
+        style="padding:4px 7px;font-size:11px" oninput="prItems[${i}].price=this.value;updatePrPreview()">
+      <button onclick="prItems.splice(${i},1);renderPrItems();updatePrPreview()"
+        style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px;padding:0">✕</button>
+    </div>`).join('');
+}
+
+function addPrItem() {
+  prItems.push({desc:'', qty:'', price:''});
+  renderPrItems();
+}
+
+function updatePrPreview() {
+  const title = document.getElementById('prTitle')?.value||'';
+  const shop = document.getElementById('prShop')?.value||'';
+  const payType = document.getElementById('prPayType')?.value||'พร้อมเพย์';
+  const accNum = document.getElementById('prAccNum')?.value||'';
+  const accName = document.getElementById('prAccName')?.value||'';
+  const total = prItems.reduce((s,it) => s + (parseFloat(it.price)||0), 0);
+  const fmt = n => n.toLocaleString('th-TH', {minimumFractionDigits:0, maximumFractionDigits:2});
+
+  const itemLines = prItems.filter(it=>it.desc||it.price)
+    .map(it => `- ${it.desc||'รายการ'}${it.qty?' จำนวน '+it.qty:''} ราคา ${fmt(parseFloat(it.price)||0)} บาท`)
+    .join('\n');
+
+  const paySection = payType === 'เงินสด' ? 'ชำระเป็นเงินสด'
+    : `${payType}\nเลขบัญชี ${accNum}\nชื่อบัญชี ${accName}`;
+
+  const text = [title, shop, '', itemLines, '', `รวมยอดโอน ${fmt(total)} บาท`, '', paySection].join('\n');
+  const preview = document.getElementById('prPreview');
+  if (preview) preview.textContent = text;
+  const totalEl = document.getElementById('prTotal');
+  if (totalEl) totalEl.textContent = fmt(total) + ' บาท';
+}
+
+async function copyPaymentRequest() {
+  const text = document.getElementById('prPreview')?.textContent||'';
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Copy ข้อความแล้ว — นำไปวางใน Line ได้เลย');
+  } catch(e) {
+    showToast('Copy ไม่สำเร็จ กรุณา copy เอง','err');
+  }
+}
+
 function renderAlertGroupPage(group) {
   const div = document.getElementById('page-alert-'+group);
   if (!div) return;
@@ -4278,6 +4425,7 @@ function renderAlertGroupPage(group) {
   const alerts = getAlertItems(null, group);
   const showSupplier = group === 'purchase' && SUPPLIER_FIELDS;
   const showMax = group === 'withdraw';
+  const showTracking = group === 'purchase';
   const leadColLabel = SUPPLIER_FIELDS === 'date' ? 'ส่งของรอบถัดไป' : 'Lead time';
 
   const rows = alerts.map((m,i) => {
@@ -4295,12 +4443,13 @@ function renderAlertGroupPage(group) {
       ${showMax ? `<td style="text-align:right;color:var(--ink3)">${m.max||'<span style="color:var(--ink4)">—</span>'}</td>` : ''}
       ${showSupplier ? `<td>${m.supplier_name||'<span style="color:var(--ink4)">—</span>'}</td>
       <td style="text-align:center">${leadCell}</td>` : ''}
+      ${showTracking ? `<td>${_trackingDropdowns(m)}</td>` : ''}
       <td style="text-align:center;white-space:nowrap">
         <button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','${group}')" title="ยืนยันรับของ"><i class="ti ti-check"></i> รับเข้า</button>
         <button class="btn btn-sm" onclick="editMinMax('${m.code}')" title="แก้ไข Min/Max"><i class="ti ti-pencil"></i></button>
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="${showSupplier?8:(showMax?7:6)}" style="padding:24px;text-align:center;color:var(--ink4);font-size:12px"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</td></tr>`;
+  }).join('') || `<tr><td colspan="${showSupplier?9:(showMax?7:(showTracking?7:6))}" style="padding:24px;text-align:center;color:var(--ink4);font-size:12px"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</td></tr>`;
 
   div.innerHTML = `
     <div class="page-header">
@@ -4317,6 +4466,7 @@ function renderAlertGroupPage(group) {
           <th style="text-align:right">Min</th>
           ${showMax ? '<th style="text-align:right">Max</th>' : ''}
           ${showSupplier ? `<th>ผู้จำหน่าย</th><th style="text-align:center">${leadColLabel}</th>` : ''}
+          ${showTracking ? '<th style="min-width:170px">ติดตาม</th>' : ''}
           <th style="width:40px"></th>
         </tr></thead>
         <tbody>${rows}</tbody>
