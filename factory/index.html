@@ -836,10 +836,28 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       </div>
       <div class="fg" style="margin-bottom:6px">
         <label class="fl">ประเภท</label>
-        <select class="fi" id="prPayType" onchange="updatePrPreview()" style="padding:5px 8px">
+        <select class="fi" id="prPayType" onchange="onPrPayTypeChange(this)" style="padding:5px 8px">
           <option value="พร้อมเพย์">พร้อมเพย์</option>
           <option value="โอนธนาคาร">โอนธนาคาร</option>
           <option value="เงินสด">เงินสด</option>
+        </select>
+      </div>
+      <div class="fg" id="prBankRow" style="margin-bottom:6px;display:none">
+        <label class="fl">ธนาคาร</label>
+        <select class="fi" id="prBank" onchange="updatePrPreview()" style="padding:5px 8px">
+          <option value="">— เลือกธนาคาร —</option>
+          <option>ธนาคารกรุงเทพ (BBL)</option>
+          <option>ธนาคารกสิกรไทย (KBANK)</option>
+          <option>ธนาคารไทยพาณิชย์ (SCB)</option>
+          <option>ธนาคารกรุงไทย (KTB)</option>
+          <option>ธนาคารกรุงศรีอยุธยา (BAY)</option>
+          <option>ธนาคารทหารไทยธนชาต (TTB)</option>
+          <option>ธนาคารออมสิน (GSB)</option>
+          <option>ธนาคาร ธ.ก.ส. (BAAC)</option>
+          <option>ธนาคารซีไอเอ็มบี (CIMB)</option>
+          <option>ธนาคารอาคารสงเคราะห์ (GHB)</option>
+          <option>ธนาคารยูโอบี (UOB)</option>
+          <option>ธนาคารแลนด์ แอนด์ เฮ้าส์ (LH Bank)</option>
         </select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
