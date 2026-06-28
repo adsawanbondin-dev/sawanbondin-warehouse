@@ -779,6 +779,74 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
 </div></div>
 
+<!-- Payment Request Modal — ใบแจ้งเบิก -->
+<div class="modal-wrap" id="paymentRequestModal"><div class="modal" style="max-width:600px;width:96%">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-file-invoice" style="color:var(--acc)"></i> สร้างใบแจ้งเบิก</div>
+    <button class="btn btn-sm" onclick="closeModal('paymentRequestModal')">ยกเลิก</button>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div>
+      <div class="fg" style="margin-bottom:8px">
+        <label class="fl">ชื่อรายการเบิก</label>
+        <input class="fi" id="prTitle" placeholder="เช่น เบิกค่าฉลากบรรจุภัณฑ์" oninput="updatePrPreview()">
+      </div>
+      <div class="fg" style="margin-bottom:8px">
+        <label class="fl">ร้าน / บริษัท</label>
+        <input class="fi" id="prShop" placeholder="ชื่อร้านหรือบริษัท" oninput="updatePrPreview()">
+      </div>
+      <div style="font-size:11px;font-weight:500;color:var(--ink2);margin-bottom:5px">
+        <i class="ti ti-list" style="font-size:11px"></i> รายการสินค้า
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 70px 90px 24px;gap:4px;margin-bottom:3px">
+        <span style="font-size:10px;color:var(--ink4)">รายการ</span>
+        <span style="font-size:10px;color:var(--ink4)">จำนวน</span>
+        <span style="font-size:10px;color:var(--ink4)">ราคา (บาท)</span>
+        <span></span>
+      </div>
+      <div id="prItemRows"></div>
+      <button class="btn btn-sm" onclick="addPrItem()" style="width:100%;margin-top:4px;border-style:dashed">
+        <i class="ti ti-plus"></i> เพิ่มรายการ
+      </button>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--line);margin-top:8px">
+        <span style="font-size:11px;color:var(--ink3)">รวมยอดโอน</span>
+        <span style="font-size:15px;font-weight:600;color:var(--acc)" id="prTotal">0 บาท</span>
+      </div>
+      <div style="font-size:11px;font-weight:500;color:var(--ink2);margin-bottom:5px;margin-top:6px">
+        <i class="ti ti-credit-card" style="font-size:11px"></i> ข้อมูลบัญชี
+      </div>
+      <div class="fg" style="margin-bottom:6px">
+        <label class="fl">ประเภท</label>
+        <select class="fi" id="prPayType" onchange="updatePrPreview()" style="padding:5px 8px">
+          <option value="พร้อมเพย์">พร้อมเพย์</option>
+          <option value="โอนธนาคาร">โอนธนาคาร</option>
+          <option value="เงินสด">เงินสด</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div class="fg">
+          <label class="fl">เลขบัญชี / เบอร์</label>
+          <input class="fi" id="prAccNum" placeholder="0912345678" oninput="updatePrPreview()">
+        </div>
+        <div class="fg">
+          <label class="fl">ชื่อบัญชี</label>
+          <input class="fi" id="prAccName" placeholder="ชื่อ-นามสกุล" oninput="updatePrPreview()">
+        </div>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:11px;font-weight:500;color:var(--ink2);margin-bottom:6px">
+        <i class="ti ti-eye" style="font-size:11px"></i> ตัวอย่างข้อความ
+      </div>
+      <div id="prPreview" style="background:var(--s2);border-radius:var(--r);border:1px solid var(--line);padding:12px;font-size:12px;line-height:1.8;white-space:pre-wrap;min-height:240px;color:var(--ink)"></div>
+      <button class="btn btn-primary" onclick="copyPaymentRequest()" style="width:100%;margin-top:8px">
+        <i class="ti ti-copy"></i> Copy ข้อความ — ส่งเบิกได้เลย
+      </button>
+    </div>
+  </div>
+  <input type="hidden" id="prCode">
+</div></div>
+
 <div class="modal-wrap" id="editTxModal"><div class="modal">
   <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
     <div class="card-title-left"><i class="ti ti-pencil"></i> แก้ไขรายการประวัติ</div>
