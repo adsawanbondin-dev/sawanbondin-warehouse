@@ -4316,26 +4316,24 @@ async function setTrackingUrl(code, url) {
 function _trackingDropdowns(m) {
   const payVal  = m.pay_status  || '';
   const shipVal = m.ship_status || '';
-  const payColor  = PAY_STATUS_OPTS[payVal]?.color  || 'var(--ink4)';
-  const shipColor = SHIP_STATUS_OPTS[shipVal]?.color || 'var(--ink4)';
   const payOpts  = Object.entries(PAY_STATUS_OPTS).map(([v,o]) =>
     `<option value="${v}" ${payVal===v?'selected':''}>${o.label}</option>`).join('');
   const shipOpts = Object.entries(SHIP_STATUS_OPTS).map(([v,o]) =>
     `<option value="${v}" ${shipVal===v?'selected':''}>${o.label}</option>`).join('');
   const trackUrl = m.tracking_url || '';
   return `<div style="display:flex;flex-direction:column;gap:4px;min-width:160px">
-    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${payColor};font-weight:500;cursor:pointer"
+    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
       onchange="setPurchaseTracking('${m.code}','pay_status',this.value)">${payOpts}</select>
-    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${shipColor};font-weight:500;cursor:pointer"
+    <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
       onchange="setPurchaseTracking('${m.code}','ship_status',this.value)">${shipOpts}</select>
     <div style="display:flex;gap:3px;align-items:center">
       <input type="url" placeholder="ลิงก์ Tracking..." value="${trackUrl}"
-        style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);flex:1;min-width:0"
+        style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);flex:1;min-width:0;color:var(--ink2)"
         onchange="setTrackingUrl('${m.code}',this.value)"
         onblur="setTrackingUrl('${m.code}',this.value)">
-      ${trackUrl?`<a href="${trackUrl}" target="_blank" style="color:var(--acc);font-size:14px;line-height:1;text-decoration:none"><i class="ti ti-external-link"></i></a>`:''}
+      ${trackUrl?`<a href="${trackUrl}" target="_blank" style="color:var(--ink3);font-size:13px;line-height:1;text-decoration:none"><i class="ti ti-external-link"></i></a>`:''}
     </div>
-    ${payVal==='waiting'?`<button class="btn btn-sm" onclick="openPaymentRequest('${m.code}')" style="font-size:10px;padding:3px 8px;color:var(--acc);border-color:var(--acc-mid)">
+    ${payVal==='waiting'?`<button class="btn btn-sm" onclick="openPaymentRequest('${m.code}')" style="font-size:10px;padding:3px 8px">
       <i class="ti ti-file-invoice"></i> แจ้งเบิก
     </button>`:''}
   </div>`;
@@ -4601,8 +4599,9 @@ function renderAlertGroupPage(group) {
   const cards = filtered.map(m => {
     const cfg = WAREHOUSE_CONFIG[m.pg];
     const pct = m.max > 0 ? Math.min(100, Math.round(m.stock/m.max*100)) : 0;
-    const barColor = m.stock<=0 ? 'var(--red)' : m.stock<=m.min ? 'var(--warn)' : 'var(--acc)';
-    const stockColor = m.stock<=0 ? 'var(--red)' : m.stock<=m.min ? 'var(--warn)' : 'var(--ink2)';
+    const isLow = m.min > 0 && m.stock <= m.min;
+    const barColor = m.stock<=0 ? 'var(--red)' : isLow ? 'var(--warn)' : 'var(--line2)';
+    const stockColor = m.stock<=0 ? 'var(--red)' : isLow ? 'var(--warn)' : 'var(--ink2)';
     const canRecv = m.ship_status === 'qc' || m.ship_status === 'received';
     const leadCell = SFIELDS === 'date'
       ? (m.next_delivery_date ? new Date(m.next_delivery_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '')
