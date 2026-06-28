@@ -67,6 +67,7 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 .sticker-sub{font-size:8px;text-align:center;margin-top:1px}
 .sticker-code{font-size:8px;font-family:monospace;text-align:center;margin-top:2px}
 .sticker-brand{font-size:7px;font-weight:700;text-align:center;margin-top:3px;letter-spacing:.5px}
+.sticker-spec{font-size:7px;text-align:left;margin-top:3px;line-height:1.4;white-space:pre-wrap;width:100%;padding:3px 4px;background:rgba(0,0,0,.04);border-radius:3px;word-break:break-word}
 .sticker.classic .sticker-name,.sticker.minimal .sticker-name,.sticker.branded .sticker-name{color:#1c1c1e}
 .sticker.classic .sticker-code,.sticker.minimal .sticker-code{color:#2c5282}
 .sticker.branded .sticker-code,.sticker.branded .sticker-brand,.sticker.branded .sticker-sub{color:#2c5282}
@@ -174,6 +175,7 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       <div class="opt-row"><span class="opt-label">Barcode เส้น</span><div class="opt-ctrl"><button class="opt-btn" id="bcOn" onclick="toggle('showBC',true,'bcOn','bcOff')">แสดง</button><button class="opt-btn active" id="bcOff" onclick="toggle('showBC',false,'bcOn','bcOff')">ซ่อน</button></div></div>
       <div class="opt-row"><span class="opt-label">ชื่อ</span><div class="opt-ctrl"><button class="opt-btn active" id="nmOn" onclick="toggle('showName',true,'nmOn','nmOff')">แสดง</button><button class="opt-btn" id="nmOff" onclick="toggle('showName',false,'nmOn','nmOff')">ซ่อน</button></div></div>
       <div class="opt-row"><span class="opt-label">หน่วยงาน</span><div class="opt-ctrl"><button class="opt-btn active" id="brOn" onclick="toggle('showBrand',true,'brOn','brOff')">แสดง</button><button class="opt-btn" id="brOff" onclick="toggle('showBrand',false,'brOn','brOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">สเปก</span><div class="opt-ctrl"><button class="opt-btn" id="spOn" onclick="toggle('showSpec',true,'spOn','spOff')">แสดง</button><button class="opt-btn active" id="spOff" onclick="toggle('showSpec',false,'spOn','spOff')">ซ่อน</button></div></div>
       <div class="opt-row"><span class="opt-label">คอลัมน์</span><div class="opt-ctrl"><button class="opt-btn" id="c2" onclick="setCols(2)">2</button><button class="opt-btn active" id="c3" onclick="setCols(3)">3</button><button class="opt-btn" id="c4" onclick="setCols(4)">4</button><button class="opt-btn" id="c5" onclick="setCols(5)">5</button></div></div>
       <div class="opt-row"><span class="opt-label">ขนาด QR (px)</span><input class="opt-num" id="qrSize" type="number" value="80" min="48" max="160" step="8" onchange="renderPreview()"></div>
       <div class="opt-row"><span class="opt-label">จำนวนชุด</span><input class="opt-num" id="copies" type="number" value="1" min="1" max="20" onchange="renderPreview()"></div>
@@ -218,7 +220,7 @@ let CATALOG = [];
 async function loadCatalog() {
   try {
     const { data, error } = await sb.from('items')
-      .select('code,name,pg,subcat')
+      .select('code,name,pg,subcat,spec')
       .eq('is_active', true)
       .order('pg').order('subcat').order('seq');
     if (error) throw error;
@@ -234,6 +236,7 @@ async function loadCatalog() {
       name: r.name,
       cat:  PG_LABEL[r.pg] || r.pg,
       sub:  r.subcat || '',
+      spec: r.spec  || '',
     }));
   } catch(e) {
     console.error('loadCatalog error:', e);
@@ -244,7 +247,7 @@ async function loadCatalog() {
 /* ══ STATE ══ */
 let selected=new Set(), lotSelected=new Set();
 let currentCat='ทั้งหมด', currentTab='items';
-let cols=3, showQR=true, showBC=false, showName=true, showBrand=true;
+let cols=3, showQR=true, showBC=false, showName=true, showBrand=true, showSpec=false;
 let lotCatalog=[];
 
 /* ══ TABS ══ */
@@ -360,7 +363,7 @@ function filterItems(){
 function selectAll(){const q=(document.getElementById('searchInput').value||'').toLowerCase();CATALOG.filter(i=>(currentCat==='ทั้งหมด'||i.cat===currentCat)&&(!q||i.name.toLowerCase().includes(q)||i.code.toLowerCase().includes(q))).forEach(i=>selected.add(i.code));filterItems();renderPreview();}
 function clearAll(){selected.clear();filterItems();renderPreview();}
 function updateSelBar(){const bar=document.getElementById('selBar');if(selected.size>0){bar.classList.add('show');document.getElementById('selCount').textContent=`เลือก ${selected.size}`;}else bar.classList.remove('show');}
-function toggle(key,val,onId,offId){if(key==='showQR')showQR=val;else if(key==='showBC')showBC=val;else if(key==='showName')showName=val;else if(key==='showBrand')showBrand=val;document.getElementById(onId).classList.toggle('active',val);document.getElementById(offId).classList.toggle('active',!val);renderPreview();}
+function toggle(key,val,onId,offId){if(key==='showQR')showQR=val;else if(key==='showBC')showBC=val;else if(key==='showName')showName=val;else if(key==='showBrand')showBrand=val;else if(key==='showSpec')showSpec=val;document.getElementById(onId).classList.toggle('active',val);document.getElementById(offId).classList.toggle('active',!val);renderPreview();}
 function setCols(n){cols=n;[2,3,4,5].forEach(c=>document.getElementById('c'+c).classList.toggle('active',c===n));renderPreview();}
 
 /* ══ RENDER ══ */
@@ -416,6 +419,7 @@ function renderPreview(){
     cd.textContent=item.itemCode||item.code.split('__LOT__')[0];
     div.appendChild(cd);
     if(showBrand){const br=document.createElement('div');br.className='sticker-brand';br.textContent='SAWANBONDIN';div.appendChild(br);}
+    if(showSpec && item.spec){const sp=document.createElement('div');sp.className='sticker-spec';sp.textContent=item.spec;div.appendChild(sp);}
 
     // wrap sticker in a pair div
     const pair = document.createElement('div');
