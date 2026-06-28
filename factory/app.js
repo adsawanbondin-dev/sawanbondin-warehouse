@@ -4364,6 +4364,15 @@ async function dbLoadPaymentSuppliers() {
   paymentSuppliers = data || [];
 }
 
+function _renderPrSupplierSel() {
+  const sel = document.getElementById('prShopSel');
+  if (!sel) return;
+  const opts = paymentSuppliers.map(s =>
+    `<option value="${s.id}" data-name="${s.name}" data-pay="${s.pay_type}" data-num="${s.acc_num||''}" data-accname="${s.acc_name||''}" data-bank="${s.bank||''}">${s.name}</option>`
+  ).join('');
+  sel.innerHTML = `<option value="">— เลือกร้านที่บันทึกไว้ / กรอกใหม่ —</option>${opts}<option value="new">+ บันทึกร้านใหม่</option>`;
+}
+
 async function dbSavePaymentSupplier(sup) {
   const { data } = await sb.from('payment_suppliers').insert(sup).select().single();
   if (data) paymentSuppliers.push(data);
@@ -4374,12 +4383,15 @@ async function openPaymentRequest(code) {
   await dbLoadPaymentSuppliers();
   const m = masterDB.find(x => x.code === code);
   document.getElementById('prCode').value = code||'';
-  document.getElementById('prCategory').value = 'เบิกค่าวัตถุดิบ';
+  document.getElementById('prCategory').value = '';
   document.getElementById('prShopSel').value = '';
   document.getElementById('prShopName').value = m?.supplier_name||'';
   document.getElementById('prPayType').value = 'พร้อมเพย์';
+  document.getElementById('prBank').value = '';
+  document.getElementById('prBankRow').style.display = 'none';
   document.getElementById('prAccNum').value = '';
   document.getElementById('prAccName').value = '';
+  document.getElementById('prSaveSupplier').style.display = 'none';
   prItems = m ? [{desc: m.name, qty: m.supplier_qty||'', price: m.supplier_price||''}] : [{desc:'', qty:'', price:''}];
   _renderPrSupplierSel();
   renderPrItems();
@@ -4387,22 +4399,13 @@ async function openPaymentRequest(code) {
   document.getElementById('paymentRequestModal').classList.add('show');
 }
 
-function _renderPrSupplierSel() {
-  const sel = document.getElementById('prShopSel');
-  if (!sel) return;
-  const opts = paymentSuppliers.map(s =>
-    `<option value="${s.id}" data-name="${s.name}" data-pay="${s.pay_type}" data-num="${s.acc_num||''}" data-accname="${s.acc_name||''}">${s.name}</option>`
-  ).join('');
-  sel.innerHTML = `<option value="">— เลือกร้านที่บันทึกไว้ / กรอกใหม่ —</option>${opts}<option value="new">+ บันทึกร้านใหม่</option>`;
-}
-
 function onPrShopSelChange(sel) {
   if (sel.value === 'new') {
     sel.value = '';
-    document.getElementById('prShopName').value = '';
-    document.getElementById('prAccNum').value = '';
-    document.getElementById('prAccName').value = '';
+    ['prShopName','prAccNum','prAccName'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('prBank').value = '';
     document.getElementById('prPayType').value = 'พร้อมเพย์';
+    document.getElementById('prBankRow').style.display = 'none';
     document.getElementById('prSaveSupplier').style.display = 'block';
     return;
   }
@@ -4412,6 +4415,8 @@ function onPrShopSelChange(sel) {
   document.getElementById('prPayType').value = opt.dataset.pay||'พร้อมเพย์';
   document.getElementById('prAccNum').value = opt.dataset.num||'';
   document.getElementById('prAccName').value = opt.dataset.accname||'';
+  document.getElementById('prBank').value = opt.dataset.bank||'';
+  document.getElementById('prBankRow').style.display = opt.dataset.pay==='โอนธนาคาร'?'block':'none';
   document.getElementById('prSaveSupplier').style.display = 'none';
   updatePrPreview();
 }
@@ -4421,8 +4426,9 @@ async function savePrSupplier() {
   const pay_type = document.getElementById('prPayType').value;
   const acc_num = document.getElementById('prAccNum').value.trim();
   const acc_name = document.getElementById('prAccName').value.trim();
+  const bank = document.getElementById('prBank').value.trim();
   if (!name) { showToast('กรุณาใส่ชื่อร้าน','err'); return; }
-  const sup = await dbSavePaymentSupplier({name, pay_type, acc_num, acc_name});
+  const sup = await dbSavePaymentSupplier({name, pay_type, acc_num, acc_name, bank});
   if (sup) {
     _renderPrSupplierSel();
     document.getElementById('prSaveSupplier').style.display = 'none';
@@ -4451,10 +4457,17 @@ function addPrItem() {
   renderPrItems();
 }
 
+function onPrPayTypeChange(sel) {
+  const bankRow = document.getElementById('prBankRow');
+  if (bankRow) bankRow.style.display = sel.value === 'โอนธนาคาร' ? 'block' : 'none';
+  updatePrPreview();
+}
+
 function updatePrPreview() {
   const category = document.getElementById('prCategory')?.value||'';
   const shop     = document.getElementById('prShopName')?.value||'';
   const payType  = document.getElementById('prPayType')?.value||'พร้อมเพย์';
+  const bank     = document.getElementById('prBank')?.value||'';
   const accNum   = document.getElementById('prAccNum')?.value||'';
   const accName  = document.getElementById('prAccName')?.value||'';
   const total = prItems.reduce((s,it) => s + (parseFloat(it.price)||0), 0);
@@ -4464,8 +4477,14 @@ function updatePrPreview() {
     .map(it => `- ${it.desc||'รายการ'}${it.qty?' จำนวน '+it.qty:''} ราคา ${fmt(parseFloat(it.price)||0)} บาท`)
     .join('\n');
 
-  const paySection = payType === 'เงินสด' ? 'ชำระเป็นเงินสด'
-    : `${payType}\nเลขบัญชี ${accNum}\nชื่อบัญชี ${accName}`;
+  let paySection = '';
+  if (payType === 'เงินสด') {
+    paySection = 'ชำระเป็นเงินสด';
+  } else if (payType === 'โอนธนาคาร') {
+    paySection = `โอนธนาคาร${bank?' '+bank:''}\nเลขบัญชี ${accNum}\nชื่อบัญชี ${accName}`;
+  } else {
+    paySection = `${payType}\nเลขบัญชี ${accNum}\nชื่อบัญชี ${accName}`;
+  }
 
   const text = [category, shop, '', itemLines, '', `รวมยอดโอน ${fmt(total)} บาท`, '', paySection].join('\n');
   const preview = document.getElementById('prPreview');
