@@ -762,6 +762,23 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
 </div></div>
 
+<div class="modal-wrap" id="editSpecModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-file-description"></i> แก้ไขสเปกอุปกรณ์</div>
+    <button class="btn btn-sm" onclick="closeModal('editSpecModal')">ยกเลิก</button>
+  </div>
+  <div style="font-size:12px;font-weight:500;margin-bottom:10px" id="editSpecName"></div>
+  <div class="fg" style="margin-bottom:12px">
+    <label class="fl">สเปกอุปกรณ์</label>
+    <textarea class="fta" id="editSpecVal" rows="6" placeholder="รายละเอียดและคุณสมบัติของอุปกรณ์..."></textarea>
+  </div>
+  <input type="hidden" id="editSpecId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('editSpecModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveEditSpec()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
 <div class="modal-wrap" id="editTxModal"><div class="modal">
   <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
     <div class="card-title-left"><i class="ti ti-pencil"></i> แก้ไขรายการประวัติ</div>
