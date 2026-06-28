@@ -780,7 +780,7 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 </div></div>
 
 <!-- Payment Request Modal — ใบแจ้งเบิก -->
-<div class="modal-wrap" id="paymentRequestModal"><div class="modal" style="max-width:600px;width:96%">
+<div class="modal-wrap" id="paymentRequestModal"><div class="modal" style="max-width:620px;width:96%">
   <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
     <div class="card-title-left"><i class="ti ti-file-invoice" style="color:var(--acc)"></i> สร้างใบแจ้งเบิก</div>
     <button class="btn btn-sm" onclick="closeModal('paymentRequestModal')">ยกเลิก</button>
@@ -788,12 +788,31 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
     <div>
       <div class="fg" style="margin-bottom:8px">
-        <label class="fl">ชื่อรายการเบิก</label>
-        <input class="fi" id="prTitle" placeholder="เช่น เบิกค่าฉลากบรรจุภัณฑ์" oninput="updatePrPreview()">
+        <label class="fl">ประเภทการเบิก</label>
+        <select class="fi" id="prCategory" onchange="updatePrPreview()" style="padding:5px 8px">
+          <option value="">— เลือกประเภท —</option>
+          <option>เบิกค่าวัตถุดิบ</option>
+          <option>เบิกค่าฉลากบรรจุภัณฑ์</option>
+          <option>เบิกค่าอุปกรณ์</option>
+          <option>เบิกค่าบรรจุภัณฑ์</option>
+          <option>เบิกค่าสกรีนซอง</option>
+          <option>เบิกค่าใช้จ่ายบริษัท</option>
+          <option>เบิกค่าน้ำมันรถ</option>
+          <option>เบิกค่าวัตถุดิบและค่าใช้จ่ายอื่นๆ</option>
+          <option>ค่าไปรษณีย์</option>
+          <option>ค่าน้ำประปา</option>
+          <option>เบิกค่าซ่อมอุปกรณ์โรงงาน</option>
+        </select>
       </div>
-      <div class="fg" style="margin-bottom:8px">
+      <div class="fg" style="margin-bottom:5px">
         <label class="fl">ร้าน / บริษัท</label>
-        <input class="fi" id="prShop" placeholder="ชื่อร้านหรือบริษัท" oninput="updatePrPreview()">
+        <select class="fi" id="prShopSel" onchange="onPrShopSelChange(this)" style="padding:5px 8px;margin-bottom:5px">
+          <option value="">— เลือกร้านที่บันทึกไว้ / กรอกใหม่ —</option>
+        </select>
+        <input class="fi" id="prShopName" placeholder="หรือพิมพ์ชื่อร้านใหม่..." oninput="updatePrPreview()">
+        <button class="btn btn-sm" id="prSaveSupplier" onclick="savePrSupplier()" style="display:none;margin-top:4px;width:100%;font-size:11px">
+          <i class="ti ti-bookmark"></i> บันทึกร้านนี้ไว้ใช้ครั้งต่อไป
+        </button>
       </div>
       <div style="font-size:11px;font-weight:500;color:var(--ink2);margin-bottom:5px">
         <i class="ti ti-list" style="font-size:11px"></i> รายการสินค้า
