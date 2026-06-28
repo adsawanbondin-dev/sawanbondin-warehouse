@@ -4419,10 +4419,21 @@ function renderAlertGroupPage(group) {
   if (!ALERT_GROUPS || !ALERT_GROUPS[group]) { div.innerHTML = ''; return; }
 
   const withdrawLabel = _CFG.WITHDRAW_ALERT_LABEL || 'รายการเบิก';
-  const labels = { purchase:{title:'รายการจัดซื้อ', sub:'รายการที่สต็อกต่ำกว่า Min — ต้องสั่งซื้อเพิ่ม'},
+  const labels = { purchase:{title:'รายการจัดซื้อ', sub:'รายการที่สต็อกต่ำกว่า Min และรายการที่กำลังดำเนินการ'},
                     withdraw:{title:withdrawLabel,   sub:'รายการที่สต็อกต่ำกว่า Min'} };
   const meta = labels[group] || { title:group, sub:'' };
-  const alerts = getAlertItems(null, group);
+
+  // สำหรับ purchase: รวมทั้งรายการ stock ต่ำ และรายการที่กำลังติดตามสถานะ
+  let alerts = getAlertItems(null, group);
+  if (group === 'purchase') {
+    const inProgress = masterDB.filter(m => {
+      const inGroup = (ALERT_GROUPS.purchase||[]).includes(m.pg);
+      return inGroup && (m.pay_status || m.ship_status) && m.ship_status !== 'stocked';
+    });
+    // รวมโดยไม่ซ้ำกัน
+    const codes = new Set(alerts.map(x=>x.code));
+    inProgress.forEach(m => { if(!codes.has(m.code)) { codes.add(m.code); alerts.push(m); }});
+  }
   const showSupplier = group === 'purchase' && SUPPLIER_FIELDS;
   const showMax = group === 'withdraw';
   const showTracking = group === 'purchase';
