@@ -37,7 +37,7 @@ const WAREHOUSE_CONFIG = _CFG.WAREHOUSE_CONFIG || {
   matcha:    { label:'ชาบดผงมัตจะ',       prefix:'MC', hasLot:true,  lotSupplier:true,  rawFields:false, depts:['ผลิต','คลัง'] },
   pack:      { label:'บรรจุภัณฑ์ภายใน',    prefix:'PK', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
   packaging: { label:'บรรจุภัณฑ์ภายนอก',  prefix:'PA', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
-  equip:     { label:'อุปกรณ์',           prefix:'EQ', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
+  equip:     { label:'อุปกรณ์',           prefix:'EQ', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'], hasSpec:true },
   finish:    { label:'สินค้าสำเร็จรูป',  prefix:'FG', hasLot:true,  lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
   sample:    { label:'ชาตัวอย่าง',          prefix:'SA', hasLot:true,  lotSupplier:true,  rawFields:false, hasExpiry:true, depts:['ผลิต','คลัง','Tea House'],
                subcats:['OEM','RD','ชาประกวด'],
@@ -62,6 +62,7 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY, {
 let masterDB        = [];
 let bomRecipes      = []; // cache สูตรการผลิตทั้งหมด
 let locationDB      = {};    // { code: string }
+let specDB          = {};    // { code: string } — สเปกอุปกรณ์
 let lotDB           = {};    // { code: [{id,lot_sw,stock,updated_at}] }
 let masterCatFilter = 'all';
 let curPage         = 'master';
@@ -213,6 +214,9 @@ async function dbUpsertItem(m) {
     if (SUPPLIER_FIELDS === 'days') payload.lead_time_days = m.lead_time_days ?? null;
     if (SUPPLIER_FIELDS === 'date') payload.next_delivery_date = m.next_delivery_date || null;
   }
+  if (WAREHOUSE_CONFIG[m.pg]?.hasSpec) {
+    payload.spec = specDB[m.code] || null;
+  }
   const { error } = await sb.from('items').upsert(payload, { onConflict:'code' });
   if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
@@ -298,7 +302,7 @@ async function dbLoadItems() {
   const supplierCols = SUPPLIER_FIELDS === 'days' ? ',supplier_name,lead_time_days'
                       : SUPPLIER_FIELDS === 'date' ? ',supplier_name,next_delivery_date'
                       : '';
-  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,seq,updated_at' + supplierCols;
+  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at' + supplierCols;
   const { data, error } = await sb.from('items')
     .select(cols)
     .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
@@ -312,7 +316,10 @@ async function dbLoadItems() {
     lead_time_days:r.lead_time_days??null,
     next_delivery_date:r.next_delivery_date||null,
   }));
-  (data||[]).forEach(r => { if (r.note) locationDB[r.code] = r.note; });
+  (data||[]).forEach(r => {
+    if (r.note) locationDB[r.code] = r.note;
+    if (r.spec) specDB[r.code] = r.spec;
+  });
   return true;
 }
 
@@ -1601,6 +1608,14 @@ function renderForm(pg) {
       <textarea class="fta" id="${pg}-note"
         placeholder="${isRB?'ระบุสาเหตุ...':'หมายเหตุเพิ่มเติม...'}"></textarea>
     </div>`;
+    if(cfg?.hasSpec && action==='receive'){
+      h += `<div class="fg" style="margin-top:10px">
+        <label class="fl"><i class="ti ti-file-description" style="font-size:11px"></i> สเปกอุปกรณ์</label>
+        <textarea class="fta" id="${pg}-spec" rows="4"
+          placeholder="รายละเอียดและคุณสมบัติของอุปกรณ์..."></textarea>
+        <div class="fhint">จะอัปเดตข้อมูลสเปกในหน้า Master ด้วย</div>
+      </div>`;
+    }
   }
 
   // ข้อ 3: location ใช้ได้ทุก action (เพื่อดู/แก้ไข) แต่ save เฉพาะ receive
@@ -2092,6 +2107,10 @@ async function submitF(pg) {
       if (rpcResult.new_stock !== undefined) mi.stock = rpcResult.new_stock;
     }
     if (action==='receive' && loc) locationDB[code] = loc;
+    if (action==='receive' && cfg?.hasSpec) {
+      const spec=(document.getElementById(pg+'-spec')?.value||'').trim();
+      if(spec) specDB[code]=spec;
+    }
     await dbUpsertItem(mi);  // ตอนนี้ mi.stock เป็นค่าถูกต้องแล้ว
   }
 
@@ -2795,6 +2814,24 @@ async function saveEditMinMax(){
   }
   checkAlerts();closeModal('editMinMaxModal');renderMasterContent();
 }
+function editSpec(code){
+  const m=masterDB.find(x=>x.code===code);if(!m)return;
+  document.getElementById('editSpecId').value=code;
+  document.getElementById('editSpecName').textContent=m.name;
+  document.getElementById('editSpecVal').value=specDB[code]||'';
+  document.getElementById('editSpecModal').classList.add('show');
+}
+async function saveEditSpec(){
+  const code=document.getElementById('editSpecId').value;
+  const spec=(document.getElementById('editSpecVal').value||'').trim();
+  specDB[code]=spec||'';
+  const { error } = await sb.from('items').update({ spec: spec||null }).eq('code', code);
+  if(error){ showToast('บันทึกไม่สำเร็จ','err'); return; }
+  closeModal('editSpecModal');
+  renderMasterContent();
+  showToast('บันทึกสเปกเรียบร้อย');
+}
+
 function editName(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editNameId').value=code;document.getElementById('editNameVal').value=m.name;document.getElementById('editNameModal').classList.add('show'); }
 async function saveEditName(){
   const code = document.getElementById('editNameId').value;
@@ -2951,6 +2988,7 @@ function renderMasterContent(){
       <div class="ir-main">
         <div class="ir-name" title="${m.name}">${m.name}</div>
         <div class="ir-code">${m.code}</div>
+        ${(WAREHOUSE_CONFIG[m.pg]?.hasSpec && specDB[m.code])?`<div style="font-size:11px;color:var(--ink3);margin-top:2px;margin-bottom:4px;line-height:1.5;white-space:pre-wrap">${specDB[m.code]}</div>`:''}
         <div class="ir-meta">
           <span class="ir-stock"><strong>${m.stock}</strong></span>
           ${(m.min>0||m.max>0)?`
@@ -2979,6 +3017,7 @@ function renderMasterContent(){
         <button class="icon-btn" onclick="editSubcat('${m.code}')" title="ย้ายหมวดหมู่"><i class="ti ti-folder-symlink"></i></button>
         <button class="icon-btn" onclick="editStock('${m.code}')" title="สต็อก"><i class="ti ti-edit"></i></button>
         <button class="icon-btn" onclick="editMinMax('${m.code}')" title="Min/Max"><i class="ti ti-adjustments-horizontal"></i></button>
+        ${WAREHOUSE_CONFIG[m.pg]?.hasSpec?`<button class="icon-btn" onclick="editSpec('${m.code}')" title="แก้ไขสเปก"><i class="ti ti-file-description"></i></button>`:''}
         <button class="icon-btn danger" onclick="deleteMasterItem('${m.code}')" title="ลบ"><i class="ti ti-trash"></i></button>
         ` : ''}
       </div>
