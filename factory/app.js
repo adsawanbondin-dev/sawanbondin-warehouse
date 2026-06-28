@@ -4342,33 +4342,104 @@ function _trackingDropdowns(m) {
 }
 
 /* ── Payment Request Modal ── */
-function openPaymentRequest(code) {
+let prItems = [];
+let paymentSuppliers = []; // cache จาก DB
+
+const PR_CATEGORIES = [
+  'เบิกค่าวัตถุดิบ',
+  'เบิกค่าฉลากบรรจุภัณฑ์',
+  'เบิกค่าอุปกรณ์',
+  'เบิกค่าบรรจุภัณฑ์',
+  'เบิกค่าสกรีนซอง',
+  'เบิกค่าใช้จ่ายบริษัท',
+  'เบิกค่าน้ำมันรถ',
+  'เบิกค่าวัตถุดิบและค่าใช้จ่ายอื่นๆ',
+  'ค่าไปรษณีย์',
+  'ค่าน้ำประปา',
+  'เบิกค่าซ่อมอุปกรณ์โรงงาน',
+];
+
+async function dbLoadPaymentSuppliers() {
+  const { data } = await sb.from('payment_suppliers').select('*').order('name');
+  paymentSuppliers = data || [];
+}
+
+async function dbSavePaymentSupplier(sup) {
+  const { data } = await sb.from('payment_suppliers').insert(sup).select().single();
+  if (data) paymentSuppliers.push(data);
+  return data;
+}
+
+async function openPaymentRequest(code) {
+  await dbLoadPaymentSuppliers();
   const m = masterDB.find(x => x.code === code);
-  if (!m) return;
-  document.getElementById('prCode').value = code;
-  document.getElementById('prTitle').value = `เบิกค่า${m.name}`;
-  document.getElementById('prShop').value = m.supplier_name || '';
+  document.getElementById('prCode').value = code||'';
+  document.getElementById('prCategory').value = 'เบิกค่าวัตถุดิบ';
+  document.getElementById('prShopSel').value = '';
+  document.getElementById('prShopName').value = m?.supplier_name||'';
   document.getElementById('prPayType').value = 'พร้อมเพย์';
   document.getElementById('prAccNum').value = '';
   document.getElementById('prAccName').value = '';
-  // เคลียร์รายการ แล้วเพิ่มรายการเริ่มต้น
-  prItems = [{desc: m.name, qty: m.supplier_qty||'', price: m.supplier_price||''}];
+  prItems = m ? [{desc: m.name, qty: m.supplier_qty||'', price: m.supplier_price||''}] : [{desc:'', qty:'', price:''}];
+  _renderPrSupplierSel();
   renderPrItems();
   updatePrPreview();
   document.getElementById('paymentRequestModal').classList.add('show');
 }
 
-let prItems = [];
+function _renderPrSupplierSel() {
+  const sel = document.getElementById('prShopSel');
+  if (!sel) return;
+  const opts = paymentSuppliers.map(s =>
+    `<option value="${s.id}" data-name="${s.name}" data-pay="${s.pay_type}" data-num="${s.acc_num||''}" data-accname="${s.acc_name||''}">${s.name}</option>`
+  ).join('');
+  sel.innerHTML = `<option value="">— เลือกร้านที่บันทึกไว้ / กรอกใหม่ —</option>${opts}<option value="new">+ บันทึกร้านใหม่</option>`;
+}
+
+function onPrShopSelChange(sel) {
+  if (sel.value === 'new') {
+    sel.value = '';
+    document.getElementById('prShopName').value = '';
+    document.getElementById('prAccNum').value = '';
+    document.getElementById('prAccName').value = '';
+    document.getElementById('prPayType').value = 'พร้อมเพย์';
+    document.getElementById('prSaveSupplier').style.display = 'block';
+    return;
+  }
+  if (!sel.value) return;
+  const opt = sel.options[sel.selectedIndex];
+  document.getElementById('prShopName').value = opt.dataset.name||'';
+  document.getElementById('prPayType').value = opt.dataset.pay||'พร้อมเพย์';
+  document.getElementById('prAccNum').value = opt.dataset.num||'';
+  document.getElementById('prAccName').value = opt.dataset.accname||'';
+  document.getElementById('prSaveSupplier').style.display = 'none';
+  updatePrPreview();
+}
+
+async function savePrSupplier() {
+  const name = document.getElementById('prShopName').value.trim();
+  const pay_type = document.getElementById('prPayType').value;
+  const acc_num = document.getElementById('prAccNum').value.trim();
+  const acc_name = document.getElementById('prAccName').value.trim();
+  if (!name) { showToast('กรุณาใส่ชื่อร้าน','err'); return; }
+  const sup = await dbSavePaymentSupplier({name, pay_type, acc_num, acc_name});
+  if (sup) {
+    _renderPrSupplierSel();
+    document.getElementById('prSaveSupplier').style.display = 'none';
+    showToast(`บันทึกร้าน "${name}" แล้ว`);
+  }
+}
 
 function renderPrItems() {
   const container = document.getElementById('prItemRows');
+  if (!container) return;
   container.innerHTML = prItems.map((it, i) => `
-    <div style="display:grid;grid-template-columns:1fr 70px 90px 24px;gap:5px;margin-bottom:5px;align-items:center">
-      <input class="fi" value="${it.desc}" placeholder="ชื่อรายการ..."
+    <div style="display:grid;grid-template-columns:1fr 70px 90px 22px;gap:5px;margin-bottom:5px;align-items:center">
+      <input class="fi" value="${it.desc||''}" placeholder="ชื่อรายการ..."
         style="padding:4px 7px;font-size:11px" oninput="prItems[${i}].desc=this.value;updatePrPreview()">
-      <input class="fi" value="${it.qty}" placeholder="จำนวน"
+      <input class="fi" value="${it.qty||''}" placeholder="จำนวน"
         style="padding:4px 7px;font-size:11px" oninput="prItems[${i}].qty=this.value;updatePrPreview()">
-      <input class="fi" type="number" value="${it.price}" placeholder="ราคา"
+      <input class="fi" type="number" value="${it.price||''}" placeholder="ราคา"
         style="padding:4px 7px;font-size:11px" oninput="prItems[${i}].price=this.value;updatePrPreview()">
       <button onclick="prItems.splice(${i},1);renderPrItems();updatePrPreview()"
         style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px;padding:0">✕</button>
@@ -4381,11 +4452,11 @@ function addPrItem() {
 }
 
 function updatePrPreview() {
-  const title = document.getElementById('prTitle')?.value||'';
-  const shop = document.getElementById('prShop')?.value||'';
-  const payType = document.getElementById('prPayType')?.value||'พร้อมเพย์';
-  const accNum = document.getElementById('prAccNum')?.value||'';
-  const accName = document.getElementById('prAccName')?.value||'';
+  const category = document.getElementById('prCategory')?.value||'';
+  const shop     = document.getElementById('prShopName')?.value||'';
+  const payType  = document.getElementById('prPayType')?.value||'พร้อมเพย์';
+  const accNum   = document.getElementById('prAccNum')?.value||'';
+  const accName  = document.getElementById('prAccName')?.value||'';
   const total = prItems.reduce((s,it) => s + (parseFloat(it.price)||0), 0);
   const fmt = n => n.toLocaleString('th-TH', {minimumFractionDigits:0, maximumFractionDigits:2});
 
@@ -4396,7 +4467,7 @@ function updatePrPreview() {
   const paySection = payType === 'เงินสด' ? 'ชำระเป็นเงินสด'
     : `${payType}\nเลขบัญชี ${accNum}\nชื่อบัญชี ${accName}`;
 
-  const text = [title, shop, '', itemLines, '', `รวมยอดโอน ${fmt(total)} บาท`, '', paySection].join('\n');
+  const text = [category, shop, '', itemLines, '', `รวมยอดโอน ${fmt(total)} บาท`, '', paySection].join('\n');
   const preview = document.getElementById('prPreview');
   if (preview) preview.textContent = text;
   const totalEl = document.getElementById('prTotal');
@@ -4408,9 +4479,7 @@ async function copyPaymentRequest() {
   try {
     await navigator.clipboard.writeText(text);
     showToast('Copy ข้อความแล้ว — นำไปวางใน Line ได้เลย');
-  } catch(e) {
-    showToast('Copy ไม่สำเร็จ กรุณา copy เอง','err');
-  }
+  } catch(e) { showToast('Copy ไม่สำเร็จ','err'); }
 }
 
 function _progDots(pay, ship) {
@@ -4485,14 +4554,14 @@ function renderAlertGroupPage(group) {
   const setFilter = (k) => `document.getElementById('page-alert-purchase').dataset.filter='${k}';renderAlertGroupPage('purchase')`;
 
   const statCards = [
-    {key:'low',      label:'ต้องสั่งซื้อ',   val:cLow,  color:'var(--acc)'},
-    {key:'waiting',  label:'รอชำระเงิน',      val:cWait, color:'#e8a23a'},
-    {key:'shipping', label:'กำลังจัดส่ง',     val:cShip, color:'#854f0b'},
-    {key:'qc',       label:'รอ QC',           val:cQc,   color:'#9b6fe8'},
+    {key:'low',      label:'ต้องสั่งซื้อ',   val:cLow,  color:'var(--ink2)'},
+    {key:'waiting',  label:'รอชำระเงิน',      val:cWait, color:'var(--ink2)'},
+    {key:'shipping', label:'กำลังจัดส่ง',     val:cShip, color:'var(--ink2)'},
+    {key:'qc',       label:'รอ QC',           val:cQc,   color:'var(--ink2)'},
   ].map(s => `<div onclick="${setFilter(s.key)}"
-    style="background:var(--surface);border-radius:var(--r);border:1.5px solid ${filterKey===s.key?s.color:'var(--line)'};padding:10px 14px;cursor:pointer;flex:1;transition:.15s">
-    <div style="font-size:10px;color:var(--ink3);margin-bottom:2px">${s.label}</div>
-    <div style="font-size:22px;font-weight:600;color:${s.color}">${s.val}</div>
+    style="background:var(--surface);border-radius:var(--r);border:1.5px solid ${filterKey===s.key?'var(--acc)':'var(--line)'};padding:10px 14px;cursor:pointer;flex:1;transition:.15s">
+    <div style="font-size:10px;color:var(--ink4);margin-bottom:2px">${s.label}</div>
+    <div style="font-size:22px;font-weight:600;color:${filterKey===s.key?'var(--acc)':s.color}">${s.val}</div>
   </div>`).join('');
 
   const filterBtns = [
