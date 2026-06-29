@@ -4977,14 +4977,17 @@ async function renderAlertGroupPage(group) {
     const isOrdSoon = ordDate && !isOrdDue && (ordDate - today) <= 86400000*2;
     const arrLabel = arrDate ? arrDate.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '';
 
-    // สีขอบการ์ด — แดงเมื่อมีแจ้งเตือน
-    const borderColor = (isLow || isArrOverdue || isOrdDue) ? 'var(--red)' :
-                        (isArrSoon || isOrdSoon) ? 'var(--warn)' : 'var(--line)';
+    // badge แจ้งเตือนเล็กๆ แทนกรอบสี
+    const alertBadge = (isLow || isArrOverdue || isOrdDue)
+      ? `<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:#fee;color:var(--red);font-weight:500">⚠ แจ้งเตือน</span>` : '';
 
-    return `<div style="background:var(--surface);border-radius:var(--r);border:1.5px solid ${borderColor};padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+    return `<div style="background:var(--surface);border-radius:var(--r);border:1px solid var(--line);padding:12px 14px;display:flex;flex-direction:column;gap:8px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.name}</div>
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+            <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.name}</div>
+            ${alertBadge}
+          </div>
           <div style="font-size:10px;color:var(--ink4);margin-top:1px">${m.code} · ${cfg?.label||m.pg}${m.supplier_name?` · ${m.supplier_name}`:''}</div>
         </div>
         <div style="text-align:right;flex-shrink:0">
