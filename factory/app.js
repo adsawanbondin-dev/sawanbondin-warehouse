@@ -61,6 +61,7 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY, {
 ═══════════════════════════════════════════ */
 let masterDB        = [];
 let bomRecipes      = []; // cache สูตรการผลิตทั้งหมด
+let purchaseOrders  = []; // cache temp PO
 let locationDB      = {};    // { code: string }
 let specDB          = {};    // { code: string } — สเปกอุปกรณ์
 let lotDB           = {};    // { code: [{id,lot_sw,stock,updated_at}] }
@@ -1366,7 +1367,7 @@ function switchPage(p) {
   document.querySelector(`[data-page="${p}"]`)?.classList.add('active');
   // รวมทุกหน้าเพื่อให้ซ่อนครบ
   const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
-  ['master', ...WAREHOUSE_PAGES, 'stockcount', 'dashboard', 'bom', 'packaging', ...alertGroupPages].forEach(pg => {
+  ['master', ...WAREHOUSE_PAGES, 'stockcount', 'dashboard', 'bom', 'packaging', 'suppliers', ...alertGroupPages].forEach(pg => {
     const el = document.getElementById('page-'+pg);
     if (el) el.className = pg===p ? 'page-visible' : 'page-hidden';
   });
@@ -1375,6 +1376,8 @@ function switchPage(p) {
     renderMasterPage();
   } else if (p==='bom') {
     renderBomPage();
+  } else if (p==='suppliers') {
+    renderSupplierPage();
   } else if (p.startsWith('alert-')) {
     renderAlertGroupPage(p.replace('alert-',''));
   } else {
@@ -4541,7 +4544,263 @@ function _progDots(pay, ship) {
   return `<div style="display:flex;align-items:center;gap:2px;min-width:90px">${h}</div>`;
 }
 
-function renderAlertGroupPage(group) {
+/* ═══════════════════════════════════════════════
+   PURCHASE ORDERS — temp items
+   ═══════════════════════════════════════════════ */
+
+async function dbLoadPurchaseOrders() {
+  const { data } = await sb.from('purchase_orders')
+    .select('*, payment_suppliers(name,pay_type,acc_num,acc_name,bank)')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false });
+  purchaseOrders = data || [];
+}
+
+async function dbSavePurchaseOrder(po) {
+  const { data } = await sb.from('purchase_orders').insert(po).select().single();
+  if (data) purchaseOrders.unshift(data);
+  return data;
+}
+
+async function dbUpdatePurchaseOrder(id, fields) {
+  await sb.from('purchase_orders').update({ ...fields, updated_at: new Date().toISOString() }).eq('id', id);
+  const idx = purchaseOrders.findIndex(x => x.id === id);
+  if (idx >= 0) purchaseOrders[idx] = { ...purchaseOrders[idx], ...fields };
+}
+
+async function dbDeletePurchaseOrder(id) {
+  await sb.from('purchase_orders').update({ is_active: false }).eq('id', id);
+  purchaseOrders = purchaseOrders.filter(x => x.id !== id);
+}
+
+// เปิด modal สร้าง PO ใหม่
+async function openNewPurchaseOrder() {
+  await dbLoadPaymentSuppliers();
+  document.getElementById('poId').value = '';
+  document.getElementById('poItemName').value = '';
+  document.getElementById('poItemCode').value = '';
+  document.getElementById('poQty').value = '';
+  document.getElementById('poUnit').value = '';
+  document.getElementById('poNote').value = '';
+  document.getElementById('poExpectedDate').value = '';
+  // supplier selector
+  const sel = document.getElementById('poSupplierSel');
+  sel.innerHTML = `<option value="">— เลือกผู้จำหน่าย —</option>` +
+    paymentSuppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('') +
+    `<option value="new">+ เพิ่มผู้จำหน่ายใหม่</option>`;
+  document.getElementById('poNewSupplierRow').style.display = 'none';
+  document.getElementById('poModal').classList.add('show');
+}
+
+function onPoSupplierChange(sel) {
+  document.getElementById('poNewSupplierRow').style.display = sel.value === 'new' ? 'block' : 'none';
+}
+
+async function savePurchaseOrder() {
+  const id = document.getElementById('poId').value;
+  const item_name = document.getElementById('poItemName').value.trim();
+  const item_code = document.getElementById('poItemCode').value.trim();
+  const qty = parseFloat(document.getElementById('poQty').value) || null;
+  const unit = document.getElementById('poUnit').value.trim();
+  const note = document.getElementById('poNote').value.trim();
+  const expected_arrival_date = document.getElementById('poExpectedDate').value || null;
+  const supSel = document.getElementById('poSupplierSel');
+  let supplier_id = supSel.value && supSel.value !== 'new' ? parseInt(supSel.value) : null;
+
+  if (!item_name) { showToast('กรุณาใส่ชื่อรายการ', 'err'); return; }
+
+  // ถ้าเพิ่มผู้จำหน่ายใหม่
+  if (supSel.value === 'new') {
+    const newName = document.getElementById('poNewSupName').value.trim();
+    const newPayType = document.getElementById('poNewPayType').value;
+    const newAccNum = document.getElementById('poNewAccNum').value.trim();
+    const newAccName = document.getElementById('poNewAccName').value.trim();
+    if (newName) {
+      const sup = await dbSavePaymentSupplier({ name: newName, pay_type: newPayType, acc_num: newAccNum, acc_name: newAccName });
+      if (sup) supplier_id = sup.id;
+    }
+  }
+
+  const fields = { item_name, item_code: item_code||null, supplier_id, qty, unit: unit||null, note: note||null, expected_arrival_date };
+
+  if (id) {
+    await dbUpdatePurchaseOrder(parseInt(id), fields);
+    showToast('แก้ไขรายการแล้ว');
+  } else {
+    const user = window._operatorName || '';
+    await dbSavePurchaseOrder({ ...fields, created_by: user, pay_status: null, ship_status: null });
+    showToast('เพิ่มรายการจัดซื้อแล้ว');
+  }
+  closeModal('poModal');
+  renderAlertGroupPage('purchase');
+}
+
+async function editPurchaseOrder(id) {
+  await dbLoadPaymentSuppliers();
+  const po = purchaseOrders.find(x => x.id === id);
+  if (!po) return;
+  document.getElementById('poId').value = id;
+  document.getElementById('poItemName').value = po.item_name || '';
+  document.getElementById('poItemCode').value = po.item_code || '';
+  document.getElementById('poQty').value = po.qty || '';
+  document.getElementById('poUnit').value = po.unit || '';
+  document.getElementById('poNote').value = po.note || '';
+  document.getElementById('poExpectedDate').value = po.expected_arrival_date || '';
+  const sel = document.getElementById('poSupplierSel');
+  sel.innerHTML = `<option value="">— เลือกผู้จำหน่าย —</option>` +
+    paymentSuppliers.map(s => `<option value="${s.id}" ${po.supplier_id===s.id?'selected':''}>${s.name}</option>`).join('') +
+    `<option value="new">+ เพิ่มผู้จำหน่ายใหม่</option>`;
+  document.getElementById('poNewSupplierRow').style.display = 'none';
+  document.getElementById('poModal').classList.add('show');
+}
+
+async function updatePoTracking(id, field, value) {
+  const po = purchaseOrders.find(x => x.id === id);
+  if (!po) return;
+  const fields = { [field]: value || null };
+  if (field === 'ship_status' && value === 'stocked') {
+    fields.pay_status = null; fields.ship_status = null;
+    fields.tracking_url = null; fields.expected_arrival_date = null;
+  }
+  po[field] = value || null;
+  if (field === 'ship_status' && value === 'stocked') {
+    po.pay_status = null; po.tracking_url = null; po.expected_arrival_date = null;
+  }
+  await dbUpdatePurchaseOrder(id, fields);
+  renderAlertGroupPage('purchase');
+}
+
+async function setPoTrackingUrl(id, url) {
+  await dbUpdatePurchaseOrder(id, { tracking_url: url.trim() || null });
+  const po = purchaseOrders.find(x => x.id === id);
+  if (po) po.tracking_url = url.trim() || null;
+}
+
+async function setPoExpectedArrival(id, date) {
+  await dbUpdatePurchaseOrder(id, { expected_arrival_date: date || null });
+  const po = purchaseOrders.find(x => x.id === id);
+  if (po) po.expected_arrival_date = date || null;
+}
+
+async function openPoPaymentRequest(id) {
+  const po = purchaseOrders.find(x => x.id === id);
+  if (!po) return;
+  await dbLoadPaymentSuppliers();
+  const sup = po.payment_suppliers || paymentSuppliers.find(s => s.id === po.supplier_id);
+  document.getElementById('prCode').value = '';
+  document.getElementById('prCategory').value = '';
+  document.getElementById('prShopSel').value = sup ? String(po.supplier_id) : '';
+  document.getElementById('prShopName').value = sup?.name || '';
+  document.getElementById('prPayType').value = sup?.pay_type || 'พร้อมเพย์';
+  document.getElementById('prAccNum').value = sup?.acc_num || '';
+  document.getElementById('prAccName').value = sup?.acc_name || '';
+  document.getElementById('prBank').value = sup?.bank || '';
+  document.getElementById('prBankRow').style.display = sup?.pay_type === 'โอนธนาคาร' ? 'block' : 'none';
+  document.getElementById('prSaveSupplier').style.display = 'none';
+  prItems = [{ desc: po.item_name, qty: po.qty ? `${po.qty}${po.unit?' '+po.unit:''}` : '', price: '' }];
+  _renderPrSupplierSel();
+  renderPrItems();
+  updatePrPreview();
+  document.getElementById('paymentRequestModal').classList.add('show');
+}
+
+/* ═══════════════════════════════════════════════
+   SUPPLIER MANAGEMENT PAGE
+   ═══════════════════════════════════════════════ */
+
+async function renderSupplierPage() {
+  await dbLoadPaymentSuppliers();
+  const div = document.getElementById('page-suppliers');
+  if (!div) return;
+
+  const cards = paymentSuppliers.map(s => `
+    <div style="background:var(--surface);border-radius:var(--r);border:1px solid var(--line);padding:12px 14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div style="font-weight:500;font-size:13px">${s.name}</div>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm" onclick="editSupplier(${s.id})"><i class="ti ti-pencil"></i></button>
+          <button class="btn btn-sm" style="color:var(--red)" onclick="deleteSupplier(${s.id})"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--ink3);display:flex;flex-direction:column;gap:2px">
+        <span><i class="ti ti-credit-card" style="font-size:10px"></i> ${s.pay_type}${s.bank?' — '+s.bank:''}</span>
+        ${s.acc_num?`<span><i class="ti ti-hash" style="font-size:10px"></i> ${s.acc_num}</span>`:''}
+        ${s.acc_name?`<span><i class="ti ti-user" style="font-size:10px"></i> ${s.acc_name}</span>`:''}
+      </div>
+    </div>`).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4);grid-column:1/-1">
+      <i class="ti ti-building-store" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>
+      ยังไม่มีผู้จำหน่าย — กด "+ เพิ่มผู้จำหน่าย" ได้เลยค่ะ</div>`;
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">ผู้จำหน่าย</div>
+        <div class="page-sub">จัดการข้อมูลร้านและบัญชีสำหรับแจ้งเบิก</div></div>
+      <button class="btn btn-primary btn-sm" onclick="openAddSupplier()">
+        <i class="ti ti-plus"></i> เพิ่มผู้จำหน่าย
+      </button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">${cards}</div>`;
+}
+
+function openAddSupplier() {
+  document.getElementById('supEditId').value = '';
+  document.getElementById('supEditName').value = '';
+  document.getElementById('supEditPayType').value = 'พร้อมเพย์';
+  document.getElementById('supEditBank').value = '';
+  document.getElementById('supEditBankRow').style.display = 'none';
+  document.getElementById('supEditAccNum').value = '';
+  document.getElementById('supEditAccName').value = '';
+  document.getElementById('supplierEditModal').classList.add('show');
+}
+
+async function editSupplier(id) {
+  const s = paymentSuppliers.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('supEditId').value = id;
+  document.getElementById('supEditName').value = s.name;
+  document.getElementById('supEditPayType').value = s.pay_type || 'พร้อมเพย์';
+  document.getElementById('supEditBank').value = s.bank || '';
+  document.getElementById('supEditBankRow').style.display = s.pay_type === 'โอนธนาคาร' ? 'block' : 'none';
+  document.getElementById('supEditAccNum').value = s.acc_num || '';
+  document.getElementById('supEditAccName').value = s.acc_name || '';
+  document.getElementById('supplierEditModal').classList.add('show');
+}
+
+function onSupEditPayTypeChange(sel) {
+  document.getElementById('supEditBankRow').style.display = sel.value === 'โอนธนาคาร' ? 'block' : 'none';
+}
+
+async function saveSupplierEdit() {
+  const id = document.getElementById('supEditId').value;
+  const name = document.getElementById('supEditName').value.trim();
+  const pay_type = document.getElementById('supEditPayType').value;
+  const bank = document.getElementById('supEditBank').value.trim();
+  const acc_num = document.getElementById('supEditAccNum').value.trim();
+  const acc_name = document.getElementById('supEditAccName').value.trim();
+  if (!name) { showToast('กรุณาใส่ชื่อผู้จำหน่าย', 'err'); return; }
+
+  if (id) {
+    await sb.from('payment_suppliers').update({ name, pay_type, bank, acc_num, acc_name }).eq('id', parseInt(id));
+    const idx = paymentSuppliers.findIndex(x => x.id === parseInt(id));
+    if (idx >= 0) paymentSuppliers[idx] = { ...paymentSuppliers[idx], name, pay_type, bank, acc_num, acc_name };
+    showToast('แก้ไขผู้จำหน่ายแล้ว');
+  } else {
+    await dbSavePaymentSupplier({ name, pay_type, bank, acc_num, acc_name });
+    showToast(`เพิ่ม "${name}" แล้ว`);
+  }
+  closeModal('supplierEditModal');
+  renderSupplierPage();
+}
+
+async function deleteSupplier(id) {
+  if (!confirm('ลบผู้จำหน่ายนี้?')) return;
+  await sb.from('payment_suppliers').delete().eq('id', id);
+  paymentSuppliers = paymentSuppliers.filter(x => x.id !== id);
+  renderSupplierPage();
+  showToast('ลบแล้ว');
+}
+
+async function renderAlertGroupPage(group) {
   const div = document.getElementById('page-alert-'+group);
   if (!div) return;
   if (!ALERT_GROUPS || !ALERT_GROUPS[group]) { div.innerHTML = ''; return; }
@@ -4581,6 +4840,9 @@ function renderAlertGroupPage(group) {
   });
   const codes = new Set(alerts.map(x=>x.code));
   inProgress.forEach(m => { if(!codes.has(m.code)) { codes.add(m.code); alerts.push(m); }});
+
+  // โหลด temp PO
+  await dbLoadPurchaseOrders();
 
   // แจ้งเตือนของถึงกำหนด
   checkArrivalAlerts();
@@ -4673,16 +4935,82 @@ function renderAlertGroupPage(group) {
   }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4);grid-column:1/-1">
     <i class="ti ti-inbox" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>ไม่มีรายการในกลุ่มนี้</div>`;
 
+  // ── Temp PO cards ──
+  const poCards = purchaseOrders.map(po => {
+    const sup = po.payment_suppliers;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const arrDate = po.expected_arrival_date ? new Date(po.expected_arrival_date) : null;
+    const isOverdue = arrDate && arrDate <= today && po.ship_status !== 'stocked';
+    const isSoon = arrDate && !isOverdue && (arrDate - today) <= 86400000*2;
+    const arrLabel = arrDate ? arrDate.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '';
+    const canRecv = po.ship_status === 'qc' || po.ship_status === 'received';
+    const payVal = po.pay_status || '';
+    const shipVal = po.ship_status || '';
+    const payOpts = Object.entries(PAY_STATUS_OPTS).map(([v,o])=>`<option value="${v}" ${payVal===v?'selected':''}>${o.label}</option>`).join('');
+    const shipOpts = Object.entries(SHIP_STATUS_OPTS).map(([v,o])=>`<option value="${v}" ${shipVal===v?'selected':''}>${o.label}</option>`).join('');
+    const trackUrl = po.tracking_url || '';
+
+    return `<div style="background:var(--surface);border-radius:var(--r);border:1px solid ${isOverdue?'var(--warn)':'var(--line)'};padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:5px">
+            <span style="font-size:9px;padding:1px 6px;border-radius:10px;background:var(--s2);color:var(--ink4);border:1px solid var(--line)">รายการเพิ่มเติม</span>
+          </div>
+          <div style="font-weight:500;font-size:13px;margin-top:3px">${po.item_name}</div>
+          <div style="font-size:10px;color:var(--ink4);margin-top:1px">
+            ${po.item_code?po.item_code+' · ':''}${sup?sup.name:'ไม่ระบุผู้จำหน่าย'}
+            ${po.qty?` · ${po.qty}${po.unit?' '+po.unit:''}` : ''}
+          </div>
+        </div>
+        <div style="display:flex;gap:3px;flex-shrink:0">
+          <button class="btn btn-sm" onclick="editPurchaseOrder(${po.id})" title="แก้ไข"><i class="ti ti-pencil"></i></button>
+          <button class="btn btn-sm" onclick="dbDeletePurchaseOrder(${po.id}).then(()=>renderAlertGroupPage('purchase'))" style="color:var(--red)" title="ลบ"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span style="font-size:10px;color:var(--ink4)">คาดว่าของจะมา</span>
+        <input type="date" value="${po.expected_arrival_date||''}"
+          style="font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
+          onchange="setPoExpectedArrival(${po.id},this.value)">
+        ${isOverdue?`<span style="font-size:10px;font-weight:500;color:var(--warn)"><i class="ti ti-alert-triangle"></i> เลยกำหนดแล้ว</span>`:
+          isSoon?`<span style="font-size:10px;color:var(--ink3)"><i class="ti ti-clock"></i> อีก ${Math.round((arrDate-today)/86400000)} วัน</span>`:
+          arrLabel?`<span style="font-size:10px;color:var(--ink4)">${arrLabel}</span>`:''}
+      </div>
+      <div style="border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:4px">
+        <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
+          onchange="updatePoTracking(${po.id},'pay_status',this.value)">${payOpts}</select>
+        <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
+          onchange="updatePoTracking(${po.id},'ship_status',this.value)">${shipOpts}</select>
+        <div style="display:flex;gap:3px;align-items:center">
+          <input type="url" placeholder="ลิงก์ Tracking..." value="${trackUrl}"
+            style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);flex:1;min-width:0;color:var(--ink2)"
+            onchange="setPoTrackingUrl(${po.id},this.value)" onblur="setPoTrackingUrl(${po.id},this.value)">
+          ${trackUrl?`<a href="${trackUrl}" target="_blank" style="color:var(--ink3);font-size:13px;line-height:1;text-decoration:none"><i class="ti ti-external-link"></i></a>`:''}
+        </div>
+        ${payVal==='waiting'?`<button class="btn btn-sm" onclick="openPoPaymentRequest(${po.id})" style="font-size:10px;padding:3px 8px">
+          <i class="ti ti-file-invoice"></i> แจ้งเบิก</button>`:''}
+      </div>
+      ${canRecv?`<button class="btn btn-sm btn-primary" onclick="updatePoTracking(${po.id},'ship_status','stocked')" style="width:100%;font-size:11px">
+        <i class="ti ti-check"></i> ยืนยันรับเข้าแล้ว</button>`:''}
+    </div>`;
+  }).join('');
+
   div.innerHTML = `
     <div class="page-header">
       <div><div class="page-title">รายการจัดซื้อ</div>
-        <div class="page-sub">ติดตามสถานะ · ${alerts.length} รายการ</div></div>
+        <div class="page-sub">ติดตามสถานะ · ${alerts.length + purchaseOrders.length} รายการ</div></div>
+      <button class="btn btn-primary btn-sm" onclick="openNewPurchaseOrder()">
+        <i class="ti ti-plus"></i> เพิ่มรายการจัดซื้อ
+      </button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px">${statCards}</div>
     <div class="card" style="overflow:hidden;margin-bottom:14px">
       <div style="display:flex;gap:6px;padding:8px 12px;overflow-x:auto;flex-wrap:nowrap">${filterBtns}</div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${cards}</div>`;
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">
+      ${cards}
+      ${poCards}
+    </div>`;
 }
 
 /* ── ยืนยันรับของจากหน้าแจ้งเตือน (จัดซื้อ/เบิก) — modal เล็ก กรอกจำนวน+วันที่ lot ──
