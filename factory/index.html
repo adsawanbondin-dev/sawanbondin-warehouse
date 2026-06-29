@@ -811,9 +811,11 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       <div class="fg" style="margin-bottom:5px">
         <label class="fl">ร้าน / บริษัท</label>
         <select class="fi" id="prShopSel" onchange="onPrShopSelChange(this)" style="padding:5px 8px;margin-bottom:5px">
-          <option value="">— เลือกร้านที่บันทึกไว้ / กรอกใหม่ —</option>
+          <option value="">— เลือกร้านที่บันทึกไว้ —</option>
         </select>
-        <input class="fi" id="prShopName" placeholder="หรือพิมพ์ชื่อร้านใหม่..." oninput="updatePrPreview()">
+        <datalist id="prShopDatalist"></datalist>
+        <input class="fi" id="prShopName" placeholder="หรือพิมพ์ชื่อร้านใหม่..." list="prShopDatalist"
+          oninput="onPrShopNameInput(this.value)">
         <button class="btn btn-sm" id="prSaveSupplier" onclick="savePrSupplier()" style="display:none;margin-top:4px;width:100%;font-size:11px">
           <i class="ti ti-bookmark"></i> บันทึกร้านนี้ไว้ใช้ครั้งต่อไป
         </button>
