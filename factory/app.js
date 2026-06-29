@@ -4716,16 +4716,23 @@ async function renderSupplierPage() {
   const cards = paymentSuppliers.map(s => `
     <div style="background:var(--surface);border-radius:var(--r);border:1px solid var(--line);padding:12px 14px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-        <div style="font-weight:500;font-size:13px">${s.name}</div>
+        <div>
+          ${s.category?`<div style="font-size:10px;color:var(--ink4);margin-bottom:2px">${s.category}</div>`:''}
+          <div style="font-weight:500;font-size:13px">${s.name}</div>
+        </div>
         <div style="display:flex;gap:4px">
           <button class="btn btn-sm" onclick="editSupplier(${s.id})"><i class="ti ti-pencil"></i></button>
           <button class="btn btn-sm" style="color:var(--red)" onclick="deleteSupplier(${s.id})"><i class="ti ti-trash"></i></button>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--ink3);display:flex;flex-direction:column;gap:2px">
+      <div style="font-size:11px;color:var(--ink3);display:flex;flex-direction:column;gap:3px">
         <span><i class="ti ti-credit-card" style="font-size:10px"></i> ${s.pay_type}${s.bank?' — '+s.bank:''}</span>
         ${s.acc_num?`<span><i class="ti ti-hash" style="font-size:10px"></i> ${s.acc_num}</span>`:''}
         ${s.acc_name?`<span><i class="ti ti-user" style="font-size:10px"></i> ${s.acc_name}</span>`:''}
+        ${s.phone||s.line_id||s.email?`<div style="height:1px;background:var(--line);margin:4px 0"></div>`:''}
+        ${s.phone?`<span><i class="ti ti-phone" style="font-size:10px"></i> ${s.phone}</span>`:''}
+        ${s.line_id?`<span><i class="ti ti-brand-line" style="font-size:10px"></i> ${s.line_id}</span>`:''}
+        ${s.email?`<span><i class="ti ti-mail" style="font-size:10px"></i> ${s.email}</span>`:''}
       </div>
     </div>`).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4);grid-column:1/-1">
       <i class="ti ti-building-store" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>
@@ -4744,12 +4751,16 @@ async function renderSupplierPage() {
 
 function openAddSupplier() {
   document.getElementById('supEditId').value = '';
+  document.getElementById('supEditCategory').value = '';
   document.getElementById('supEditName').value = '';
   document.getElementById('supEditPayType').value = 'พร้อมเพย์';
   document.getElementById('supEditBank').value = '';
   document.getElementById('supEditBankRow').style.display = 'none';
   document.getElementById('supEditAccNum').value = '';
   document.getElementById('supEditAccName').value = '';
+  document.getElementById('supEditPhone').value = '';
+  document.getElementById('supEditLine').value = '';
+  document.getElementById('supEditEmail').value = '';
   document.getElementById('supplierEditModal').classList.add('show');
 }
 
@@ -4757,12 +4768,16 @@ async function editSupplier(id) {
   const s = paymentSuppliers.find(x => x.id === id);
   if (!s) return;
   document.getElementById('supEditId').value = id;
+  document.getElementById('supEditCategory').value = s.category || '';
   document.getElementById('supEditName').value = s.name;
   document.getElementById('supEditPayType').value = s.pay_type || 'พร้อมเพย์';
   document.getElementById('supEditBank').value = s.bank || '';
   document.getElementById('supEditBankRow').style.display = s.pay_type === 'โอนธนาคาร' ? 'block' : 'none';
   document.getElementById('supEditAccNum').value = s.acc_num || '';
   document.getElementById('supEditAccName').value = s.acc_name || '';
+  document.getElementById('supEditPhone').value = s.phone || '';
+  document.getElementById('supEditLine').value = s.line_id || '';
+  document.getElementById('supEditEmail').value = s.email || '';
   document.getElementById('supplierEditModal').classList.add('show');
 }
 
@@ -4772,20 +4787,26 @@ function onSupEditPayTypeChange(sel) {
 
 async function saveSupplierEdit() {
   const id = document.getElementById('supEditId').value;
+  const category = document.getElementById('supEditCategory').value.trim();
   const name = document.getElementById('supEditName').value.trim();
   const pay_type = document.getElementById('supEditPayType').value;
   const bank = document.getElementById('supEditBank').value.trim();
   const acc_num = document.getElementById('supEditAccNum').value.trim();
   const acc_name = document.getElementById('supEditAccName').value.trim();
+  const phone = document.getElementById('supEditPhone').value.trim();
+  const line_id = document.getElementById('supEditLine').value.trim();
+  const email = document.getElementById('supEditEmail').value.trim();
   if (!name) { showToast('กรุณาใส่ชื่อผู้จำหน่าย', 'err'); return; }
 
+  const fields = { category: category||null, name, pay_type, bank: bank||null, acc_num: acc_num||null, acc_name: acc_name||null, phone: phone||null, line_id: line_id||null, email: email||null };
+
   if (id) {
-    await sb.from('payment_suppliers').update({ name, pay_type, bank, acc_num, acc_name }).eq('id', parseInt(id));
+    await sb.from('payment_suppliers').update(fields).eq('id', parseInt(id));
     const idx = paymentSuppliers.findIndex(x => x.id === parseInt(id));
-    if (idx >= 0) paymentSuppliers[idx] = { ...paymentSuppliers[idx], name, pay_type, bank, acc_num, acc_name };
+    if (idx >= 0) paymentSuppliers[idx] = { ...paymentSuppliers[idx], ...fields };
     showToast('แก้ไขผู้จำหน่ายแล้ว');
   } else {
-    await dbSavePaymentSupplier({ name, pay_type, bank, acc_num, acc_name });
+    await dbSavePaymentSupplier(fields);
     showToast(`เพิ่ม "${name}" แล้ว`);
   }
   closeModal('supplierEditModal');
