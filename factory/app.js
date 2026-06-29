@@ -222,6 +222,7 @@ async function dbUpsertItem(m) {
   payload.tracking_url  = m.tracking_url  || null;
   payload.supplier_qty  = m.supplier_qty  || null;
   payload.supplier_price = m.supplier_price || null;
+  payload.expected_arrival_date = m.expected_arrival_date || null;
   const { error } = await sb.from('items').upsert(payload, { onConflict:'code' });
   if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
@@ -307,7 +308,7 @@ async function dbLoadItems() {
   const supplierCols = SUPPLIER_FIELDS === 'days' ? ',supplier_name,lead_time_days'
                       : SUPPLIER_FIELDS === 'date' ? ',supplier_name,next_delivery_date'
                       : '';
-  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at,pay_status,ship_status,tracking_url,supplier_qty,supplier_price' + supplierCols;
+  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at,pay_status,ship_status,tracking_url,supplier_qty,supplier_price,expected_arrival_date' + supplierCols;
   const { data, error } = await sb.from('items')
     .select(cols)
     .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
@@ -325,6 +326,7 @@ async function dbLoadItems() {
     tracking_url:r.tracking_url||null,
     supplier_qty:r.supplier_qty||null,
     supplier_price:r.supplier_price||null,
+    expected_arrival_date:r.expected_arrival_date||null,
   }));
   (data||[]).forEach(r => {
     if (r.note) locationDB[r.code] = r.note;
@@ -4297,11 +4299,11 @@ async function setPurchaseTracking(code, field, value) {
   m[field] = value || null;
   if (field === 'ship_status' && value === 'stocked') {
     m.pay_status = null; m.ship_status = null;
-    m.tracking_url = null;
+    m.tracking_url = null; m.expected_arrival_date = null;
   }
   await sb.from('items').update({
     pay_status: m.pay_status, ship_status: m.ship_status,
-    tracking_url: m.tracking_url
+    tracking_url: m.tracking_url, expected_arrival_date: m.expected_arrival_date
   }).eq('code', code);
   if (curPage.startsWith('alert-')) renderAlertGroupPage(curPage.replace('alert-',''));
 }
@@ -4311,6 +4313,31 @@ async function setTrackingUrl(code, url) {
   if (!m) return;
   m.tracking_url = url.trim() || null;
   await sb.from('items').update({ tracking_url: m.tracking_url }).eq('code', code);
+}
+
+async function setExpectedArrival(code, date) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  m.expected_arrival_date = date || null;
+  await sb.from('items').update({ expected_arrival_date: m.expected_arrival_date }).eq('code', code);
+  if (curPage.startsWith('alert-')) renderAlertGroupPage(curPage.replace('alert-',''));
+}
+
+function checkArrivalAlerts() {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const overdue = masterDB.filter(m => {
+    if (!m.expected_arrival_date) return false;
+    if (m.ship_status === 'stocked' || m.ship_status === 'received') return false;
+    const d = new Date(m.expected_arrival_date);
+    return d <= today;
+  });
+  if (overdue.length > 0) {
+    const names = overdue.map(m => m.name).slice(0,3).join(', ');
+    const more = overdue.length > 3 ? ` และอีก ${overdue.length-3} รายการ` : '';
+    showToast(`📦 ของถึงกำหนด: ${names}${more}`, null, 6000);
+  }
+  return overdue;
 }
 
 function _trackingDropdowns(m) {
@@ -4555,6 +4582,9 @@ function renderAlertGroupPage(group) {
   const codes = new Set(alerts.map(x=>x.code));
   inProgress.forEach(m => { if(!codes.has(m.code)) { codes.add(m.code); alerts.push(m); }});
 
+  // แจ้งเตือนของถึงกำหนด
+  checkArrivalAlerts();
+
   const filterKey = div.dataset.filter || 'all';
   let filtered = alerts;
   if (filterKey === 'low')       filtered = alerts.filter(m => m.stock <= m.min && m.min > 0);
@@ -4603,11 +4633,15 @@ function renderAlertGroupPage(group) {
     const barColor = m.stock<=0 ? 'var(--red)' : isLow ? 'var(--warn)' : 'var(--line2)';
     const stockColor = m.stock<=0 ? 'var(--red)' : isLow ? 'var(--warn)' : 'var(--ink2)';
     const canRecv = m.ship_status === 'qc' || m.ship_status === 'received';
-    const leadCell = SFIELDS === 'date'
-      ? (m.next_delivery_date ? new Date(m.next_delivery_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '')
-      : (m.lead_time_days!=null ? m.lead_time_days+' วัน' : '');
 
-    return `<div style="background:var(--surface);border-radius:var(--r);border:1px solid var(--line);padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+    // เช็ควันที่คาดว่าของจะมาถึง
+    const today = new Date(); today.setHours(0,0,0,0);
+    const arrDate = m.expected_arrival_date ? new Date(m.expected_arrival_date) : null;
+    const isOverdue = arrDate && arrDate <= today && m.ship_status !== 'stocked';
+    const isSoon = arrDate && !isOverdue && (arrDate - today) <= 86400000*2;
+    const arrLabel = arrDate ? arrDate.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '';
+
+    return `<div style="background:var(--surface);border-radius:var(--r);border:1px solid ${isOverdue?'var(--warn)':'var(--line)'};padding:12px 14px;display:flex;flex-direction:column;gap:8px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div style="flex:1;min-width:0">
           <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.name}</div>
@@ -4621,9 +4655,14 @@ function renderAlertGroupPage(group) {
       ${m.max > 0 ? `<div style="height:3px;background:var(--s2);border-radius:2px;overflow:hidden">
         <div style="height:100%;width:${pct}%;background:${barColor};border-radius:2px;transition:.3s"></div>
       </div>` : ''}
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        ${_progDots(m.pay_status||'', m.ship_status||'')}
-        ${leadCell ? `<span style="font-size:10px;color:var(--ink4)"><i class="ti ti-calendar" style="font-size:10px"></i> ${leadCell}</span>` : ''}
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span style="font-size:10px;color:var(--ink4)">คาดว่าของจะมา</span>
+        <input type="date" value="${m.expected_arrival_date||''}"
+          style="font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
+          onchange="setExpectedArrival('${m.code}',this.value)">
+        ${isOverdue ? `<span style="font-size:10px;font-weight:500;color:var(--warn)"><i class="ti ti-alert-triangle"></i> เลยกำหนดแล้ว</span>` :
+          isSoon ? `<span style="font-size:10px;color:var(--ink3)"><i class="ti ti-clock"></i> อีก ${Math.round((arrDate-today)/86400000)} วัน</span>` :
+          arrLabel ? `<span style="font-size:10px;color:var(--ink4)">${arrLabel}</span>` : ''}
       </div>
       <div style="border-top:1px solid var(--line);padding-top:8px">
         ${_trackingDropdowns(m)}
