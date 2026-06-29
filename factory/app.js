@@ -4928,6 +4928,7 @@ async function renderAlertGroupPage(group) {
   else if (filterKey === 'qc')       filtered = alerts.filter(m => m.ship_status === 'qc');
 
   const cLow  = alerts.filter(m => m.stock <= m.min && m.min > 0).length;
+  const cOrd  = alerts.filter(m => m.pay_status === 'ordered').length;
   const cWait = alerts.filter(m => m.pay_status === 'waiting').length;
   const cShip = alerts.filter(m => m.ship_status === 'shipping').length;
   const cQc   = alerts.filter(m => m.ship_status === 'qc').length;
@@ -4936,9 +4937,10 @@ async function renderAlertGroupPage(group) {
 
   const statCards = [
     {key:'low',      icon:'ti-alert-triangle', label:'ต้องสั่งซื้อ',  val:cLow},
-    {key:'waiting',  icon:'ti-clock',           label:'รอชำระเงิน',   val:cWait},
-    {key:'shipping', icon:'ti-truck',           label:'กำลังจัดส่ง',  val:cShip},
-    {key:'qc',       icon:'ti-search',          label:'รอ QC',        val:cQc},
+    {key:'ordered',  icon:'ti-shopping-cart',  label:'จัดซื้อแล้ว',   val:cOrd},
+    {key:'waiting',  icon:'ti-clock',          label:'รอชำระเงิน',    val:cWait},
+    {key:'shipping', icon:'ti-truck',          label:'กำลังจัดส่ง',   val:cShip},
+    {key:'qc',       icon:'ti-search',         label:'รอ QC',         val:cQc},
   ].map(s => `<div onclick="${setFilter(s.key)}"
     style="background:var(--surface);border-radius:var(--r);border:1px solid ${filterKey===s.key?'var(--acc)':'var(--line)'};padding:10px 14px;cursor:pointer;flex:1;transition:.12s;display:flex;align-items:center;gap:10px">
     <i class="ti ${s.icon}" style="font-size:18px;color:${filterKey===s.key?'var(--acc)':'var(--ink4)'}"></i>
