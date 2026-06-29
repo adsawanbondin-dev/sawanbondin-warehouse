@@ -224,6 +224,7 @@ async function dbUpsertItem(m) {
   payload.supplier_qty  = m.supplier_qty  || null;
   payload.supplier_price = m.supplier_price || null;
   payload.expected_arrival_date = m.expected_arrival_date || null;
+  payload.next_order_date = m.next_order_date || null;
   const { error } = await sb.from('items').upsert(payload, { onConflict:'code' });
   if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
@@ -309,7 +310,7 @@ async function dbLoadItems() {
   const supplierCols = SUPPLIER_FIELDS === 'days' ? ',supplier_name,lead_time_days'
                       : SUPPLIER_FIELDS === 'date' ? ',supplier_name,next_delivery_date'
                       : '';
-  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at,pay_status,ship_status,tracking_url,supplier_qty,supplier_price,expected_arrival_date' + supplierCols;
+  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at,pay_status,ship_status,tracking_url,supplier_qty,supplier_price,expected_arrival_date,next_order_date' + supplierCols;
   const { data, error } = await sb.from('items')
     .select(cols)
     .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
@@ -328,6 +329,7 @@ async function dbLoadItems() {
     supplier_qty:r.supplier_qty||null,
     supplier_price:r.supplier_price||null,
     expected_arrival_date:r.expected_arrival_date||null,
+    next_order_date:r.next_order_date||null,
   }));
   (data||[]).forEach(r => {
     if (r.note) locationDB[r.code] = r.note;
@@ -4326,21 +4328,40 @@ async function setExpectedArrival(code, date) {
   if (curPage.startsWith('alert-')) renderAlertGroupPage(curPage.replace('alert-',''));
 }
 
+async function setNextOrderDate(code, date) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  m.next_order_date = date || null;
+  await sb.from('items').update({ next_order_date: m.next_order_date }).eq('code', code);
+}
+
 function checkArrivalAlerts() {
-  const today = new Date();
-  today.setHours(0,0,0,0);
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  // เช็คของถึงกำหนด
   const overdue = masterDB.filter(m => {
     if (!m.expected_arrival_date) return false;
     if (m.ship_status === 'stocked' || m.ship_status === 'received') return false;
-    const d = new Date(m.expected_arrival_date);
-    return d <= today;
+    return new Date(m.expected_arrival_date) <= today;
   });
+
+  // เช็คถึงวันสั่งซื้อ
+  const orderDue = masterDB.filter(m => {
+    if (!m.next_order_date) return false;
+    return new Date(m.next_order_date) <= today;
+  });
+
   if (overdue.length > 0) {
-    const names = overdue.map(m => m.name).slice(0,3).join(', ');
-    const more = overdue.length > 3 ? ` และอีก ${overdue.length-3} รายการ` : '';
+    const names = overdue.map(m=>m.name).slice(0,2).join(', ');
+    const more = overdue.length > 2 ? ` +${overdue.length-2}` : '';
     showToast(`📦 ของถึงกำหนด: ${names}${more}`, null, 6000);
   }
-  return overdue;
+  if (orderDue.length > 0) {
+    const names = orderDue.map(m=>m.name).slice(0,2).join(', ');
+    const more = orderDue.length > 2 ? ` +${orderDue.length-2}` : '';
+    showToast(`🛒 ถึงวันสั่งซื้อ: ${names}${more}`, null, 6000);
+  }
+  return { overdue, orderDue };
 }
 
 function _trackingDropdowns(m) {
@@ -4395,10 +4416,29 @@ async function dbLoadPaymentSuppliers() {
 function _renderPrSupplierSel() {
   const sel = document.getElementById('prShopSel');
   if (!sel) return;
+  // datalist สำหรับพิมพ์และค้นหา
+  const dl = document.getElementById('prShopDatalist');
+  if (dl) dl.innerHTML = paymentSuppliers.map(s => `<option value="${s.name}" data-id="${s.id}">${s.name}</option>`).join('');
   const opts = paymentSuppliers.map(s =>
     `<option value="${s.id}" data-name="${s.name}" data-pay="${s.pay_type}" data-num="${s.acc_num||''}" data-accname="${s.acc_name||''}" data-bank="${s.bank||''}">${s.name}</option>`
   ).join('');
-  sel.innerHTML = `<option value="">— เลือกร้านที่บันทึกไว้ / กรอกใหม่ —</option>${opts}<option value="new">+ บันทึกร้านใหม่</option>`;
+  sel.innerHTML = `<option value="">— เลือกร้านที่บันทึกไว้ —</option>${opts}<option value="new">+ บันทึกร้านใหม่</option>`;
+}
+
+function onPrShopNameInput(val) {
+  // พิมพ์ชื่อแล้วค้นหาจาก supplier list
+  const sup = paymentSuppliers.find(s => s.name.toLowerCase() === val.toLowerCase());
+  if (sup) {
+    document.getElementById('prPayType').value = sup.pay_type || 'พร้อมเพย์';
+    document.getElementById('prAccNum').value = sup.acc_num || '';
+    document.getElementById('prAccName').value = sup.acc_name || '';
+    document.getElementById('prBank').value = sup.bank || '';
+    document.getElementById('prBankRow').style.display = sup.pay_type === 'โอนธนาคาร' ? 'block' : 'none';
+    document.getElementById('prSaveSupplier').style.display = 'none';
+  } else {
+    document.getElementById('prSaveSupplier').style.display = val.trim() ? 'block' : 'none';
+  }
+  updatePrPreview();
 }
 
 async function dbSavePaymentSupplier(sup) {
@@ -4708,12 +4748,19 @@ async function openPoPaymentRequest(id) {
    SUPPLIER MANAGEMENT PAGE
    ═══════════════════════════════════════════════ */
 
-async function renderSupplierPage() {
+async function renderSupplierPage(q='') {
   await dbLoadPaymentSuppliers();
   const div = document.getElementById('page-suppliers');
   if (!div) return;
+  const search = q || document.getElementById('supSearch')?.value || '';
+  const filtered = search ? paymentSuppliers.filter(s =>
+    s.name.toLowerCase().includes(search.toLowerCase()) ||
+    (s.category||'').toLowerCase().includes(search.toLowerCase()) ||
+    (s.phone||'').includes(search) ||
+    (s.email||'').toLowerCase().includes(search.toLowerCase())
+  ) : paymentSuppliers;
 
-  const cards = paymentSuppliers.map(s => `
+  const cards = filtered.map(s => `
     <div style="background:var(--surface);border-radius:var(--r);border:1px solid var(--line);padding:12px 14px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
         <div>
@@ -4741,10 +4788,14 @@ async function renderSupplierPage() {
   div.innerHTML = `
     <div class="page-header">
       <div><div class="page-title">ผู้จำหน่าย</div>
-        <div class="page-sub">จัดการข้อมูลร้านและบัญชีสำหรับแจ้งเบิก</div></div>
+        <div class="page-sub">จัดการข้อมูลร้านและบัญชีสำหรับแจ้งเบิก · ${filtered.length} ราย</div></div>
       <button class="btn btn-primary btn-sm" onclick="openAddSupplier()">
         <i class="ti ti-plus"></i> เพิ่มผู้จำหน่าย
       </button>
+    </div>
+    <div style="margin-bottom:12px">
+      <input id="supSearch" class="fi" placeholder="ค้นหาชื่อร้าน หมวดหมู่ เบอร์โทร..."
+        style="max-width:320px" oninput="renderSupplierPage()" value="${search}">
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">${cards}</div>`;
 }
@@ -4917,14 +4968,20 @@ async function renderAlertGroupPage(group) {
     const stockColor = m.stock<=0 ? 'var(--red)' : isLow ? 'var(--warn)' : 'var(--ink2)';
     const canRecv = m.ship_status === 'qc' || m.ship_status === 'received';
 
-    // เช็ควันที่คาดว่าของจะมาถึง
     const today = new Date(); today.setHours(0,0,0,0);
     const arrDate = m.expected_arrival_date ? new Date(m.expected_arrival_date) : null;
-    const isOverdue = arrDate && arrDate <= today && m.ship_status !== 'stocked';
-    const isSoon = arrDate && !isOverdue && (arrDate - today) <= 86400000*2;
+    const ordDate = m.next_order_date ? new Date(m.next_order_date) : null;
+    const isArrOverdue = arrDate && arrDate <= today && m.ship_status !== 'stocked';
+    const isOrdDue = ordDate && ordDate <= today;
+    const isArrSoon = arrDate && !isArrOverdue && (arrDate - today) <= 86400000*2;
+    const isOrdSoon = ordDate && !isOrdDue && (ordDate - today) <= 86400000*2;
     const arrLabel = arrDate ? arrDate.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '';
 
-    return `<div style="background:var(--surface);border-radius:var(--r);border:1px solid ${isOverdue?'var(--warn)':'var(--line)'};padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+    // สีขอบการ์ด — แดงเมื่อมีแจ้งเตือน
+    const borderColor = (isLow || isArrOverdue || isOrdDue) ? 'var(--red)' :
+                        (isArrSoon || isOrdSoon) ? 'var(--warn)' : 'var(--line)';
+
+    return `<div style="background:var(--surface);border-radius:var(--r);border:1.5px solid ${borderColor};padding:12px 14px;display:flex;flex-direction:column;gap:8px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div style="flex:1;min-width:0">
           <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.name}</div>
@@ -4938,14 +4995,24 @@ async function renderAlertGroupPage(group) {
       ${m.max > 0 ? `<div style="height:3px;background:var(--s2);border-radius:2px;overflow:hidden">
         <div style="height:100%;width:${pct}%;background:${barColor};border-radius:2px;transition:.3s"></div>
       </div>` : ''}
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        <span style="font-size:10px;color:var(--ink4)">คาดว่าของจะมา</span>
-        <input type="date" value="${m.expected_arrival_date||''}"
-          style="font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
-          onchange="setExpectedArrival('${m.code}',this.value)">
-        ${isOverdue ? `<span style="font-size:10px;font-weight:500;color:var(--warn)"><i class="ti ti-alert-triangle"></i> เลยกำหนดแล้ว</span>` :
-          isSoon ? `<span style="font-size:10px;color:var(--ink3)"><i class="ti ti-clock"></i> อีก ${Math.round((arrDate-today)/86400000)} วัน</span>` :
-          arrLabel ? `<span style="font-size:10px;color:var(--ink4)">${arrLabel}</span>` : ''}
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--ink4);min-width:100px">📦 คาดว่าของจะมา</span>
+          <input type="date" value="${m.expected_arrival_date||''}"
+            style="font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
+            onchange="setExpectedArrival('${m.code}',this.value)">
+          ${isArrOverdue?`<span style="font-size:10px;font-weight:500;color:var(--red)">เลยกำหนดแล้ว</span>`:
+            isArrSoon?`<span style="font-size:10px;color:var(--warn)">อีก ${Math.round((arrDate-today)/86400000)} วัน</span>`:
+            arrLabel?`<span style="font-size:10px;color:var(--ink4)">${arrLabel}</span>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--ink4);min-width:100px">🛒 วันสั่งซื้อรอบถัดไป</span>
+          <input type="date" value="${m.next_order_date||''}"
+            style="font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
+            onchange="setNextOrderDate('${m.code}',this.value)">
+          ${isOrdDue?`<span style="font-size:10px;font-weight:500;color:var(--red)">ถึงวันสั่งซื้อแล้ว!</span>`:
+            isOrdSoon?`<span style="font-size:10px;color:var(--warn)">อีก ${Math.round((ordDate-today)/86400000)} วัน</span>`:''}
+        </div>
       </div>
       <div style="border-top:1px solid var(--line);padding-top:8px">
         ${_trackingDropdowns(m)}
