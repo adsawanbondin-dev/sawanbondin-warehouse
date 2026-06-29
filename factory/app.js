@@ -4981,12 +4981,17 @@ async function renderAlertGroupPage(group) {
     const alertBadge = (isLow || isArrOverdue || isOrdDue)
       ? `<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:#fee;color:var(--red);font-weight:500">⚠ แจ้งเตือน</span>` : '';
 
+    // badge สถานะการจัดซื้อ
+    const payBadge = m.pay_status === 'ordered' ? `<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:var(--acc-bg);color:var(--acc);font-weight:500">จัดซื้อแล้ว</span>` :
+      m.pay_status === 'waiting' ? `<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:#fff8ee;color:#b06000;font-weight:500">รอชำระเงิน</span>` :
+      m.pay_status === 'paid'    ? `<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:#eefaf4;color:#0a6640;font-weight:500">ชำระแล้ว</span>` : '';
+
     return `<div style="background:var(--surface);border-radius:var(--r);border:1px solid var(--line);padding:12px 14px;display:flex;flex-direction:column;gap:8px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
             <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.name}</div>
-            ${alertBadge}
+            ${alertBadge}${payBadge}
           </div>
           <div style="font-size:10px;color:var(--ink4);margin-top:1px">${m.code} · ${cfg?.label||m.pg}${m.supplier_name?` · ${m.supplier_name}`:''}</div>
         </div>
@@ -5000,7 +5005,7 @@ async function renderAlertGroupPage(group) {
       </div>` : ''}
       <div style="display:flex;flex-direction:column;gap:4px">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <span style="font-size:10px;color:var(--ink4);min-width:100px">📦 คาดว่าของจะมา</span>
+          <span style="font-size:10px;color:var(--ink4);min-width:100px">คาดว่าของจะมา</span>
           <input type="date" value="${m.expected_arrival_date||''}"
             style="font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
             onchange="setExpectedArrival('${m.code}',this.value)">
@@ -5009,7 +5014,7 @@ async function renderAlertGroupPage(group) {
             arrLabel?`<span style="font-size:10px;color:var(--ink4)">${arrLabel}</span>`:''}
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <span style="font-size:10px;color:var(--ink4);min-width:100px">🛒 วันสั่งซื้อรอบถัดไป</span>
+          <span style="font-size:10px;color:var(--ink4);min-width:100px">วันสั่งซื้อรอบถัดไป</span>
           <input type="date" value="${m.next_order_date||''}"
             style="font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
             onchange="setNextOrderDate('${m.code}',this.value)">
