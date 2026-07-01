@@ -18,12 +18,11 @@ window.WMS_CONFIG = {
     finish:     { label:'คลังสินค้าสำเร็จรูป',     prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
     raw:        { label:'คลังวัตถุดิบ',             prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
     equip_th:   { label:'คลังอุปกรณ์ Tea House',   prefix:'TH', hasLot:false, lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
-    equip_boot: { label:'คลังอุปกรณ์ Boot',         prefix:'TH', hasLot:false, lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
   },
 
   // แจ้งเตือนแบ่ง 2 กลุ่ม: สั่งซื้อ (วัตถุดิบ+อุปกรณ์ทั้ง2คลัง) / เบิก (สินค้าสำเร็จรูป)
   ALERT_GROUPS: {
-    purchase: ['raw', 'equip_th', 'equip_boot'],
+    purchase: ['raw', 'equip_th'],
     withdraw: ['finish'],
   },
 
