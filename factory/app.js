@@ -1855,24 +1855,28 @@ function updateTransformSummary(pg) {
 }
 
 async function submitTransform(pg) {
-  const code   = document.getElementById(pg+'-tf-ival')?.value;
-  const itemEl = document.getElementById(pg+'-tf-idisplay');
-  const name   = itemEl?.value || '';
-  const sel    = document.getElementById(pg+'-tf-fromlot');
+  const code     = (document.getElementById(pg+'-tf-ival')?.value||'').trim();
+  const name     = document.getElementById(pg+'-tf-idisplay')?.value || '';
+  const sel      = document.getElementById(pg+'-tf-fromlot');
   const fromLotId = sel?.value;
-  const fromOpt   = sel?.options[sel.selectedIndex];
-  const qtyOut = parseFloat(document.getElementById(pg+'-tf-qtyout')?.value);
+  const fromOpt   = sel?.options[sel?.selectedIndex];
+  const qtyOut   = parseFloat(document.getElementById(pg+'-tf-qtyout')?.value);
   const opName   = window._operatorName || '';
   const opDept   = window._operatorDept || '';
 
-  if (!code) { showToast('กรุณาเลือกรายการ','err'); return; }
-  if (!fromLotId) { showToast('กรุณาเลือก Lot ต้นทาง','err'); return; }
-  if (!qtyOut || qtyOut<=0) { showToast('กรุณาระบุจำนวนที่นำไปแปรรูป','err'); return; }
+  if (!code)    { showToast('กรุณาเลือกรายการ','err'); return; }
+  if (!fromLotId){ showToast('กรุณาเลือก Lot ต้นทาง','err'); return; }
+  if (!qtyOut || qtyOut<=0){ showToast('กรุณาระบุจำนวนที่นำไปแปรรูป','err'); return; }
 
   const avail = parseFloat(fromOpt?.dataset?.stock)||0;
-  if (qtyOut > avail) { showToast(`Lot ต้นทางมีไม่พอ (มี ${avail.toLocaleString()} เหลือ)`,'err'); return; }
+  if (qtyOut > avail){ showToast(`Lot ต้นทางมีไม่พอ (มี ${avail.toLocaleString()} เหลือ)`,'err'); return; }
 
-  // เก็บ batch ย่อยทั้งหมด
+  // snapshot ค่าจาก DOM ก่อน await เพื่อป้องกัน DOM เปลี่ยน
+  const codeSnap    = code;
+  const nameSnap    = name;
+  const fromLotIdSnap = fromLotId;
+  const fromLotSW   = fromOpt?.dataset?.sw || '';
+
   const batchContainers = [...document.querySelectorAll(`#${pg}-tf-batches .form-grid`)];
   const batches = batchContainers.map((div, i) => ({
     date: div.querySelector('.tf-batch-date')?.value,
@@ -1893,14 +1897,13 @@ async function submitTransform(pg) {
 
   setLoading(pg+'-tf-submit-btn', true, 'กำลังบันทึก...');
 
-  const fromLotSW = fromOpt?.dataset?.sw || '';
   const fromDateStr = fromLotSW ? new Date(fromLotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
-  const baseTx = { item_code:code, item_name:name, pg, operator_name:opName, department:opDept, via:'manual' };
+  const baseTx = { item_code:codeSnap, item_name:nameSnap, pg, operator_name:opName, department:opDept, via:'manual' };
 
   // บันทึก transform_out ครั้งเดียว
-  const result = await dbTransformStockLot(code, parseInt(fromLotId), qtyOut, batches[0].date, batches[0].qty, batches[0].note);
+  const result = await dbTransformStockLot(codeSnap, parseInt(fromLotIdSnap), qtyOut, batches[0].date, batches[0].qty, batches[0].note);
   setLoading(pg+'-tf-submit-btn', false);
-  if (!result.ok) return;
+  if (!result.ok) { showToast(`แปรรูปไม่สำเร็จ: ${result.error||'unknown'}`, 'err'); return; }
 
   await dbInsertTransaction({
     ...baseTx, action_type:'transform_out', quantity:qtyOut,
@@ -1913,7 +1916,7 @@ async function submitTransform(pg) {
     const newDateStr = new Date(b.date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
     // สำหรับ batch ที่ 2 เป็นต้นไป ต้องเรียก RPC แยก
     if (batches.indexOf(b) > 0) {
-      await dbTransformStockLot(code, parseInt(fromLotId), 0, b.date, b.qty, b.note);
+      await dbTransformStockLot(codeSnap, parseInt(fromLotIdSnap), 0, b.date, b.qty, b.note);
     }
     await dbInsertTransaction({
       ...baseTx, action_type:'transform_in', quantity:b.qty,
@@ -2054,13 +2057,16 @@ async function buildLotPickerHtml(code, pg) {
   if(!lots.length) return '<div class="lot-empty">ไม่มี Lot ที่มีสต็อกเหลืออยู่</div>';
   return lots.map(l=>{
     const sw = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '?';
-    const sp = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+    const sp = l.lot_supplier && /^\d{4}-\d{2}-\d{2}/.test(l.lot_supplier)
+      ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : (l.lot_supplier||'');
+    const note = l.note || '';
     const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
     const isExpired = l.expiry_date && new Date(l.expiry_date) < new Date();
     return `<div class="lot-select-item${isExpired?' lot-expired':''}" onclick="pickLot(this,'${pg}','${l.lot_sw}')" data-lot="${l.lot_sw}">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span class="lot-date">${sw}</span>
+          ${note?`<span style="font-size:10px;color:var(--ink2);font-weight:500">${note}</span>`:''}
           ${sp?`<span style="font-size:10px;color:var(--ink3)">Sup: ${sp}</span>`:''}
           ${ex?`<span style="font-size:10px;color:${isExpired?'var(--red)':'var(--ink4)'}">หมดอายุ: ${ex}</span>`:''}
         </div>
