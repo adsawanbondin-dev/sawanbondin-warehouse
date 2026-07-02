@@ -4880,6 +4880,82 @@ async function deleteSupplier(id) {
   showToast('ลบแล้ว');
 }
 
+async function snoozeItem(code, days) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  if (parseInt(days) === 0) {
+    m.snoozed_until = null;
+    await sb.from('items').update({ snoozed_until: null }).eq('code', code);
+    renderAlertGroupPage('purchase');
+    showToast('ยกเลิกพักรายการแล้ว');
+    return;
+  }
+  const until = new Date();
+  until.setDate(until.getDate() + parseInt(days));
+  const dateStr = until.toISOString().split('T')[0];
+  m.snoozed_until = dateStr;
+  await sb.from('items').update({ snoozed_until: dateStr }).eq('code', code);
+  closeModal('snoozeModal');
+  renderAlertGroupPage('purchase');
+  showToast(`พักรายการ ${days} วัน — กลับมา ${until.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'})}`);
+}
+
+async function snoozePoItem(id, days) {
+  const po = purchaseOrders.find(x => x.id === id);
+  if (!po) return;
+  const until = new Date();
+  until.setDate(until.getDate() + parseInt(days));
+  const dateStr = until.toISOString().split('T')[0];
+  po.snoozed_until = dateStr;
+  await sb.from('purchase_orders').update({ snoozed_until: dateStr }).eq('id', id);
+  closeModal('snoozeModal');
+  renderAlertGroupPage('purchase');
+  showToast(`พักรายการ ${days} วัน`);
+}
+
+function openSnoozeModal(code, poId) {
+  document.getElementById('snoozeCode').value = code||'';
+  document.getElementById('snoozePoId').value = poId||'';
+  document.getElementById('snoozeDays').value = '';
+  document.getElementById('snoozePreview').textContent = '';
+  document.getElementById('snoozeModal').classList.add('show');
+}
+
+async function confirmSnooze() {
+  const days = document.getElementById('snoozeDays').value;
+  const code = document.getElementById('snoozeCode').value;
+  const poId = document.getElementById('snoozePoId').value;
+  if (!days || parseInt(days) < 1) { showToast('กรุณาเลือกหรือระบุจำนวนวัน','err'); return; }
+  if (code) await snoozeItem(code, days);
+  else if (poId) await snoozePoItem(parseInt(poId), days);
+}
+
+async function openGroupPaymentRequest(supId, supName) {
+  const checkboxes = [...document.querySelectorAll(`.purchase-check[data-sup="${supId}"]:checked`)];
+  if (!checkboxes.length) { showToast('กรุณาติ๊กรายการที่ต้องการก่อน','err'); return; }
+  await dbLoadPaymentSuppliers();
+  const sup = paymentSuppliers.find(s => String(s.id) === String(supId));
+  document.getElementById('prCode').value = '';
+  document.getElementById('prCategory').value = '';
+  document.getElementById('prShopSel').value = supId ? String(supId) : '';
+  document.getElementById('prShopName').value = supName||'';
+  document.getElementById('prPayType').value = sup?.pay_type||'พร้อมเพย์';
+  document.getElementById('prAccNum').value = sup?.acc_num||'';
+  document.getElementById('prAccName').value = sup?.acc_name||'';
+  document.getElementById('prBank').value = sup?.bank||'';
+  document.getElementById('prBankRow').style.display = sup?.pay_type==='โอนธนาคาร'?'block':'none';
+  document.getElementById('prSaveSupplier').style.display = 'none';
+  prItems = checkboxes.map(cb => ({
+    desc: cb.dataset.name||'',
+    qty: cb.dataset.qty||'',
+    price: '',
+  }));
+  _renderPrSupplierSel();
+  renderPrItems();
+  updatePrPreview();
+  document.getElementById('paymentRequestModal').classList.add('show');
+}
+
 async function renderAlertGroupPage(group) {
   const div = document.getElementById('page-alert-'+group);
   if (!div) return;
