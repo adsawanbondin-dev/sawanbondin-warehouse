@@ -225,6 +225,7 @@ async function dbUpsertItem(m) {
   payload.supplier_price = m.supplier_price || null;
   payload.expected_arrival_date = m.expected_arrival_date || null;
   payload.next_order_date = m.next_order_date || null;
+  payload.snoozed_until = m.snoozed_until || null;
   const { error } = await sb.from('items').upsert(payload, { onConflict:'code' });
   if (error) { console.error('dbUpsertItem:', error.message); return false; }
   return true;
@@ -310,7 +311,7 @@ async function dbLoadItems() {
   const supplierCols = SUPPLIER_FIELDS === 'days' ? ',supplier_name,lead_time_days'
                       : SUPPLIER_FIELDS === 'date' ? ',supplier_name,next_delivery_date'
                       : '';
-  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at,pay_status,ship_status,tracking_url,supplier_qty,supplier_price,expected_arrival_date,next_order_date' + supplierCols;
+  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at,pay_status,ship_status,tracking_url,supplier_qty,supplier_price,expected_arrival_date,next_order_date,snoozed_until' + supplierCols;
   const { data, error } = await sb.from('items')
     .select(cols)
     .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
@@ -330,6 +331,7 @@ async function dbLoadItems() {
     supplier_price:r.supplier_price||null,
     expected_arrival_date:r.expected_arrival_date||null,
     next_order_date:r.next_order_date||null,
+    snoozed_until:r.snoozed_until||null,
   }));
   (data||[]).forEach(r => {
     if (r.note) locationDB[r.code] = r.note;
@@ -4968,7 +4970,30 @@ async function renderAlertGroupPage(group) {
 
   const SFIELDS = SUPPLIER_FIELDS;
 
-  const cards = filtered.map(m => {
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  // แยกรายการที่พักไว้ออก
+  const activeFiltered = filtered.filter(m => {
+    if (!m.snoozed_until) return true;
+    return new Date(m.snoozed_until) < today;
+  });
+  const snoozedFiltered = filtered.filter(m => {
+    if (!m.snoozed_until) return false;
+    return new Date(m.snoozed_until) >= today;
+  });
+
+  // group by supplier
+  const groups = {};
+  [...activeFiltered, ...purchaseOrders.filter(po => !po.snoozed_until || new Date(po.snoozed_until) < today)]
+    .forEach(m => {
+      const supName = m.supplier_name || m.payment_suppliers?.name || '—';
+      const supId   = m.supplier_id || null;
+      const key = supId ? `sup_${supId}` : `name_${supName}`;
+      if (!groups[key]) groups[key] = { supName, supId, items: [] };
+      groups[key].items.push(m);
+    });
+
+  function _mkCard(m, isAlertItem) {
     const cfg = WAREHOUSE_CONFIG[m.pg];
     const pct = m.max > 0 ? Math.min(100, Math.round(m.stock/m.max*100)) : 0;
     const isLow = m.min > 0 && m.stock <= m.min;
@@ -4976,7 +5001,6 @@ async function renderAlertGroupPage(group) {
     const stockColor = m.stock<=0 ? 'var(--red)' : isLow ? 'var(--warn)' : 'var(--ink2)';
     const canRecv = m.ship_status === 'qc' || m.ship_status === 'received';
 
-    const today = new Date(); today.setHours(0,0,0,0);
     const arrDate = m.expected_arrival_date ? new Date(m.expected_arrival_date) : null;
     const ordDate = m.next_order_date ? new Date(m.next_order_date) : null;
     const isArrOverdue = arrDate && arrDate <= today && m.ship_status !== 'stocked';
@@ -4985,119 +5009,135 @@ async function renderAlertGroupPage(group) {
     const isOrdSoon = ordDate && !isOrdDue && (ordDate - today) <= 86400000*2;
     const arrLabel = arrDate ? arrDate.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '';
 
-    // badge แจ้งเตือนเล็กๆ แทนกรอบสี
     const alertBadge = (isLow || isArrOverdue || isOrdDue)
       ? `<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:#fee;color:var(--red);font-weight:500">⚠ แจ้งเตือน</span>` : '';
-
-    // badge สถานะการจัดซื้อ
     const payBadge = m.pay_status === 'ordered' ? `<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:var(--acc-bg);color:var(--acc);font-weight:500">จัดซื้อแล้ว</span>` :
       m.pay_status === 'waiting' ? `<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:#fff8ee;color:#b06000;font-weight:500">รอชำระเงิน</span>` :
       m.pay_status === 'paid'    ? `<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:#eefaf4;color:#0a6640;font-weight:500">ชำระแล้ว</span>` : '';
 
+    const supId = m.supplier_id || null;
+    const qty = m.qty ? `${m.qty}${m.unit?' '+m.unit:''}` : (m.supplier_qty||'');
+    const isPO = !!m.item_name; // temp PO
+
+    const checkCode = isPO ? '' : m.code;
+    const checkId = isPO ? m.id : '';
+
     return `<div style="background:var(--surface);border-radius:var(--r);border:1px solid var(--line);padding:12px 14px;display:flex;flex-direction:column;gap:8px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <input type="checkbox" class="purchase-check" data-sup="${supId||''}"
+            data-name="${isPO?m.item_name:m.name}" data-qty="${qty}"
+            data-code="${checkCode}" data-poid="${checkId}"
+            style="width:14px;height:14px;cursor:pointer">
+        </div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
-            <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.name}</div>
+            ${isPO?`<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:var(--s2);color:var(--ink4);border:1px solid var(--line)">เพิ่มเติม</span>`:''}
+            <div style="font-weight:500;font-size:13px">${isPO?m.item_name:m.name}</div>
             ${alertBadge}${payBadge}
           </div>
-          <div style="font-size:10px;color:var(--ink4);margin-top:1px">${m.code} · ${cfg?.label||m.pg}${m.supplier_name?` · ${m.supplier_name}`:''}</div>
+          <div style="font-size:10px;color:var(--ink4);margin-top:1px">
+            ${isPO?(m.item_code?m.item_code+' · ':''):(m.code+' · '+(cfg?.label||m.pg))}
+            ${qty?' · '+qty:''}
+          </div>
         </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:16px;font-weight:700;color:${stockColor}">${m.stock.toLocaleString()}</div>
-          <div style="font-size:9px;color:var(--ink4)">Min ${m.min}${m.max?' / Max '+m.max:''}</div>
+        <div style="display:flex;gap:3px;flex-shrink:0;align-items:flex-start">
+          <button class="btn btn-sm" onclick="openSnoozeModal('${checkCode}','${checkId}')" title="พักรายการ" style="font-size:10px;padding:2px 6px">
+            <i class="ti ti-moon"></i>
+          </button>
+          ${isPO?`<button class="btn btn-sm" onclick="editPurchaseOrder(${m.id})" style="font-size:10px;padding:2px 6px"><i class="ti ti-pencil"></i></button>
+          <button class="btn btn-sm" onclick="dbDeletePurchaseOrder(${m.id}).then(()=>renderAlertGroupPage('purchase'))" style="color:var(--red);font-size:10px;padding:2px 6px"><i class="ti ti-trash"></i></button>`:''}
+          ${!isPO?`<div style="text-align:right">
+            <div style="font-size:16px;font-weight:700;color:${stockColor}">${m.stock.toLocaleString()}</div>
+            <div style="font-size:9px;color:var(--ink4)">Min ${m.min}${m.max?' / Max '+m.max:''}</div>
+          </div>`:''}
         </div>
       </div>
-      ${m.max > 0 ? `<div style="height:3px;background:var(--s2);border-radius:2px;overflow:hidden">
-        <div style="height:100%;width:${pct}%;background:${barColor};border-radius:2px;transition:.3s"></div>
+      ${!isPO && m.max > 0 ? `<div style="height:3px;background:var(--s2);border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${barColor};border-radius:2px"></div>
       </div>` : ''}
       <div style="display:flex;flex-direction:column;gap:4px">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span style="font-size:10px;color:var(--ink4);min-width:100px">คาดว่าของจะมา</span>
           <input type="date" value="${m.expected_arrival_date||''}"
             style="font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
-            onchange="setExpectedArrival('${m.code}',this.value)">
+            onchange="${isPO?`setPoExpectedArrival(${m.id},this.value)`:`setExpectedArrival('${m.code}',this.value)`}">
           ${isArrOverdue?`<span style="font-size:10px;font-weight:500;color:var(--red)">เลยกำหนดแล้ว</span>`:
             isArrSoon?`<span style="font-size:10px;color:var(--warn)">อีก ${Math.round((arrDate-today)/86400000)} วัน</span>`:
             arrLabel?`<span style="font-size:10px;color:var(--ink4)">${arrLabel}</span>`:''}
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        ${!isPO?`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span style="font-size:10px;color:var(--ink4);min-width:100px">วันสั่งซื้อรอบถัดไป</span>
           <input type="date" value="${m.next_order_date||''}"
             style="font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
             onchange="setNextOrderDate('${m.code}',this.value)">
           ${isOrdDue?`<span style="font-size:10px;font-weight:500;color:var(--red)">ถึงวันสั่งซื้อแล้ว!</span>`:
             isOrdSoon?`<span style="font-size:10px;color:var(--warn)">อีก ${Math.round((ordDate-today)/86400000)} วัน</span>`:''}
-        </div>
+        </div>`:''}
       </div>
       <div style="border-top:1px solid var(--line);padding-top:8px">
-        ${_trackingDropdowns(m)}
+        ${isPO ? (() => {
+          const payVal = m.pay_status||'';
+          const shipVal = m.ship_status||'';
+          const payOpts = Object.entries(PAY_STATUS_OPTS).map(([v,o])=>`<option value="${v}" ${payVal===v?'selected':''}>${o.label}</option>`).join('');
+          const shipOpts = Object.entries(SHIP_STATUS_OPTS).map(([v,o])=>`<option value="${v}" ${shipVal===v?'selected':''}>${o.label}</option>`).join('');
+          const trackUrl = m.tracking_url||'';
+          return `<div style="display:flex;flex-direction:column;gap:4px">
+            <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer" onchange="updatePoTracking(${m.id},'pay_status',this.value)">${payOpts}</select>
+            <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer" onchange="updatePoTracking(${m.id},'ship_status',this.value)">${shipOpts}</select>
+            <div style="display:flex;gap:3px;align-items:center">
+              <input type="url" placeholder="ลิงก์ Tracking..." value="${trackUrl}"
+                style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);flex:1;min-width:0;color:var(--ink2)"
+                onchange="setPoTrackingUrl(${m.id},this.value)" onblur="setPoTrackingUrl(${m.id},this.value)">
+              ${trackUrl?`<a href="${trackUrl}" target="_blank" style="color:var(--ink3);font-size:13px;line-height:1;text-decoration:none"><i class="ti ti-external-link"></i></a>`:''}
+            </div>
+            ${payVal==='waiting'?`<button class="btn btn-sm" onclick="openPoPaymentRequest(${m.id})" style="font-size:10px;padding:3px 8px"><i class="ti ti-file-invoice"></i> แจ้งเบิก</button>`:''}
+          </div>`;
+        })() : _trackingDropdowns(m)}
       </div>
-      ${canRecv ? `<button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','purchase')" style="width:100%;font-size:11px">
+      ${canRecv ? `<button class="btn btn-sm btn-primary" onclick="${isPO?`updatePoTracking(${m.id},'ship_status','stocked')`:`openAlertReceiveModal('${m.code}','purchase')`}" style="width:100%;font-size:11px">
         <i class="ti ti-check"></i> ยืนยันรับเข้าคลัง</button>` : ''}
     </div>`;
-  }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4);grid-column:1/-1">
-    <i class="ti ti-inbox" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>ไม่มีรายการในกลุ่มนี้</div>`;
+  }
 
-  // ── Temp PO cards ──
-  const poCards = purchaseOrders.map(po => {
-    const sup = po.payment_suppliers;
-    const today = new Date(); today.setHours(0,0,0,0);
-    const arrDate = po.expected_arrival_date ? new Date(po.expected_arrival_date) : null;
-    const isOverdue = arrDate && arrDate <= today && po.ship_status !== 'stocked';
-    const isSoon = arrDate && !isOverdue && (arrDate - today) <= 86400000*2;
-    const arrLabel = arrDate ? arrDate.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '';
-    const canRecv = po.ship_status === 'qc' || po.ship_status === 'received';
-    const payVal = po.pay_status || '';
-    const shipVal = po.ship_status || '';
-    const payOpts = Object.entries(PAY_STATUS_OPTS).map(([v,o])=>`<option value="${v}" ${payVal===v?'selected':''}>${o.label}</option>`).join('');
-    const shipOpts = Object.entries(SHIP_STATUS_OPTS).map(([v,o])=>`<option value="${v}" ${shipVal===v?'selected':''}>${o.label}</option>`).join('');
-    const trackUrl = po.tracking_url || '';
-
-    return `<div style="background:var(--surface);border-radius:var(--r);border:1px solid ${isOverdue?'var(--warn)':'var(--line)'};padding:12px 14px;display:flex;flex-direction:column;gap:8px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:5px">
-            <span style="font-size:9px;padding:1px 6px;border-radius:10px;background:var(--s2);color:var(--ink4);border:1px solid var(--line)">รายการเพิ่มเติม</span>
-          </div>
-          <div style="font-weight:500;font-size:13px;margin-top:3px">${po.item_name}</div>
-          <div style="font-size:10px;color:var(--ink4);margin-top:1px">
-            ${po.item_code?po.item_code+' · ':''}${sup?sup.name:'ไม่ระบุผู้จำหน่าย'}
-            ${po.qty?` · ${po.qty}${po.unit?' '+po.unit:''}` : ''}
-          </div>
+  // render grouped cards
+  const groupHtml = Object.entries(groups).map(([key, grp]) => {
+    const supId = grp.supId;
+    const cardHtml = grp.items.map(m => _mkCard(m, true)).join('');
+    return `<div style="grid-column:1/-1">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding:8px 12px;background:var(--s2);border-radius:var(--r);border:1px solid var(--line)">
+        <div style="font-size:12px;font-weight:500;color:var(--ink2)">
+          <i class="ti ti-building-store" style="font-size:12px;color:var(--ink4)"></i>
+          ${grp.supName}
         </div>
-        <div style="display:flex;gap:3px;flex-shrink:0">
-          <button class="btn btn-sm" onclick="editPurchaseOrder(${po.id})" title="แก้ไข"><i class="ti ti-pencil"></i></button>
-          <button class="btn btn-sm" onclick="dbDeletePurchaseOrder(${po.id}).then(()=>renderAlertGroupPage('purchase'))" style="color:var(--red)" title="ลบ"><i class="ti ti-trash"></i></button>
-        </div>
+        <button class="btn btn-sm" onclick="openGroupPaymentRequest('${supId||''}','${grp.supName}')" style="font-size:10px">
+          <i class="ti ti-file-invoice"></i> สร้างใบเบิกรวม
+        </button>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        <span style="font-size:10px;color:var(--ink4)">คาดว่าของจะมา</span>
-        <input type="date" value="${po.expected_arrival_date||''}"
-          style="font-size:10px;padding:2px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
-          onchange="setPoExpectedArrival(${po.id},this.value)">
-        ${isOverdue?`<span style="font-size:10px;font-weight:500;color:var(--warn)"><i class="ti ti-alert-triangle"></i> เลยกำหนดแล้ว</span>`:
-          isSoon?`<span style="font-size:10px;color:var(--ink3)"><i class="ti ti-clock"></i> อีก ${Math.round((arrDate-today)/86400000)} วัน</span>`:
-          arrLabel?`<span style="font-size:10px;color:var(--ink4)">${arrLabel}</span>`:''}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">
+        ${cardHtml}
       </div>
-      <div style="border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:4px">
-        <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
-          onchange="updatePoTracking(${po.id},'pay_status',this.value)">${payOpts}</select>
-        <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink2);cursor:pointer"
-          onchange="updatePoTracking(${po.id},'ship_status',this.value)">${shipOpts}</select>
-        <div style="display:flex;gap:3px;align-items:center">
-          <input type="url" placeholder="ลิงก์ Tracking..." value="${trackUrl}"
-            style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);flex:1;min-width:0;color:var(--ink2)"
-            onchange="setPoTrackingUrl(${po.id},this.value)" onblur="setPoTrackingUrl(${po.id},this.value)">
-          ${trackUrl?`<a href="${trackUrl}" target="_blank" style="color:var(--ink3);font-size:13px;line-height:1;text-decoration:none"><i class="ti ti-external-link"></i></a>`:''}
-        </div>
-        ${payVal==='waiting'?`<button class="btn btn-sm" onclick="openPoPaymentRequest(${po.id})" style="font-size:10px;padding:3px 8px">
-          <i class="ti ti-file-invoice"></i> แจ้งเบิก</button>`:''}
-      </div>
-      ${canRecv?`<button class="btn btn-sm btn-primary" onclick="updatePoTracking(${po.id},'ship_status','stocked')" style="width:100%;font-size:11px">
-        <i class="ti ti-check"></i> ยืนยันรับเข้าแล้ว</button>`:''}
     </div>`;
-  }).join('');
+  }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4);grid-column:1/-1">
+    <i class="ti ti-inbox" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>ไม่มีรายการ</div>`;
+
+  // รายการที่พักไว้
+  const snoozedHtml = snoozedFiltered.length ? `
+    <div style="grid-column:1/-1;margin-top:8px">
+      <div style="font-size:11px;color:var(--ink4);margin-bottom:6px"><i class="ti ti-moon"></i> พักไว้ (${snoozedFiltered.length} รายการ)</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;opacity:.6">
+        ${snoozedFiltered.map(m => {
+          const until = new Date(m.snoozed_until).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'});
+          return `<div style="background:var(--s2);border-radius:var(--r);border:1px solid var(--line);padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div>
+              <div style="font-size:12px;font-weight:500">${m.name||m.item_name}</div>
+              <div style="font-size:10px;color:var(--ink4)">กลับมา ${until}</div>
+            </div>
+            <button class="btn btn-sm" onclick="snoozeItem('${m.code}',0)" style="font-size:10px">ยกเลิกพัก</button>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
 
   div.innerHTML = `
     <div class="page-header">
@@ -5111,9 +5151,9 @@ async function renderAlertGroupPage(group) {
     <div class="card" style="overflow:hidden;margin-bottom:14px">
       <div style="display:flex;gap:6px;padding:8px 12px;overflow-x:auto;flex-wrap:nowrap">${filterBtns}</div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">
-      ${cards}
-      ${poCards}
+    <div style="display:grid;grid-template-columns:1fr;gap:14px">
+      ${groupHtml}
+      ${snoozedHtml}
     </div>`;
 }
 
