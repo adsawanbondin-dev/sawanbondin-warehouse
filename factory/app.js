@@ -522,6 +522,59 @@ function renderBomPage() {
   dbLoadBomRecipes().then(() => _renderBomContent(div));
 }
 
+async function renderProductionHistory() {
+  const { data } = await sb.from('production_logs')
+    .select('*, production_log_items(*)')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  const logs = data || [];
+  const div = document.getElementById('page-bom');
+  if (!div) return;
+
+  const rows = logs.map(l => {
+    const dt = new Date(l.created_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const itemRows = (l.production_log_items||[]).map(i => {
+      const sw = i.lot_sw ? new Date(i.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+      return `<tr style="font-size:11px">
+        <td style="padding:4px 8px;color:var(--ink3)">${i.item_name}</td>
+        <td style="padding:4px 8px;text-align:center;color:var(--ink4)">${sw}</td>
+        <td style="padding:4px 8px;text-align:right;color:var(--ink3)">${i.qty_used.toLocaleString()}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="card" style="margin-bottom:8px">
+      <div class="card-title">
+        <div class="card-title-left">
+          <i class="ti ti-package" style="color:var(--acc)"></i>
+          <span style="font-weight:600">${l.recipe_name}</span>
+          <span class="mcount">${l.qty.toLocaleString()} ${l.output_unit}</span>
+          ${l.output_item_code?`<span style="font-size:10px;color:var(--green)">→ ${masterDB.find(m=>m.code===l.output_item_code)?.name||l.output_item_code}</span>`:''}
+        </div>
+        <div style="text-align:right;font-size:10px;color:var(--ink4)">
+          <div>${dt}</div>
+          <div>${l.operator_name||''}</div>
+        </div>
+      </div>
+      ${l.note?`<div style="font-size:11px;color:var(--ink3);margin-bottom:6px">${l.note}</div>`:''}
+      ${itemRows?`<table style="width:100%;border-collapse:collapse;margin-top:6px;border-top:1px solid var(--line)">
+        <thead><tr style="font-size:10px;color:var(--ink4)">
+          <th style="padding:4px 8px;text-align:left;font-weight:400">รายการ</th>
+          <th style="padding:4px 8px;text-align:center;font-weight:400">Lot</th>
+          <th style="padding:4px 8px;text-align:right;font-weight:400">จำนวน</th>
+        </tr></thead>
+        <tbody>${itemRows}</tbody>
+      </table>`:''}
+    </div>`;
+  }).join('') || `<div style="text-align:center;padding:40px;color:var(--ink4)">ยังไม่มีประวัติการผลิต</div>`;
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">สูตรการผลิต (BOM)</div>
+        <div class="page-sub">ประวัติการผลิต</div></div>
+      <button class="btn btn-sm" onclick="renderBomPage()"><i class="ti ti-arrow-left"></i> กลับ</button>
+    </div>
+    <div style="max-width:600px;margin:0 auto">${rows}</div>`;
+}
+
 function _renderBomContent(div) {
   const recipeCards = bomRecipes.map(r => {
     const items = (r.bom_items||[]).map(i =>
@@ -557,7 +610,8 @@ function _renderBomContent(div) {
     <div class="page-header">
       <div><div class="page-title">สูตรการผลิต (BOM)</div>
         <div class="page-sub">จัดการสูตร และทำแพคเกจ</div></div>
-      <div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="renderProductionHistory()"><i class="ti ti-history"></i> ประวัติการผลิต</button>
         ${canManageMaster()?`<button class="btn btn-primary btn-sm" onclick="openBomEdit(null)">
           <i class="ti ti-plus"></i> สร้างสูตร</button>`:''}
       </div>
@@ -679,8 +733,17 @@ function openPackaging(recipeId) {
   document.getElementById('pkgRecipeName').textContent = r.name;
   document.getElementById('pkgQty').value = '';
   document.getElementById('pkgOperator').value = window._operatorName||'';
+  document.getElementById('pkgNote').value = '';
   document.getElementById('pkgPreview').innerHTML = '';
-  // เลือกแผนก
+  // output item — เลือกสินค้าสำเร็จรูปที่จะบวก stock
+  const finishItems = masterDB.filter(m => m.pg === 'finish');
+  const outSel = document.getElementById('pkgOutputItem');
+  if (outSel) {
+    outSel.innerHTML = `<option value="">— ไม่บวก stock สำเร็จรูป —</option>` +
+      finishItems.map(m => `<option value="${m.code}" data-name="${m.name}">${m.name}</option>`).join('');
+    // ถ้า recipe มี output_item_code บันทึกไว้ให้เลือกอัตโนมัติ
+    if (r.output_item_code) outSel.value = r.output_item_code;
+  }
   const deptEl = document.getElementById('pkgDept');
   if (deptEl) selRadio(deptEl.querySelector('.radio-opt'), 'pkgDept');
   document.getElementById('pkgModal').classList.add('show');
@@ -746,56 +809,81 @@ async function submitPackaging() {
   const qty = parseFloat(document.getElementById('pkgQty').value);
   const opName = (document.getElementById('pkgOperator').value||'').trim();
   const dept = document.querySelector('#pkgDept .radio-opt.sel')?.textContent?.trim()||'';
+  const pkgNote = (document.getElementById('pkgNote')?.value||'').trim();
+  const outputCode = document.getElementById('pkgOutputItem')?.value||'';
   const r = bomRecipes.find(x=>x.id===recipeId);
 
   if (!r) return;
   if (!qty||qty<=0) { showToast('กรุณาระบุจำนวนที่ต้องการผลิต','err'); return; }
   if (!opName) { showToast('กรุณาระบุผู้ทำรายการ','err'); return; }
 
-  // เช็คว่าของพอไหม
+  // เช็คว่าของพอไหมทุกรายการก่อน
   const items = r.bom_items||[];
   for (const item of items) {
     const needed = item.qty_per_unit * qty;
     const m = masterDB.find(x=>x.code===item.item_code);
-    if (!m || m.stock < needed) {
-      showToast(`${item.item_name} ไม่พอ (มี ${m?.stock||0} ต้องการ ${needed})`, 'err');
-      return;
-    }
-  }
-
-  setLoading('pkgSubmitBtn', true, 'กำลังเบิก...');
-
-  // เบิกออกทุกรายการ
-  for (const item of items) {
-    const needed = item.qty_per_unit * qty;
-    const m = masterDB.find(x=>x.code===item.item_code);
-    if (!m) continue;
-
     const cfg = WAREHOUSE_CONFIG[item.pg];
     const hasLot = cfg?.hasLot;
 
     if (hasLot) {
       const lotSelEl = document.querySelector(`.pkg-lot-sel[data-code="${item.item_code}"]`);
       const lotSelVal = lotSelEl?.value || 'auto';
-
       if (lotSelVal !== 'auto') {
-        // ใช้ lot ที่เลือก — เช็คว่าพอไหม
         const lot = (lotDB[item.item_code]||[]).find(l=>String(l.id)===lotSelVal);
-        if (!lot) { showToast(`ไม่พบ Lot ของ ${item.item_name}`,'err'); setLoading('pkgSubmitBtn',false); return; }
-        if (lot.stock < needed) {
-          showToast(`${item.item_name} — Lot ที่เลือกมีไม่พอ (มี ${lot.stock.toLocaleString()} ต้องการ ${needed.toLocaleString()})`, 'err');
-          setLoading('pkgSubmitBtn', false);
+        if (!lot || lot.stock < needed) {
+          showToast(`${item.item_name} — Lot ที่เลือกมีไม่พอ (มี ${lot?.stock||0} ต้องการ ${needed})`, 'err');
           return;
         }
-        const sw = lotSelEl.options[lotSelEl.selectedIndex]?.dataset?.sw || lot.lot_sw;
-        await dbAdjustStockWithLot(item.item_code, 'withdraw', needed, { lotId: lot.id, lotSW: sw });
       } else {
-        // FIFO อัตโนมัติ
+        const totalLotStock = (lotDB[item.item_code]||[]).filter(l=>l.stock>0).reduce((s,l)=>s+l.stock,0);
+        if (totalLotStock < needed) {
+          showToast(`${item.item_name} ไม่พอ (มี ${totalLotStock} ต้องการ ${needed})`, 'err');
+          return;
+        }
+      }
+    } else {
+      if (!m || m.stock < needed) {
+        showToast(`${item.item_name} ไม่พอ (มี ${m?.stock||0} ต้องการ ${needed})`, 'err');
+        return;
+      }
+    }
+  }
+
+  setLoading('pkgSubmitBtn', true, 'กำลังเบิก...');
+
+  // บันทึก production log
+  const { data: logData } = await sb.from('production_logs').insert({
+    recipe_id: recipeId, recipe_name: r.name, qty, output_unit: r.output_unit,
+    output_item_code: outputCode||null, operator_name: opName, note: pkgNote||null
+  }).select().single();
+  const logId = logData?.id;
+
+  // เบิกออกทุกรายการ
+  const logItems = [];
+  for (const item of items) {
+    const needed = item.qty_per_unit * qty;
+    const m = masterDB.find(x=>x.code===item.item_code);
+    if (!m) continue;
+    const cfg = WAREHOUSE_CONFIG[item.pg];
+    const hasLot = cfg?.hasLot;
+    let usedLotId = null, usedLotSW = null;
+
+    if (hasLot) {
+      const lotSelEl = document.querySelector(`.pkg-lot-sel[data-code="${item.item_code}"]`);
+      const lotSelVal = lotSelEl?.value || 'auto';
+      if (lotSelVal !== 'auto') {
+        const lot = (lotDB[item.item_code]||[]).find(l=>String(l.id)===lotSelVal);
+        if (lot) {
+          usedLotId = lot.id; usedLotSW = lot.lot_sw;
+          await dbAdjustStockWithLot(item.item_code, 'withdraw', needed, { lotId: lot.id, lotSW: lot.lot_sw });
+        }
+      } else {
         const lots = (lotDB[item.item_code]||[]).filter(l=>l.stock>0).sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
         let remaining = needed;
         for (const lot of lots) {
           if (remaining <= 0) break;
           const take = Math.min(lot.stock, remaining);
+          if (!usedLotId) { usedLotId = lot.id; usedLotSW = lot.lot_sw; }
           await dbAdjustStockWithLot(item.item_code, 'withdraw', take, { lotId: lot.id, lotSW: lot.lot_sw });
           remaining -= take;
         }
@@ -804,14 +892,36 @@ async function submitPackaging() {
       await dbAdjustStockWithLot(item.item_code, 'withdraw', needed, {});
     }
 
-    // บันทึก transaction
-    const rec = {
+    logItems.push({ log_id: logId, item_code: item.item_code, item_name: item.item_name,
+      pg: item.pg, lot_id: usedLotId, lot_sw: usedLotSW, qty_used: needed });
+
+    await dbInsertTransaction({
       item_code: item.item_code, item_name: item.item_name, pg: item.pg,
       action_type: 'withdraw', quantity: needed,
       operator_name: opName, department: dept,
-      note: `แพคเกจ: ${r.name} × ${qty} ${r.output_unit}`, via: 'manual'
-    };
-    await dbInsertTransaction(rec);
+      note: `แพคเกจ: ${r.name} × ${qty} ${r.output_unit}${pkgNote?' — '+pkgNote:''}`, via: 'manual'
+    });
+  }
+
+  // บันทึก log items
+  if (logId && logItems.length) {
+    await sb.from('production_log_items').insert(logItems);
+  }
+
+  // บวก stock สำเร็จรูป
+  if (outputCode) {
+    const outM = masterDB.find(x=>x.code===outputCode);
+    if (outM) {
+      const today = new Date().toISOString().split('T')[0];
+      await dbAdjustStockWithLot(outputCode, 'receive', qty, { lotSW: today, name: outM.name });
+      await dbInsertTransaction({
+        item_code: outputCode, item_name: outM.name, pg: 'finish',
+        action_type: 'receive', quantity: qty,
+        operator_name: opName, department: dept,
+        note: `ผลผลิต: ${r.name} × ${qty} ${r.output_unit}`, via: 'manual'
+      });
+      showToast(`บวก stock "${outM.name}" +${qty} ${r.output_unit} เรียบร้อย`);
+    }
   }
 
   setLoading('pkgSubmitBtn', false);
