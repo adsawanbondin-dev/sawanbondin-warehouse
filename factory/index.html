@@ -1041,7 +1041,7 @@ if ('serviceWorker' in navigator) {
 </div></div>
 
 <!-- BOM Modal — ทำแพคเกจ -->
-<div class="modal-wrap" id="pkgModal"><div class="modal" style="max-width:520px;width:95%">
+<div class="modal-wrap" id="pkgModal"><div class="modal" style="max-width:540px;width:95%">
   <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
     <div class="card-title-left"><i class="ti ti-package"></i> ทำแพคเกจ</div>
     <button class="btn btn-sm" onclick="closeModal('pkgModal')">ยกเลิก</button>
@@ -1060,6 +1060,12 @@ if ('serviceWorker' in navigator) {
     <div class="fg form-full"><label class="fl">จำนวนที่ต้องการผลิต <span class="req">*</span></label>
       <input class="fi" id="pkgQty" type="number" min="1" step="1" placeholder="0" inputmode="decimal"
         oninput="updatePkgPreview()"></div>
+    <div class="fg form-full"><label class="fl">บวก stock สินค้าสำเร็จรูป</label>
+      <select class="fi" id="pkgOutputItem" style="padding:5px 8px">
+        <option value="">— ไม่บวก stock —</option>
+      </select></div>
+    <div class="fg form-full"><label class="fl">หมายเหตุ</label>
+      <input class="fi" id="pkgNote" placeholder="รายละเอียดเพิ่มเติม..."></div>
   </div>
   <div id="pkgPreview"></div>
   <input type="hidden" id="pkgRecipeId">
