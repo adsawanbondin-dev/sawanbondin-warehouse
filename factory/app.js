@@ -1267,6 +1267,31 @@ function dbExpandAll(expand) {
   });
 }
 
+/* ── switchPage ── */
+function switchPage(p) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelector(`[data-page="${p}"]`)?.classList.add('active');
+  const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
+  ['master', ...WAREHOUSE_PAGES, 'stockcount', 'dashboard', 'suppliers', ...alertGroupPages].forEach(pg => {
+    const el = document.getElementById('page-'+pg);
+    if (el) el.className = pg===p ? 'page-visible' : 'page-hidden';
+  });
+  curPage = p;
+  if (p==='master') {
+    renderMasterPage();
+  } else if (p==='suppliers') {
+    renderSupplierPage();
+  } else if (p.startsWith('alert-')) {
+    renderAlertGroupPage(p.replace('alert-',''));
+  } else {
+    renderWarehousePage(p);
+    dbLoadTransactions(p).then(recs => {
+      txState[p].records = recs;
+      renderHistory(p);
+    });
+  }
+}
+
 /* ── Override switchPage เพิ่ม dashboard ── */
 const _dbOrigSwitch = switchPage;
 switchPage = async function(p) {
