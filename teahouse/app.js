@@ -3878,60 +3878,136 @@ function renderAlertGroupPage(group) {
   if (!ALERT_GROUPS || !ALERT_GROUPS[group]) { div.innerHTML = ''; return; }
 
   const withdrawLabel = _CFG.WITHDRAW_ALERT_LABEL || 'รายการเบิก';
-  const labels = { purchase:{title:'รายการจัดซื้อ', sub:'รายการที่สต็อกต่ำกว่า Min — ต้องสั่งซื้อเพิ่ม'},
-                    withdraw:{title:withdrawLabel,   sub:'รายการที่สต็อกต่ำกว่า Min'} };
-  const meta = labels[group] || { title:group, sub:'' };
-  const alerts = getAlertItems(null, group);
-  const showSupplier = group === 'purchase' && SUPPLIER_FIELDS;
-  const showMax = group === 'withdraw';
-  const leadColLabel = SUPPLIER_FIELDS === 'date' ? 'ส่งของรอบถัดไป' : 'Lead time';
 
-  const showTracking = group === 'purchase';
+  // ── purchase group ── (เหมือนเดิม)
+  if (group === 'purchase') {
+    const alerts = getAlertItems(null, group);
+    const showSupplier = SUPPLIER_FIELDS;
+    const leadColLabel = SUPPLIER_FIELDS === 'date' ? 'ส่งของรอบถัดไป' : 'Lead time';
+    const rows = alerts.map((m,i) => {
+      const cfg = WAREHOUSE_CONFIG[m.pg];
+      const stockColor = m.stock<=0 ? 'var(--red)' : 'var(--warn)';
+      const leadCell = SUPPLIER_FIELDS === 'date'
+        ? (m.next_delivery_date ? new Date(m.next_delivery_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '—')
+        : (m.lead_time_days!=null ? m.lead_time_days+' วัน' : '—');
+      return `<tr>
+        <td style="color:var(--ink4)">${i+1}</td>
+        <td style="font-weight:500">${m.name}<div style="font-size:10px;color:var(--ink4)">${m.code}</div></td>
+        <td>${cfg?.label||m.pg}</td>
+        <td style="text-align:right;font-weight:600;color:${stockColor}">${m.stock}</td>
+        <td style="text-align:right;color:var(--ink3)">${m.min}</td>
+        ${showSupplier?`<td>${m.supplier_name||'—'}</td><td style="text-align:center">${leadCell}</td>`:''}
+        <td>${_trackingDropdowns(m)}</td>
+        <td style="text-align:center;white-space:nowrap">
+          <button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','${group}')"><i class="ti ti-check"></i> รับเข้า</button>
+          <button class="btn btn-sm" onclick="editMinMax('${m.code}')"><i class="ti ti-pencil"></i></button>
+        </td>
+      </tr>`;
+    }).join('') || `<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--ink4)">ไม่มีรายการ</td></tr>`;
+    div.innerHTML = `
+      <div class="page-header">
+        <div><div class="page-title">รายการจัดซื้อ</div>
+          <div class="page-sub">รายการที่สต็อกต่ำกว่า Min${alerts.length?` · พบ ${alerts.length} รายการ`:''}</div></div>
+      </div>
+      <div class="sc-table-wrap"><table class="sc-table">
+        <thead><tr>
+          <th style="width:28px">#</th><th>รายการ</th><th>คลัง</th>
+          <th style="text-align:right">คงเหลือ</th><th style="text-align:right">Min</th>
+          ${showSupplier?`<th>ผู้จำหน่าย</th><th>${leadColLabel}</th>`:''}
+          <th style="min-width:120px">ติดตาม</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+    return;
+  }
 
-  const rows = alerts.map((m,i) => {
-    const cfg = WAREHOUSE_CONFIG[m.pg];
-    const stockColor = m.stock<=0 ? 'var(--red)' : 'var(--warn)';
-    const leadCell = SUPPLIER_FIELDS === 'date'
-      ? (m.next_delivery_date ? new Date(m.next_delivery_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '<span style="color:var(--ink4)">—</span>')
-      : (m.lead_time_days!=null ? m.lead_time_days+' วัน' : '<span style="color:var(--ink4)">—</span>');
-    return `<tr>
-      <td style="color:var(--ink4)">${i+1}</td>
-      <td style="font-weight:500">${m.name}<div style="font-size:10px;color:var(--ink4)">${m.code}</div></td>
-      <td>${cfg?.label||m.pg}</td>
-      <td style="text-align:right;font-weight:600;color:${stockColor}">${m.stock}</td>
-      <td style="text-align:right;color:var(--ink3)">${m.min}</td>
-      ${showMax ? `<td style="text-align:right;color:var(--ink3)">${m.max||'<span style="color:var(--ink4)">—</span>'}</td>` : ''}
-      ${showSupplier ? `<td>${m.supplier_name||'<span style="color:var(--ink4)">—</span>'}</td>
-      <td style="text-align:center">${leadCell}</td>` : ''}
-      ${showTracking ? `<td>${_trackingDropdowns(m)}</td>` : ''}
-      <td style="text-align:center;white-space:nowrap">
-        <button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','${group}')" title="ยืนยันรับของ"><i class="ti ti-check"></i> รับเข้า</button>
-        <button class="btn btn-sm" onclick="editMinMax('${m.code}')" title="แก้ไข Min/Max"><i class="ti ti-pencil"></i></button>
-      </td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="${showSupplier?9:(showMax?7:(showTracking?7:6))}" style="padding:24px;text-align:center;color:var(--ink4);font-size:12px"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</td></tr>`;
+  // ── withdraw group — layout ใหม่ ──
+  const allAlerts = getAlertItems(null, group);
+
+  // แยกตามกลุ่มคลัง
+  const WH_GROUPS = {
+    finish:   'สินค้าสำเร็จรูป',
+    raw:      'วัตถุดิบ',
+    equip_th: 'อุปกรณ์',
+  };
+
+  const SC_STATUS_OPTS_W = {
+    pending:   { label: 'ยังไม่ได้ดำเนินการ', color: 'var(--ink4)' },
+    preparing: { label: 'กำลังจัดเตรียม',     color: '#e8a23a' },
+    ready:     { label: 'จัดเตรียมเรียบร้อย', color: 'var(--green)' },
+  };
+
+  const groupSections = Object.entries(WH_GROUPS).map(([pg, label]) => {
+    const groupAlerts = allAlerts.filter(m => m.pg === pg);
+    if (!groupAlerts.length) return '';
+
+    const rows = groupAlerts.map((m,i) => {
+      const stockColor = m.stock<=0 ? 'var(--red)' : 'var(--warn)';
+      const loc = locationDB[m.code] || '—';
+      const status = m.count_status || 'pending';
+      const statusOpts = Object.entries(SC_STATUS_OPTS_W).map(([v,o]) =>
+        `<option value="${v}" ${status===v?'selected':''}>${o.label}</option>`).join('');
+      return `<tr>
+        <td style="color:var(--ink4);font-size:11px">${i+1}</td>
+        <td style="font-weight:500">${m.name}</td>
+        <td style="font-size:11px;color:var(--ink3)">${loc}</td>
+        <td style="text-align:right;font-weight:600;color:${stockColor}">${m.stock.toLocaleString()}</td>
+        <td style="text-align:right;color:var(--ink3)">${m.min}</td>
+        <td style="text-align:right;color:var(--ink3)">${m.max||'—'}</td>
+        <td>
+          <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${SC_STATUS_OPTS_W[status].color};cursor:pointer"
+            onchange="whSetStatus('${m.code}',this.value)">
+            ${statusOpts}
+          </select>
+        </td>
+        <td style="text-align:center;white-space:nowrap">
+          <button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','${group}')" style="font-size:10px">
+            <i class="ti ti-check"></i> รับเข้า
+          </button>
+          <button class="btn btn-sm" onclick="editMinMax('${m.code}')" style="font-size:10px">
+            <i class="ti ti-pencil"></i>
+          </button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `<div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:500;color:var(--ink3);margin-bottom:6px;padding:6px 10px;background:var(--s2);border-radius:var(--r);border:1px solid var(--line)">
+        <i class="ti ti-box" style="font-size:11px"></i> ${label} · ${groupAlerts.length} รายการ
+      </div>
+      <div class="sc-table-wrap">
+        <table class="sc-table">
+          <thead><tr>
+            <th style="width:28px">#</th>
+            <th>รายการ</th>
+            <th>พิกัด</th>
+            <th style="text-align:right">คงเหลือ</th>
+            <th style="text-align:right">Min</th>
+            <th style="text-align:right">Max</th>
+            <th>สถานะ</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
 
   div.innerHTML = `
     <div class="page-header">
-      <div><div class="page-title">${meta.title}</div>
-        <div class="page-sub">${meta.sub}${alerts.length ? ` · พบ ${alerts.length} รายการ` : ''}</div></div>
+      <div><div class="page-title">${withdrawLabel}</div>
+        <div class="page-sub">รายการที่สต็อกต่ำกว่า Min · พบ ${allAlerts.length} รายการ</div></div>
     </div>
-    <div class="sc-table-wrap">
-      <table class="sc-table">
-        <thead><tr>
-          <th style="width:28px">#</th>
-          <th>รายการ</th>
-          <th>คลัง</th>
-          <th style="text-align:right">คงเหลือ</th>
-          <th style="text-align:right">Min</th>
-          ${showMax ? '<th style="text-align:right">Max</th>' : ''}
-          ${showSupplier ? `<th>ผู้จำหน่าย</th><th style="text-align:center">${leadColLabel}</th>` : ''}
-          ${showTracking ? '<th style="min-width:120px">ติดตาม</th>' : ''}
-          <th style="width:40px"></th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
+    ${groupSections || `<div style="padding:40px;text-align:center;color:var(--ink4)">
+      <i class="ti ti-check" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>
+      ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</div>`}`;
+}
+
+async function whSetStatus(code, status) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  m.count_status = status;
+  await sb.from('items').update({ count_status: status }).eq('code', code);
 }
 
 
