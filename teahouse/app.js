@@ -3921,10 +3921,7 @@ function renderAlertGroupPage(group) {
     return;
   }
 
-  // ── withdraw group — layout ใหม่ ──
-  const allAlerts = getAlertItems(null, group);
-
-  // แยกตามกลุ่มคลัง
+  // ── withdraw group — แผนการเติมของประจำวัน ──
   const WH_GROUPS = {
     finish:   'สินค้าสำเร็จรูป',
     raw:      'วัตถุดิบ',
@@ -3937,23 +3934,32 @@ function renderAlertGroupPage(group) {
     ready:     { label: 'จัดเตรียมเรียบร้อย', color: 'var(--green)' },
   };
 
+  // แสดงทุกรายการในทุกคลัง ไม่ใช่แค่ที่ต่ำกว่า Min
   const groupSections = Object.entries(WH_GROUPS).map(([pg, label]) => {
-    const groupAlerts = allAlerts.filter(m => m.pg === pg);
-    if (!groupAlerts.length) return '';
+    const items = masterDB.filter(m => m.pg === pg && m.is_active !== false);
+    if (!items.length) return '';
 
-    const rows = groupAlerts.map((m,i) => {
-      const stockColor = m.stock<=0 ? 'var(--red)' : 'var(--warn)';
+    const rows = items.map((m,i) => {
+      const isLow = m.min > 0 && m.stock <= m.min;
+      const stockColor = m.stock<=0 ? 'var(--red)' : isLow ? 'var(--warn)' : 'var(--ink2)';
+      const refill = m.max > 0 ? Math.max(0, m.max - m.stock) : '—';
       const loc = locationDB[m.code] || '—';
       const status = m.count_status || 'pending';
       const statusOpts = Object.entries(SC_STATUS_OPTS_W).map(([v,o]) =>
         `<option value="${v}" ${status===v?'selected':''}>${o.label}</option>`).join('');
-      return `<tr>
+
+      return `<tr style="${isLow?'background:#fef8f8':''}">
         <td style="color:var(--ink4);font-size:11px">${i+1}</td>
-        <td style="font-weight:500">${m.name}</td>
+        <td style="font-weight:500">${m.name}
+          ${isLow?`<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:#fee;color:var(--red);font-weight:500;margin-left:4px">ต่ำกว่า Min</span>`:''}
+        </td>
         <td style="font-size:11px;color:var(--ink3)">${loc}</td>
         <td style="text-align:right;font-weight:600;color:${stockColor}">${m.stock.toLocaleString()}</td>
-        <td style="text-align:right;color:var(--ink3)">${m.min}</td>
+        <td style="text-align:right;color:var(--ink3)">${m.min||'—'}</td>
         <td style="text-align:right;color:var(--ink3)">${m.max||'—'}</td>
+        <td style="text-align:right;font-weight:600;color:${refill>0?'var(--acc)':'var(--ink4)'}">
+          ${typeof refill==='number'?refill.toLocaleString():'—'}
+        </td>
         <td>
           <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${SC_STATUS_OPTS_W[status].color};cursor:pointer"
             onchange="whSetStatus('${m.code}',this.value)">
@@ -3964,16 +3970,16 @@ function renderAlertGroupPage(group) {
           <button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','${group}')" style="font-size:10px">
             <i class="ti ti-check"></i> รับเข้า
           </button>
-          <button class="btn btn-sm" onclick="editMinMax('${m.code}')" style="font-size:10px">
-            <i class="ti ti-pencil"></i>
-          </button>
         </td>
       </tr>`;
     }).join('');
 
+    const lowCount = items.filter(m => m.min>0 && m.stock<=m.min).length;
+
     return `<div style="margin-bottom:16px">
-      <div style="font-size:11px;font-weight:500;color:var(--ink3);margin-bottom:6px;padding:6px 10px;background:var(--s2);border-radius:var(--r);border:1px solid var(--line)">
-        <i class="ti ti-box" style="font-size:11px"></i> ${label} · ${groupAlerts.length} รายการ
+      <div style="font-size:11px;font-weight:500;color:var(--ink3);margin-bottom:6px;padding:6px 10px;background:var(--s2);border-radius:var(--r);border:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+        <span><i class="ti ti-box" style="font-size:11px"></i> ${label} · ${items.length} รายการ</span>
+        ${lowCount?`<span style="font-size:10px;color:var(--red)">⚠ ต่ำกว่า Min ${lowCount} รายการ</span>`:''}
       </div>
       <div class="sc-table-wrap">
         <table class="sc-table">
@@ -3984,6 +3990,7 @@ function renderAlertGroupPage(group) {
             <th style="text-align:right">คงเหลือ</th>
             <th style="text-align:right">Min</th>
             <th style="text-align:right">Max</th>
+            <th style="text-align:right">ควรเติม</th>
             <th>สถานะ</th>
             <th></th>
           </tr></thead>
@@ -3993,14 +4000,14 @@ function renderAlertGroupPage(group) {
     </div>`;
   }).join('');
 
+  const totalLow = masterDB.filter(m => ['finish','raw','equip_th'].includes(m.pg) && m.min>0 && m.stock<=m.min).length;
+
   div.innerHTML = `
     <div class="page-header">
       <div><div class="page-title">${withdrawLabel}</div>
-        <div class="page-sub">รายการที่สต็อกต่ำกว่า Min · พบ ${allAlerts.length} รายการ</div></div>
+        <div class="page-sub">แผนการเติมของ · ทุกรายการ${totalLow?` · ⚠ ต่ำกว่า Min ${totalLow} รายการ`:''}</div></div>
     </div>
-    ${groupSections || `<div style="padding:40px;text-align:center;color:var(--ink4)">
-      <i class="ti ti-check" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>
-      ไม่มีรายการ — สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</div>`}`;
+    ${groupSections}`;
 }
 
 async function whSetStatus(code, status) {
