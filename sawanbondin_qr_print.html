@@ -175,6 +175,10 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       <div class="opt-row"><span class="opt-label">Barcode เส้น</span><div class="opt-ctrl"><button class="opt-btn" id="bcOn" onclick="toggle('showBC',true,'bcOn','bcOff')">แสดง</button><button class="opt-btn active" id="bcOff" onclick="toggle('showBC',false,'bcOn','bcOff')">ซ่อน</button></div></div>
       <div class="opt-row"><span class="opt-label">ชื่อ</span><div class="opt-ctrl"><button class="opt-btn active" id="nmOn" onclick="toggle('showName',true,'nmOn','nmOff')">แสดง</button><button class="opt-btn" id="nmOff" onclick="toggle('showName',false,'nmOn','nmOff')">ซ่อน</button></div></div>
       <div class="opt-row"><span class="opt-label">หน่วยงาน</span><div class="opt-ctrl"><button class="opt-btn active" id="brOn" onclick="toggle('showBrand',true,'brOn','brOff')">แสดง</button><button class="opt-btn" id="brOff" onclick="toggle('showBrand',false,'brOn','brOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">พิกัด</span><div class="opt-ctrl"><button class="opt-btn active" id="locOn" onclick="toggle('showLoc',true,'locOn','locOff')">แสดง</button><button class="opt-btn" id="locOff" onclick="toggle('showLoc',false,'locOn','locOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">ชื่อ EN/TH แยกบรรทัด</span><div class="opt-ctrl"><button class="opt-btn active" id="biOn" onclick="toggle('showBilingual',true,'biOn','biOff')">แสดง</button><button class="opt-btn" id="biOff" onclick="toggle('showBilingual',false,'biOn','biOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">แบ่งถุง (lot)</span><div class="opt-ctrl"><button class="opt-btn active" id="bagOn" onclick="toggle('showBag',true,'bagOn','bagOff')">แสดง</button><button class="opt-btn" id="bagOff" onclick="toggle('showBag',false,'bagOn','bagOff')">ซ่อน</button></div></div>
+      <div class="opt-row" id="bagCountRow"><span class="opt-label">จำนวนถุงต่อ Lot</span><input class="opt-num" id="bagCount" type="number" value="1" min="1" max="50" onchange="renderPreview()"></div>
       <div class="opt-row"><span class="opt-label">สเปก</span><div class="opt-ctrl"><button class="opt-btn" id="spOn" onclick="toggle('showSpec',true,'spOn','spOff')">แสดง</button><button class="opt-btn active" id="spOff" onclick="toggle('showSpec',false,'spOn','spOff')">ซ่อน</button></div></div>
       <div class="opt-row"><span class="opt-label">คอลัมน์</span><div class="opt-ctrl"><button class="opt-btn" id="c2" onclick="setCols(2)">2</button><button class="opt-btn active" id="c3" onclick="setCols(3)">3</button><button class="opt-btn" id="c4" onclick="setCols(4)">4</button><button class="opt-btn" id="c5" onclick="setCols(5)">5</button></div></div>
       <div class="opt-row"><span class="opt-label">ขนาด QR (px)</span><input class="opt-num" id="qrSize" type="number" value="80" min="48" max="160" step="8" onchange="renderPreview()"></div>
@@ -216,16 +220,24 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY);
 
 /* ══ CATALOG — โหลดจาก Supabase แทน hardcode ══ */
 let CATALOG = [];
+let locationMap = {}; // item_code → location code
+
+async function loadLocations() {
+  try {
+    const { data } = await sb.from('bin_locations').select('item_code,code');
+    if (data) data.forEach(r => { if(r.item_code) locationMap[r.item_code] = r.code; });
+  } catch(e) {}
+}
 
 async function loadCatalog() {
   try {
+    await loadLocations();
     const { data, error } = await sb.from('items')
       .select('code,name,pg,subcat,spec')
       .eq('is_active', true)
       .order('pg').order('subcat').order('seq');
     if (error) throw error;
 
-    // map pg code → ชื่อภาษาไทย
     const PG_LABEL = {
       raw:'วัตถุดิบ', matcha:'ชาบดผงมัตจะ', pack:'บรรจุภัณฑ์',
       packaging:'Packaging', equip:'อุปกรณ์', finish:'สินค้าสำเร็จรูป'
@@ -237,6 +249,7 @@ async function loadCatalog() {
       cat:  PG_LABEL[r.pg] || r.pg,
       sub:  r.subcat || '',
       spec: r.spec  || '',
+      location: locationMap[r.code] || '',
     }));
   } catch(e) {
     console.error('loadCatalog error:', e);
@@ -247,7 +260,7 @@ async function loadCatalog() {
 /* ══ STATE ══ */
 let selected=new Set(), lotSelected=new Set();
 let currentCat='ทั้งหมด', currentTab='items';
-let cols=3, showQR=true, showBC=false, showName=true, showBrand=true, showSpec=false;
+let cols=3, showQR=true, showBC=false, showName=true, showBrand=true, showSpec=false, showLoc=true, showBilingual=true, showBag=true;
 let lotCatalog=[];
 
 /* ══ TABS ══ */
@@ -276,6 +289,7 @@ async function loadLots(){
       code:r.qr_payload||(r.item_code+'__LOT__'+r.lot_sw),
       itemCode:r.item_code,
       cat:'Lot',
+      location: locationMap[r.item_code] || '',
     }));
     btn.innerHTML=`<i class="ti ti-check"></i> โหลดแล้ว ${lotCatalog.length} Lot`;
     document.getElementById('lotSearch').style.display='block';
@@ -363,7 +377,19 @@ function filterItems(){
 function selectAll(){const q=(document.getElementById('searchInput').value||'').toLowerCase();CATALOG.filter(i=>(currentCat==='ทั้งหมด'||i.cat===currentCat)&&(!q||i.name.toLowerCase().includes(q)||i.code.toLowerCase().includes(q))).forEach(i=>selected.add(i.code));filterItems();renderPreview();}
 function clearAll(){selected.clear();filterItems();renderPreview();}
 function updateSelBar(){const bar=document.getElementById('selBar');if(selected.size>0){bar.classList.add('show');document.getElementById('selCount').textContent=`เลือก ${selected.size}`;}else bar.classList.remove('show');}
-function toggle(key,val,onId,offId){if(key==='showQR')showQR=val;else if(key==='showBC')showBC=val;else if(key==='showName')showName=val;else if(key==='showBrand')showBrand=val;else if(key==='showSpec')showSpec=val;document.getElementById(onId).classList.toggle('active',val);document.getElementById(offId).classList.toggle('active',!val);renderPreview();}
+function toggle(key,val,onId,offId){
+  if(key==='showQR')showQR=val;
+  else if(key==='showBC')showBC=val;
+  else if(key==='showName')showName=val;
+  else if(key==='showBrand')showBrand=val;
+  else if(key==='showSpec')showSpec=val;
+  else if(key==='showLoc')showLoc=val;
+  else if(key==='showBilingual')showBilingual=val;
+  else if(key==='showBag'){showBag=val;document.getElementById('bagCountRow').style.display=val?'':'none';}
+  document.getElementById(onId).classList.toggle('active',val);
+  document.getElementById(offId).classList.toggle('active',!val);
+  renderPreview();
+}
 function setCols(n){cols=n;[2,3,4,5].forEach(c=>document.getElementById('c'+c).classList.toggle('active',c===n));renderPreview();}
 
 /* ══ RENDER ══ */
@@ -382,50 +408,102 @@ function renderPreview(){
   const style=document.getElementById('styleOpt').value;
   const qrSz=parseInt(document.getElementById('qrSize').value)||80;
   const copies=parseInt(document.getElementById('copies').value)||1;
-  const expanded=[];allItems.forEach(it=>{for(let c=0;c<copies;c++)expanded.push(it);});
+  const bagCount=parseInt(document.getElementById('bagCount').value)||1;
+
+  // ขยาย items ตาม copies และ bag
+  const expanded=[];
+  allItems.forEach(it=>{
+    for(let c=0;c<copies;c++){
+      if(showBag && it.type==='lot' && bagCount>1){
+        // แยกเป็นถุงๆ
+        for(let b=1;b<=bagCount;b++){
+          expanded.push({...it, bagNum:b, bagTotal:bagCount});
+        }
+      } else {
+        expanded.push(it);
+      }
+    }
+  });
   cntEl.textContent=`${expanded.length} สติ๊กเกอร์`;
   area.innerHTML=`<div class="sheet"><div class="sticker-grid cols-${cols}" id="grid"></div></div>`;
   const grid=document.getElementById('grid');
-  // store expanded items for log table pairing
   window._expandedItems = expanded;
   const isDark=style==='modern';
   const qrItems=[];
   expanded.forEach((item,idx)=>{
     const div=document.createElement('div');div.className=`sticker ${style}`;
+
     if(showQR){
       const qrWrap=document.createElement('div');qrWrap.id=`qr_${idx}`;
+      // QR encode รวม bag number ถ้ามี
+      const qrCode = item.bagNum ? `${item.code}__BAG__${item.bagNum}` : item.code;
+      qrWrap.dataset.qrCode = qrCode;
       qrWrap.style.cssText=`width:${qrSz}px;height:${qrSz}px;margin:0 auto`;
       div.appendChild(qrWrap);
-      qrItems.push({id:`qr_${idx}`,code:item.code,sz:qrSz,dark:isDark?'#ffffff':'#1a1a1c',light:isDark?'#1a1a1c':'#ffffff'});
+      qrItems.push({id:`qr_${idx}`,code:qrCode,sz:qrSz,dark:isDark?'#ffffff':'#1a1a1c',light:isDark?'#1a1a1c':'#ffffff'});
     }
     if(showBC){
       const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
       svg.id=`bc_${idx}`;svg.style.cssText='display:block;margin:4px auto 0;max-width:100%';
       div.appendChild(svg);
     }
+
     if(showName){
-      const el=document.createElement('div');el.className='sticker-name';
-      el.textContent=item.name;div.appendChild(el);
+      const name = item.name || '';
+      // แยก EN และ TH
+      if(showBilingual){
+        const enMatch = name.match(/^([A-Za-z0-9 \-\.\(\)\/]+)/);
+        const enPart = enMatch ? enMatch[0].trim() : '';
+        const thPart = name.replace(enPart,'').replace(/^[\s\-–]+/,'').trim();
+        if(enPart){
+          const elEn=document.createElement('div');
+          elEn.className='sticker-name';
+          elEn.style.cssText='font-family:"SF Pro Text","Helvetica Neue",sans-serif;font-size:11px;font-weight:600;letter-spacing:.2px';
+          elEn.textContent=enPart;div.appendChild(elEn);
+        }
+        if(thPart){
+          const elTh=document.createElement('div');
+          elTh.className='sticker-name';
+          elTh.style.cssText='font-family:"Sarabun","Noto Sans Thai",sans-serif;font-size:10px;font-weight:400;color:#555;margin-top:1px';
+          elTh.textContent=thPart;div.appendChild(elTh);
+        }
+        if(!enPart && !thPart){
+          const el=document.createElement('div');el.className='sticker-name';el.textContent=name;div.appendChild(el);
+        }
+      } else {
+        const el=document.createElement('div');el.className='sticker-name';el.textContent=name;div.appendChild(el);
+      }
     }
-    // Lot sub-info
+
+    // Lot + bag info
     if(item.type==='lot'&&item.lotSW){
       const li=document.createElement('div');li.className='sticker-sub';
       const swStr=new Date(item.lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'});
-      li.textContent='Lot: '+swStr+(item.lotSP?' | Sup: '+new Date(item.lotSP).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}):'');
-      div.appendChild(li);
+      let subTxt='Lot: '+swStr+(item.lotSP?' | Sup: '+new Date(item.lotSP).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}):'');
+      if(item.bagNum) subTxt+=` | ถุง ${item.bagNum}/${item.bagTotal}`;
+      li.textContent=subTxt;div.appendChild(li);
+    } else if(item.bagNum){
+      const li=document.createElement('div');li.className='sticker-sub';
+      li.textContent=`ถุง ${item.bagNum}/${item.bagTotal}`;div.appendChild(li);
     }
+
+    // พิกัด
+    if(showLoc && item.location){
+      const lc=document.createElement('div');
+      lc.style.cssText='font-size:9px;font-weight:600;color:#0047ab;letter-spacing:.3px;margin-top:2px;text-transform:uppercase';
+      lc.textContent='📍 '+item.location;div.appendChild(lc);
+    }
+
     const cd=document.createElement('div');cd.className='sticker-code';
-    // แสดง item code เท่านั้น (ไม่รวม __LOT__ part)
     cd.textContent=item.itemCode||item.code.split('__LOT__')[0];
     div.appendChild(cd);
     if(showBrand){const br=document.createElement('div');br.className='sticker-brand';br.textContent='SAWANBONDIN';div.appendChild(br);}
     if(showSpec && item.spec){const sp=document.createElement('div');sp.className='sticker-spec';sp.textContent=item.spec;div.appendChild(sp);}
 
-    // wrap sticker in a pair div
-    const pair = document.createElement('div');
-    pair.className = 'sticker-pair';
+    const pair=document.createElement('div');
+    pair.className='sticker-pair';
     pair.appendChild(div);
-    pair.dataset.idx = idx;
+    pair.dataset.idx=idx;
     grid.appendChild(pair);
   });
   requestAnimationFrame(()=>{
