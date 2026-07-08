@@ -564,10 +564,6 @@ function renderLogTable(){
 function buildLogTableHTML(title, cols, numRows, subtitle=''){
   const thCols = cols.map(c=>`<th>${c.label}</th>`).join('');
   return `<div class="log-table-wrap">
-    <div class="log-table-header">
-      <div class="log-table-title" title="${title}">${title}</div>
-      ${subtitle?`<div class="log-table-sub">${subtitle}</div>`:''}
-    </div>
     <table class="log-table">
       <thead><tr><th style="width:14px">#</th>${thCols}</tr></thead>
       <tbody>${Array.from({length:numRows},(_,i)=>`<tr><td class="num-col">${i+1}</td>${cols.map(()=>'<td></td>').join('')}</tr>`).join('')}</tbody>
