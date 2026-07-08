@@ -45,8 +45,8 @@ const WAREHOUSE_CONFIG = _CFG.WAREHOUSE_CONFIG || {
 };
 const WAREHOUSE_PAGES = Object.keys(WAREHOUSE_CONFIG);
 
-const ACTION_LABELS = { receive:'รับเข้า', withdraw:'เบิก', return_good:'คืนดี', return_bad:'คืนเสีย', transform_lot:'แปรรูป', transform_out:'แปรรูปออก', transform_in:'แปรรูปเข้า' };
-const ACTION_BADGE  = { receive:'badge-receive', withdraw:'badge-withdraw', return_good:'badge-return-good', return_bad:'badge-return-bad', transform_lot:'badge-transform', transform_out:'badge-transform', transform_in:'badge-receive' };
+const ACTION_LABELS = { receive:'รับเข้า', withdraw:'เบิก', return_good:'คืนดี', return_bad:'คืนเสีย', transform_lot:'แปรรูป' };
+const ACTION_BADGE  = { receive:'badge-receive', withdraw:'badge-withdraw', return_good:'badge-return-good', return_bad:'badge-return-bad', transform_lot:'badge-transform' };
 const DEPT_PILL_CLS = { 'ผลิต':'dept-prod', 'คลัง':'dept-ware', 'บรรจุ':'dept-pack', 'Tea House':'dept-tea' };
 
 /* ═══════════════════════════════════════════
@@ -1508,20 +1508,15 @@ function renderForm(pg) {
   h += `<div class="action-select-wrap">
     <span class="action-select-label">ประเภท</span>
     <select class="action-select" id="${pg}-action-sel" onchange="switchAction('${pg}',this.value)">
-      ${Object.entries(ACTION_LABELS).filter(([v])=>v!=='transform_lot'||cfg.hasLot).map(([v,l])=>`<option value="${v}" ${action===v?'selected':''}>${l}</option>`).join('')}
+      ${Object.entries(ACTION_LABELS).filter(([v])=>(v!=='transform_lot'||cfg.hasLot)&&v!=='transform_out'&&v!=='transform_in').map(([v,l])=>`<option value="${v}" ${action===v?'selected':''}>${l}</option>`).join('')}
     </select>
     <i class="ti ti-chevron-down action-select-icon"></i>
   </div>`;
 
   h += `<div class="form-grid">
-    <div class="fg">
+    <div class="fg form-full">
       <label class="fl">ผู้ทำรายการ <span class="req">*</span></label>
-      <input class="fi" id="${pg}-name" placeholder="ชื่อ-นามสกุล"
-        autocomplete="name">
-    </div>
-    <div class="fg">
-      <label class="fl">แผนก <span class="req">*</span></label>
-      <div class="radio-grp" id="${pg}-dept">${deptOpts}</div>
+      <input class="fi" id="${pg}-name" placeholder="ชื่อ-นามสกุล" autocomplete="name">
     </div>
   </div><div class="divider"></div>`;
 
@@ -1936,7 +1931,7 @@ function switchAction(pg, action) {
     ival: document.getElementById(pg+'-ival')?.value||'',
     idisp: document.getElementById(pg+'-idisplay')?.value||'',
     qty:  document.getElementById(pg+'-qty')?.value||'',
-    dept: document.querySelector('#'+pg+'-dept .sel')?.textContent?.trim()||'',
+    dept: window._operatorDept||'',
   };
   txState[pg].action = action;
   renderForm(pg);
@@ -2091,7 +2086,7 @@ async function submitF(pg) {
   const locInputVal  = (document.getElementById(pg+'-loc')?.value||'').trim();
   const loc = locSelectVal || locInputVal;
   const action = txState[pg].action;
-  const dept   = document.querySelector('#'+pg+'-dept .sel').textContent.trim();
+  const dept   = window._operatorDept||'';
 
   setLoading(pg+'-submit-btn', true);
   // ค้นหาด้วย pg + ชื่อ เพื่อให้ตรงคลัง (ไม่ข้ามคลัง)
