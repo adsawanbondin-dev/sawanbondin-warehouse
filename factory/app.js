@@ -303,6 +303,7 @@ async function dbLoadLotsForItem(code) {
     id:r.id, lot_sw:r.lot_sw, lot_supplier:r.lot_supplier||'',
     stock:parseFloat(r.stock)||0, updated_at:r.updated_at,
     expiry_date:r.expiry_date||null, note:r.note||'',
+    bag_number:r.bag_number||null, bag_total:r.bag_total||null, weight_kg:parseFloat(r.weight_kg)||null,
   }));
 }
 
@@ -1578,7 +1579,6 @@ function renderForm(pg) {
           <div class="fhint">วันที่ผลิตของ Supplier</div>
         </div>
       </div>`;
-      // เพิ่มช่องวันหมดอายุสำหรับคลังที่มี hasExpiry
       if (cfg.hasExpiry) {
         h += `<div class="lot-single" style="margin-top:8px">
           <div class="fg">
@@ -1587,6 +1587,25 @@ function renderForm(pg) {
             <div class="fhint">ไม่บังคับกรอก</div>
           </div>
         </div>`;
+      }
+      // ช่องกรอกถุง — เฉพาะตอนรับเข้า
+      if (isRecv) {
+        h += `<div class="divider"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label class="fl" style="margin:0">น้ำหนักแต่ละถุง (กก.)</label>
+          <button type="button" class="btn btn-sm" onclick="addBagRow('${pg}')" style="font-size:10px">
+            <i class="ti ti-plus"></i> เพิ่มถุง
+          </button>
+        </div>
+        <div id="${pg}-bag-rows"></div>
+        <div id="${pg}-bag-summary" style="background:var(--s2);border-radius:var(--r);padding:8px 12px;margin-top:6px;font-size:11px;color:var(--ink3);display:flex;gap:16px">
+          <span>ถุง: <strong id="${pg}-bag-count">0</strong> ใบ</span>
+          <span>รวม: <strong id="${pg}-bag-total">0</strong> กก.</span>
+          <span>เฉลี่ย: <strong id="${pg}-bag-avg">0</strong> กก./ถุง</span>
+        </div>
+        <div class="fhint" style="margin-top:4px">ถ้าไม่กรอก จะรับเป็น 1 ถุงตามจำนวนในช่องด้านบน</div>`;
+        // init 1 ถุงหลัง render
+        setTimeout(() => { if (!document.getElementById(pg+'-bag-rows')?.children?.length) addBagRow(pg); }, 50);
       }
     } else {
       h += `<div class="lot-single">
@@ -2032,6 +2051,49 @@ document.addEventListener('click', e => {
       dd.style.display='none';
   });
 });
+/* ── Bag weight functions ── */
+function addBagRow(pg) {
+  const container = document.getElementById(pg+'-bag-rows');
+  if (!container) return;
+  const idx = container.children.length + 1;
+  const row = document.createElement('div');
+  row.style.cssText = 'display:grid;grid-template-columns:28px 1fr 32px;gap:6px;align-items:center;margin-bottom:6px';
+  row.innerHTML = `
+    <span style="font-size:11px;color:var(--ink4);text-align:center;font-weight:500">${idx}</span>
+    <input class="fi bag-weight-input" type="number" min="0.01" step="0.01" inputmode="decimal"
+      placeholder="น้ำหนัก กก." oninput="updateBagSummary('${pg}')">
+    <button type="button" onclick="this.closest('div').remove();reindexBags('${pg}');updateBagSummary('${pg}')"
+      style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px;padding:0">✕</button>`;
+  container.appendChild(row);
+  updateBagSummary(pg);
+  row.querySelector('input')?.focus();
+}
+
+function reindexBags(pg) {
+  const container = document.getElementById(pg+'-bag-rows');
+  if (!container) return;
+  [...container.children].forEach((row, i) => {
+    const numEl = row.querySelector('span');
+    if (numEl) numEl.textContent = i + 1;
+  });
+}
+
+function updateBagSummary(pg) {
+  const container = document.getElementById(pg+'-bag-rows');
+  if (!container) return;
+  const weights = [...container.querySelectorAll('.bag-weight-input')]
+    .map(el => parseFloat(el.value)||0).filter(w => w > 0);
+  const total = weights.reduce((s,w) => s+w, 0);
+  const avg = weights.length ? (total/weights.length) : 0;
+  const fmt = n => n.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById(pg+'-bag-count').textContent = weights.length;
+  document.getElementById(pg+'-bag-total').textContent = fmt(total);
+  document.getElementById(pg+'-bag-avg').textContent = fmt(avg);
+  // sync qty field ถ้ากรอกถุงแล้ว
+  const qtyEl = document.getElementById(pg+'-qty');
+  if (qtyEl && total > 0) qtyEl.value = fmt(total).replace(/,/g,'');
+}
+
 function selRadio(el,gid){
   document.querySelectorAll('#'+gid+' .radio-opt').forEach(o=>o.classList.remove('sel'));
   el.classList.add('sel');
@@ -2050,10 +2112,14 @@ async function buildLotPickerHtml(code, pg) {
     const sp = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
     const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
     const isExpired = l.expiry_date && new Date(l.expiry_date) < new Date();
-    return `<div class="lot-select-item${isExpired?' lot-expired':''}" onclick="pickLot(this,'${pg}','${l.lot_sw}')" data-lot="${l.lot_sw}">
+    const bagInfo = l.bag_number ? `ถุง ${l.bag_number}/${l.bag_total}` : (l.note||'');
+    const weightInfo = l.weight_kg ? `${l.weight_kg.toLocaleString()} กก.` : '';
+    return `<div class="lot-select-item${isExpired?' lot-expired':''}" onclick="pickLot(this,'${pg}','${l.lot_sw}','${l.id}')" data-lot="${l.lot_sw}" data-lot-id="${l.id}">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span class="lot-date">${sw}</span>
+          ${bagInfo?`<span style="font-size:10px;color:var(--ink2);font-weight:500">${bagInfo}</span>`:''}
+          ${weightInfo?`<span style="font-size:10px;color:var(--acc);font-weight:500">${weightInfo}</span>`:''}
           ${sp?`<span style="font-size:10px;color:var(--ink3)">Sup: ${sp}</span>`:''}
           ${ex?`<span style="font-size:10px;color:${isExpired?'var(--red)':'var(--ink4)'}">หมดอายุ: ${ex}</span>`:''}
         </div>
@@ -2062,10 +2128,11 @@ async function buildLotPickerHtml(code, pg) {
     </div>`;
   }).join('');
 }
-function pickLot(el,pg,lotSW){
+function pickLot(el,pg,lotSW,lotId){
   el.closest('.lot-select-wrap').querySelectorAll('.lot-select-item').forEach(x=>x.classList.remove('active'));
   el.classList.add('active');
   const sw=document.getElementById(pg+'-lotsw'); if(sw)sw.value=lotSW;
+  const hi=document.getElementById(pg+'-lot-id-hidden'); if(hi) hi.value=lotId||'';
 }
 
 /* ── SUBMIT SINGLE ── */
@@ -2081,47 +2148,74 @@ async function submitF(pg) {
   const lotSP  = cfg.lotSupplier ? (document.getElementById(pg+'-lotsp')?.value||'') : '';
   const expiry = cfg.hasExpiry ? (document.getElementById(pg+'-expiry')?.value||'') : '';
   const note   = document.getElementById(pg+'-note')?.value||document.getElementById(pg+'-improve')?.value||'';
-  // ข้อ 1: ดึง loc จาก select ก่อน ถ้าไม่มีค่อยดึงจาก free-text input
   const locSelectVal = (document.getElementById(pg+'-loc-select')?.value||'').trim();
   const locInputVal  = (document.getElementById(pg+'-loc')?.value||'').trim();
   const loc = locSelectVal || locInputVal;
   const action = txState[pg].action;
   const dept   = window._operatorDept||'';
 
+  // ── ถุง ──
+  const bagContainer = document.getElementById(pg+'-bag-rows');
+  const bagWeights = bagContainer
+    ? [...bagContainer.querySelectorAll('.bag-weight-input')]
+        .map(el => parseFloat(el.value)||0).filter(w => w > 0)
+    : [];
+  const hasBags = bagWeights.length > 0 && action === 'receive' && cfg.lotSupplier;
+
   setLoading(pg+'-submit-btn', true);
-  // ค้นหาด้วย pg + ชื่อ เพื่อให้ตรงคลัง (ไม่ข้ามคลัง)
   const mi   = masterDB.find(m=>m.name===itemName && m.pg===pg);
   const item = itemName;
   const code = mi ? mi.code : '-';
 
   let rpcResult = { ok: true, new_stock: mi?.stock };
   if (mi) {
-    // ── RPC เดียวจัดการ items.stock + lots.stock พร้อมกัน ──
     if (action !== 'return_bad') {
-      // หา lotId จาก lotDB cache ถ้าเป็นการเบิก/คืน
-      let lotId = null;
-      if ((WAREHOUSE_CONFIG[pg]?.hasLot) && lotSW && (action==='withdraw'||action==='return_good')) {
-        const cached = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
-        if (cached) lotId = cached.id;
+      if (hasBags) {
+        // บันทึกแต่ละถุงแยก lot row
+        const bagTotal = bagWeights.length;
+        let newStock = mi.stock;
+        for (let i = 0; i < bagWeights.length; i++) {
+          const w = bagWeights[i];
+          const bagNote = `ถุงที่ ${i+1}/${bagTotal}`;
+          // สร้าง lot แยกต่างหากแต่ละถุง
+          const { data: lotData } = await sb.from('lots').insert({
+            item_code: code, item_name: item,
+            lot_sw: lotSW || null, lot_supplier: lotSP || null,
+            stock: w, weight_kg: w,
+            bag_number: i+1, bag_total: bagTotal,
+            qr_payload: `${code}__LOT__${lotSW}__BAG${i+1}__${Date.now()}`,
+            note: bagNote,
+          }).select().single();
+          newStock += w;
+          // อัปเดต items.stock
+          await sb.from('items').update({ stock: newStock }).eq('code', code);
+          mi.stock = newStock;
+        }
+        rpcResult = { ok: true, new_stock: mi.stock };
+      } else {
+        let lotId = null;
+        if ((WAREHOUSE_CONFIG[pg]?.hasLot) && lotSW && (action==='withdraw'||action==='return_good')) {
+          const cached = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
+          if (cached) lotId = cached.id;
+        }
+        rpcResult = await dbAdjustStockWithLot(code, action, qty, {
+          lotId,
+          lotSW: (cfg.hasLot && lotSW && lotSW.length > 0) ? lotSW : null,
+          lotSP: (lotSP && lotSP.length > 0) ? lotSP : null,
+          expiry: (expiry && expiry.length > 0) ? expiry : null,
+          name: item,
+          note: (pg==='raw' && action==='receive') ? note : null,
+        });
+        if (!rpcResult.ok) { setLoading(pg+'-submit-btn', false); return; }
+        if (rpcResult.new_stock !== undefined) mi.stock = rpcResult.new_stock;
       }
-      rpcResult = await dbAdjustStockWithLot(code, action, qty, {
-        lotId,
-        lotSW: (cfg.hasLot && lotSW && lotSW.length > 0) ? lotSW : null,
-        lotSP: (lotSP && lotSP.length > 0) ? lotSP : null,
-        expiry: (expiry && expiry.length > 0) ? expiry : null,
-        name: item,
-        note: (pg==='raw' && action==='receive') ? note : null,
-      });
-      if (!rpcResult.ok) { setLoading(pg+'-submit-btn', false); return; }
-      // sync stock ใน memory จาก RPC result ก่อน upsert
-      if (rpcResult.new_stock !== undefined) mi.stock = rpcResult.new_stock;
     }
     if (action==='receive' && loc) locationDB[code] = loc;
     if (action==='receive' && cfg?.hasSpec) {
       const spec=(document.getElementById(pg+'-spec')?.value||'').trim();
       if(spec) specDB[code]=spec;
     }
-    await dbUpsertItem(mi);  // ตอนนี้ mi.stock เป็นค่าถูกต้องแล้ว
+    await dbUpsertItem(mi);
   }
 
   if (true) {
@@ -3587,7 +3681,7 @@ async function renderStockCountPage() {
       if (data) data.forEach(r => {
         if (!lotDB[r.item_code]) lotDB[r.item_code] = [];
         if (!lotDB[r.item_code].find(l => l.id === r.id))
-          lotDB[r.item_code].push({ id:r.id, lot_sw:r.lot_sw, lot_supplier:r.lot_supplier||'', stock:parseFloat(r.stock)||0, expiry_date:r.expiry_date||null, note:r.note||'' });
+          lotDB[r.item_code].push({ id:r.id, lot_sw:r.lot_sw, lot_supplier:r.lot_supplier||'', stock:parseFloat(r.stock)||0, expiry_date:r.expiry_date||null, note:r.note||'', bag_number:r.bag_number||null, bag_total:r.bag_total||null, weight_kg:parseFloat(r.weight_kg)||null });
       });
     }
   }
