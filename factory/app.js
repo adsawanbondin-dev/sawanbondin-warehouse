@@ -1588,8 +1588,8 @@ function renderForm(pg) {
           </div>
         </div>`;
       }
-      // ช่องกรอกถุง — เฉพาะตอนรับเข้า
-      if (isRecv) {
+      // ช่องกรอกถุง — เฉพาะตอนรับเข้า สำหรับคลังที่มี hasLot
+      if (isRecv && cfg.hasLot) {
         h += `<div class="divider"></div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <label class="fl" style="margin:0">น้ำหนักแต่ละถุง (กก.)</label>
@@ -1603,8 +1603,7 @@ function renderForm(pg) {
           <span>รวม: <strong id="${pg}-bag-total">0</strong> กก.</span>
           <span>เฉลี่ย: <strong id="${pg}-bag-avg">0</strong> กก./ถุง</span>
         </div>
-        <div class="fhint" style="margin-top:4px">ถ้าไม่กรอก จะรับเป็น 1 ถุงตามจำนวนในช่องด้านบน</div>`;
-        // init 1 ถุงหลัง render
+        <div class="fhint" style="margin-top:4px">ถ้าไม่กรอก จะรับเป็น 1 lot ตามจำนวนในช่องด้านบน</div>`;
         setTimeout(() => { if (!document.getElementById(pg+'-bag-rows')?.children?.length) addBagRow(pg); }, 50);
       }
     } else {
@@ -1614,6 +1613,23 @@ function renderForm(pg) {
           <input class="fi" id="${pg}-lotsw" type="date">
         </div>
       </div>`;
+      // ช่องกรอกถุงสำหรับ finish
+      if (isRecv && cfg.hasLot) {
+        h += `<div class="divider"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <label class="fl" style="margin:0">จำนวนชิ้น/กล่องแต่ละถุง</label>
+          <button type="button" class="btn btn-sm" onclick="addBagRow('${pg}')" style="font-size:10px">
+            <i class="ti ti-plus"></i> เพิ่มถุง
+          </button>
+        </div>
+        <div id="${pg}-bag-rows"></div>
+        <div id="${pg}-bag-summary" style="background:var(--s2);border-radius:var(--r);padding:8px 12px;margin-top:6px;font-size:11px;color:var(--ink3);display:flex;gap:16px">
+          <span>ถุง: <strong id="${pg}-bag-count">0</strong> ใบ</span>
+          <span>รวม: <strong id="${pg}-bag-total">0</strong> ชิ้น</span>
+        </div>
+        <div class="fhint" style="margin-top:4px">ถ้าไม่กรอก จะรับเป็น 1 lot ตามจำนวนในช่องด้านบน</div>`;
+        setTimeout(() => { if (!document.getElementById(pg+'-bag-rows')?.children?.length) addBagRow(pg); }, 50);
+      }
     }
   }
 
@@ -2160,7 +2176,7 @@ async function submitF(pg) {
     ? [...bagContainer.querySelectorAll('.bag-weight-input')]
         .map(el => parseFloat(el.value)||0).filter(w => w > 0)
     : [];
-  const hasBags = bagWeights.length > 0 && action === 'receive' && cfg.lotSupplier;
+  const hasBags = bagWeights.length > 0 && action === 'receive' && cfg.hasLot;
 
   setLoading(pg+'-submit-btn', true);
   const mi   = masterDB.find(m=>m.name===itemName && m.pg===pg);
