@@ -3436,27 +3436,20 @@ function scExportCSV() {
 /* ── Override switchPage ── */
 const _scOrigSwitch = switchPage;
 switchPage = async function(p) {
+  const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
+  const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'daily-withdraw', ...alertGroupPages];
+
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelector(`[data-page="${p}"]`)?.classList.add('active');
+  allPages.forEach(pg => {
+    const el = document.getElementById('page-' + pg);
+    if (el) el.className = pg === p ? 'page-visible' : 'page-hidden';
+  });
+  curPage = p;
+
   if (p === 'stockcount') {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.querySelector('[data-page="stockcount"]')?.classList.add('active');
-    const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
-    const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'daily-withdraw', ...alertGroupPages];
-    allPages.forEach(pg => {
-      const el = document.getElementById('page-' + pg);
-      if (el) el.className = pg === p ? 'page-visible' : 'page-hidden';
-    });
-    curPage = p;
     await renderStockCountPage();
   } else if (p === 'daily-withdraw') {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.querySelector('[data-page="daily-withdraw"]')?.classList.add('active');
-    const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
-    const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'daily-withdraw', ...alertGroupPages];
-    allPages.forEach(pg => {
-      const el = document.getElementById('page-' + pg);
-      if (el) el.className = pg === p ? 'page-visible' : 'page-hidden';
-    });
-    curPage = p;
     await renderDailyWithdrawPage();
   } else {
     _scOrigSwitch(p);
