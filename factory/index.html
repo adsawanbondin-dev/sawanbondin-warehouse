@@ -480,7 +480,7 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       </div>
     </div>
     <div class="topbar-date" id="topbarDate"></div>
-    <span id="topbarUser" style="font-size:10px;color:#6e6e73;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" onclick="promptDisplayName()" title="คลิกเพื่อเปลี่ยนชื่อ"></span>
+    <span id="topbarUser" style="font-size:10px;color:#6e6e73;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" onclick="openProfileSettings()" title="คลิกเพื่อตั้งค่าโปรไฟล์"></span>
     <button onclick="doLogout()" style="padding:4px 9px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:5px;color:#6e6e73;font-size:11px;cursor:pointer;font-family:inherit" title="ออกจากระบบ">
       <i class="ti ti-logout" style="font-size:12px"></i>
     </button>
@@ -1008,6 +1008,33 @@ if ('serviceWorker' in navigator) {
 </script>
 
 <!-- PO Modal — เพิ่มรายการจัดซื้อ temp -->
+<!-- Snooze Modal — พักรายการ -->
+<div class="modal-wrap" id="snoozeModal"><div class="modal" style="max-width:320px;width:95%">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-moon" style="color:var(--acc)"></i> พักรายการชั่วคราว</div>
+    <button class="btn btn-sm" onclick="closeModal('snoozeModal')">ยกเลิก</button>
+  </div>
+  <div style="font-size:12px;color:var(--ink3);margin-bottom:12px">เลือกระยะเวลาที่ต้องการพักรายการนี้ไว้ก่อน จะกลับมาแจ้งเตือนเองอัตโนมัติค่ะ</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+    <button class="btn" onclick="document.getElementById('snoozeDays').value=7;document.getElementById('snoozePreview').textContent='7 วัน'">7 วัน</button>
+    <button class="btn" onclick="document.getElementById('snoozeDays').value=14;document.getElementById('snoozePreview').textContent='14 วัน'">14 วัน</button>
+    <button class="btn" onclick="document.getElementById('snoozeDays').value=30;document.getElementById('snoozePreview').textContent='30 วัน'">30 วัน</button>
+    <button class="btn" onclick="document.getElementById('snoozeDays').value=60;document.getElementById('snoozePreview').textContent='60 วัน'">60 วัน</button>
+  </div>
+  <div class="fg" style="margin-bottom:12px">
+    <label class="fl">หรือระบุจำนวนวันเอง</label>
+    <input class="fi" id="snoozeDays" type="number" min="1" max="365" placeholder="เช่น 7"
+      oninput="document.getElementById('snoozePreview').textContent=this.value+' วัน'" inputmode="numeric">
+  </div>
+  <div id="snoozePreview" style="text-align:center;font-size:13px;color:var(--acc);font-weight:500;margin-bottom:12px"></div>
+  <input type="hidden" id="snoozeCode">
+  <input type="hidden" id="snoozePoId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('snoozeModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="confirmSnooze()"><i class="ti ti-moon"></i> พักรายการ</button>
+  </div>
+</div></div>
+
 <div class="modal-wrap" id="poModal"><div class="modal" style="max-width:480px;width:95%">
   <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
     <div class="card-title-left"><i class="ti ti-shopping-cart" style="color:var(--acc)"></i> เพิ่มรายการจัดซื้อ</div>
@@ -1096,6 +1123,36 @@ if ('serviceWorker' in navigator) {
   <div class="form-actions" style="margin-top:12px;padding-top:12px">
     <button class="btn" onclick="closeModal('supplierEditModal')">ยกเลิก</button>
     <button class="btn btn-primary" onclick="saveSupplierEdit()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
+<!-- Profile Settings Modal -->
+<div class="modal-wrap" id="profileModal"><div class="modal" style="max-width:360px;width:95%">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-user-circle" style="color:var(--acc)"></i> ตั้งค่าโปรไฟล์</div>
+    <button class="btn btn-sm" onclick="closeModal('profileModal')">ยกเลิก</button>
+  </div>
+  <div class="form-grid">
+    <div class="fg form-full">
+      <label class="fl">ชื่อ-นามสกุล <span class="req">*</span></label>
+      <input class="fi" id="profileName" placeholder="เช่น สมชาย ใจดี">
+    </div>
+    <div class="fg form-full">
+      <label class="fl">แผนก</label>
+      <select class="fi" id="profileDept" style="padding:5px 8px">
+        <option value="">— เลือกแผนก —</option>
+        <option value="คลัง">คลัง</option>
+        <option value="ผลิต">ผลิต</option>
+        <option value="บรรจุ">บรรจุ</option>
+        <option value="QC">QC</option>
+        <option value="จัดซื้อ">จัดซื้อ</option>
+      </select>
+      <div class="fhint">ระบบจะใช้แผนกนี้อัตโนมัติตอนบันทึกรายการ</div>
+    </div>
+  </div>
+  <div class="form-actions" style="margin-top:12px;padding-top:12px">
+    <button class="btn" onclick="closeModal('profileModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveProfileSettings()"><i class="ti ti-check"></i> บันทึก</button>
   </div>
 </div></div>
 
