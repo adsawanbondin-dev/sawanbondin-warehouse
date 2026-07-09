@@ -167,16 +167,35 @@ async function doLogout() {
   window._operatorName = '';
 }
 
-/** อัปเดต display name ของ user (เก็บใน user_metadata) */
-async function setDisplayName(name) {
-  if (!name) return;
-  const { error } = await sb.auth.updateUser({ data: { display_name: name } });
-  if (!error) {
-    window._operatorName = name;
-    const el = document.getElementById('topbarUser');
-    if (el) el.textContent = name;
-    showToast(`เปลี่ยนชื่อเป็น "${name}" สำเร็จ`);
+/** เปิด modal ตั้งค่าโปรไฟล์ */
+function openProfileSettings() {
+  document.getElementById('profileName').value = window._operatorName || '';
+  document.getElementById('profileDept').value = window._operatorDept || '';
+  document.getElementById('profileModal').classList.add('show');
+}
+
+async function saveProfileSettings() {
+  const name = document.getElementById('profileName').value.trim();
+  const dept = document.getElementById('profileDept').value.trim();
+  if (!name) { showToast('กรุณาใส่ชื่อ','err'); return; }
+
+  // บันทึกลง user_profiles
+  const { data: { user } } = await sb.auth.getUser();
+  if (user) {
+    await sb.from('user_profiles').upsert({
+      id: user.id,
+      display_name: name,
+      department: dept || null,
+    }, { onConflict: 'id' });
+    await sb.auth.updateUser({ data: { display_name: name } });
   }
+
+  window._operatorName = name;
+  window._operatorDept = dept;
+  const el = document.getElementById('topbarUser');
+  if (el) el.textContent = `${name}${dept?' · '+dept:''}`;
+  closeModal('profileModal');
+  showToast(`บันทึกโปรไฟล์แล้ว`);
 }
 
 /* ═══════════════════════════════════════════
@@ -930,7 +949,7 @@ function validateForm(pg, skipLot = false) {
   if (!name)   errors.push('กรุณาระบุชื่อผู้ทำรายการ');
   if (!item)   errors.push('กรุณาเลือกรายการ');
   if (!qty || qty <= 0) errors.push('กรุณาระบุจำนวนที่มากกว่า 0');
-  if (!deptEl) errors.push('กรุณาเลือกแผนก');
+  // dept จาก user profile อัตโนมัติ
 
   // stock check for withdraw
   if (!skipLot && (action === 'withdraw') && item) {
@@ -2298,10 +2317,8 @@ async function submitBatch(pg){
   const rows=batchDB[pg];
   if(!rows.length){alert('ยังไม่มีรายการ');return;}
   const name=(document.getElementById(pg+'-name')?.value||'').trim();
-  const deptEl=document.querySelector('#'+pg+'-dept .sel');
   if(!name){showToast('กรุณาระบุชื่อผู้ทำรายการ','err');return;}
-  if(!deptEl){showToast('กรุณาเลือกแผนก','err');return;}
-  const dept=deptEl.textContent.trim();
+  const dept = window._operatorDept || '';
   setLoading(pg+'-batch-submit-btn',true,'กำลังบันทึก...');
   for(const r of rows){
     const mi=masterDB.find(m=>m.name===r.item);
