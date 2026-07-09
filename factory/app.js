@@ -1623,7 +1623,7 @@ function renderForm(pg) {
           <span>เฉลี่ย: <strong id="${pg}-bag-avg">0</strong> กก./ถุง</span>
         </div>
         <div class="fhint" style="margin-top:4px">ถ้าไม่กรอก จะรับเป็น 1 lot ตามจำนวนในช่องด้านบน</div>`;
-        setTimeout(() => { if (!document.getElementById(pg+'-bag-rows')?.children?.length) addBagRow(pg); }, 50);
+        setTimeout(() => { const br=document.getElementById(pg+'-bag-rows'); if(br&&!br.children?.length) addBagRow(pg); }, 100);
       }
     } else {
       h += `<div class="lot-single">
@@ -1647,7 +1647,7 @@ function renderForm(pg) {
           <span>รวม: <strong id="${pg}-bag-total">0</strong> ชิ้น</span>
         </div>
         <div class="fhint" style="margin-top:4px">ถ้าไม่กรอก จะรับเป็น 1 lot ตามจำนวนในช่องด้านบน</div>`;
-        setTimeout(() => { if (!document.getElementById(pg+'-bag-rows')?.children?.length) addBagRow(pg); }, 50);
+        setTimeout(() => { const br=document.getElementById(pg+'-bag-rows'); if(br&&!br.children?.length) addBagRow(pg); }, 100);
       }
     }
   }
@@ -2121,12 +2121,15 @@ function updateBagSummary(pg) {
   const total = weights.reduce((s,w) => s+w, 0);
   const avg = weights.length ? (total/weights.length) : 0;
   const fmt = n => n.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
-  document.getElementById(pg+'-bag-count').textContent = weights.length;
-  document.getElementById(pg+'-bag-total').textContent = fmt(total);
-  document.getElementById(pg+'-bag-avg').textContent = fmt(avg);
+  const cntEl = document.getElementById(pg+'-bag-count');
+  const totEl = document.getElementById(pg+'-bag-total');
+  const avgEl = document.getElementById(pg+'-bag-avg');
+  if (cntEl) cntEl.textContent = weights.length;
+  if (totEl) totEl.textContent = fmt(total);
+  if (avgEl) avgEl.textContent = fmt(avg);
   // sync qty field ถ้ากรอกถุงแล้ว
   const qtyEl = document.getElementById(pg+'-qty');
-  if (qtyEl && total > 0) qtyEl.value = fmt(total).replace(/,/g,'');
+  if (qtyEl && total > 0) qtyEl.value = total;
 }
 
 function selRadio(el,gid){
