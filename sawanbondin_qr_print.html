@@ -450,8 +450,29 @@ function renderPreview(){
 
     if(showName){
       const name = item.name || '';
-      // แยก EN และ TH
-      if(showBilingual){
+      const isRawMatcha = item.cat === 'วัตถุดิบ' || item.cat === 'ชาบดผงมัตจะ';
+
+      if(showBilingual && isRawMatcha && name.includes(' - ')){
+        // แยกด้วย " - " สำหรับวัตถุดิบและชาบดผง
+        const dashIdx = name.indexOf(' - ');
+        const beforeDash = name.substring(0, dashIdx).trim();
+        const afterDash  = name.substring(dashIdx + 3).trim();
+
+        const elMain = document.createElement('div');
+        elMain.className = 'sticker-name';
+        elMain.style.cssText = 'font-family:"SF Pro Text","Helvetica Neue",sans-serif;font-size:12px;font-weight:700;letter-spacing:.2px;text-align:center';
+        elMain.textContent = beforeDash;
+        div.appendChild(elMain);
+
+        if(afterDash){
+          const elSub = document.createElement('div');
+          elSub.className = 'sticker-name';
+          elSub.style.cssText = 'font-family:"Sarabun","Noto Sans Thai",sans-serif;font-size:11px;font-weight:500;color:#333;margin-top:2px;text-align:center';
+          elSub.textContent = afterDash;
+          div.appendChild(elSub);
+        }
+      } else if(showBilingual && !isRawMatcha){
+        // คลังอื่น — แยก EN/TH ตาม regex เดิม
         const enMatch = name.match(/^([A-Za-z0-9 \-\.\(\)\/]+)/);
         const enPart = enMatch ? enMatch[0].trim() : '';
         const thPart = name.replace(enPart,'').replace(/^[\s\-–]+/,'').trim();
