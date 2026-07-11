@@ -3885,8 +3885,9 @@ let dwTab = 'sell'; // sell | equip
 
 // กลุ่มสินค้าสำหรับเบิกประจำวัน
 const DW_GROUPS = {
-  sell:  { label: 'สินค้าเพื่อขาย',    pgs: ['finish'] },
-  equip: { label: 'อุปกรณ์ประจำวัน',  pgs: ['equip_th'] },
+  sell:   { label: 'สินค้าเพื่อขาย',    pgs: ['finish'] },
+  store2: { label: 'Store 2',            pgs: ['store2'] },
+  equip:  { label: 'อุปกรณ์ประจำวัน',  pgs: ['equip_th'] },
 };
 
 const DW_STATUS = {
@@ -3911,7 +3912,7 @@ async function dbGenerateDailyList() {
   if (existing && existing.length > 0) return; // มีแล้วไม่สร้างซ้ำ
 
   // ดึงรายการที่ต้องเติม (stock < max) จาก finish และ equip_th
-  const pgs = ['finish', 'equip_th'];
+  const pgs = ['finish', 'equip_th', 'store2'];
   const items = masterDB.filter(m =>
     pgs.includes(m.pg) && m.is_active !== false && m.max > 0
   );
