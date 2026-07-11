@@ -18,6 +18,7 @@ window.WMS_CONFIG = {
     finish:     { label:'คลังสินค้าสำเร็จรูป',     prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
     raw:        { label:'คลังวัตถุดิบ',             prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
     equip_th:   { label:'คลังอุปกรณ์ Tea House',   prefix:'TH', hasLot:false, lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
+    store2:     { label:'Store 2',                  prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:false, hasItemLot:true },
   },
 
   // แจ้งเตือนแบ่ง 2 กลุ่ม: สั่งซื้อ (วัตถุดิบ+อุปกรณ์ทั้ง2คลัง) / เบิก (สินค้าสำเร็จรูป)
@@ -25,6 +26,13 @@ window.WMS_CONFIG = {
     purchase: ['raw', 'equip_th'],
     withdraw: ['finish'],
   },
+
+  // รายการสินค้าใน Store 2 ที่มี Lot (วันหมดอายุ)
+  STORE2_LOT_ITEMS: [
+    'ข้าว','น้ำผึ้ง','กาแฟ','ไอศครีม','นมคาร์เนชั่น',
+    'วิปปิ้งครีม','นมเมจิ','นมโอ๊ต','เลม่อนเคิร์ต',
+    'แอปเปิ้ล','บลูเบอรี่','แยมลูกม่อน',
+  ],
 
   // แสดงช่องผู้จำหน่าย/วันที่ส่งของรอบถัดไป ในฟอร์มตั้งค่า Min/Max — 'date' = แบบเลือกวันที่จริง
   SUPPLIER_FIELDS: 'date',
