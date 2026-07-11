@@ -3984,6 +3984,12 @@ async function dwReceive(id) {
   renderDailyWithdrawPage();
 }
 
+async function dwReceiveAllSection(pg) {
+  const readyItems = dwItems.filter(x => x.status === 'ready' && x.pg === pg);
+  if (!readyItems.length) { showToast('ไม่มีรายการที่จัดเตรียมแล้ว', 'err'); return; }
+  for (const item of readyItems) await dwReceive(item.id);
+}
+
 async function dwReceiveAll() {
   const readyItems = dwItems.filter(x =>
     x.status === 'ready' && dwTab === 'sell' ? ['finish'].includes(x.pg) : ['equip_th'].includes(x.pg)
@@ -4004,95 +4010,115 @@ async function renderDailyWithdrawPage() {
   const today = new Date();
   const dateStr = today.toLocaleDateString('th-TH', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
 
-  const grp = DW_GROUPS[dwTab];
-  const items = dwItems.filter(m => grp.pgs.includes(m.pg));
-
-  const received = dwItems.filter(x => x.status === 'received').length;
-  const ready    = dwItems.filter(x => x.status === 'ready').length;
-  const pending  = dwItems.filter(x => ['pending','preparing'].includes(x.status)).length;
-
-  // เช็ครายการค้างจากเมื่อวาน
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
   const yStr = yesterday.toISOString().split('T')[0];
   const { data: carriedOver } = await sb.from('daily_withdrawals')
     .select('item_code').eq('date', yStr).neq('status','received');
   const carriedCodes = new Set((carriedOver||[]).map(x => x.item_code));
 
-  const tabs = Object.entries(DW_GROUPS).map(([key, g]) => {
-    const cnt = dwItems.filter(m => g.pgs.includes(m.pg) && m.status !== 'received').length;
-    return `<button class="dw-tab ${key===dwTab?'active':''}" onclick="dwTab='${key}';renderDailyWithdrawPage()">
-      ${g.label}${cnt?` <span style="font-size:9px;background:var(--line);padding:1px 5px;border-radius:8px">${cnt}</span>`:''}
-    </button>`;
-  }).join('');
+  const received = dwItems.filter(x => x.status === 'received').length;
+  const ready    = dwItems.filter(x => x.status === 'ready').length;
+  const pending  = dwItems.filter(x => ['pending','preparing'].includes(x.status)).length;
 
-  const rows = items.map(item => {
-    const isDone = item.status === 'received';
-    const loc = locationDB[item.item_code] || '—';
-    const isCarried = carriedCodes.has(item.item_code);
-    const statusOpts = Object.entries(DW_STATUS).filter(([v])=>v!=='received').map(([v,o]) =>
-      `<option value="${v}" ${item.status===v?'selected':''}>${o.label}</option>`).join('');
-    const statusColor = DW_STATUS[item.status]?.color || 'var(--ink4)';
+  function buildSection(pg, label) {
+    const items = dwItems.filter(m => m.pg === pg);
+    if (!items.length) return '';
 
-    return `<tr style="${isDone?'opacity:.4':''}">
-      <td style="padding:10px 12px;vertical-align:top">
-        <div style="font-size:12px;font-weight:500">${item.item_name}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-top:2px">${loc}</div>
-        ${isCarried && !isDone?`<div style="font-size:9px;color:var(--ink4);margin-top:2px">ค้างจากเมื่อวาน</div>`:''}
-        ${!isDone?`<div style="margin-top:6px;display:flex;align-items:center;gap:5px">
-          <span style="font-size:9px;color:var(--ink4);white-space:nowrap">หมายเหตุ</span>
-          <input style="flex:1;padding:3px 7px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;background:var(--surface);color:var(--ink);outline:none;font-family:inherit"
-            placeholder="หมายเหตุสำหรับพนักงาน..."
-            value="${item.note||''}"
-            onchange="dwSetNote(${item.id},this.value)">
-        </div>`:''}
-        ${isDone && item.note?`<div style="font-size:10px;color:var(--ink4);margin-top:3px;font-style:italic">${item.note}</div>`:''}
-      </td>
-      <td style="text-align:right;padding:10px 12px;font-size:12px;font-weight:500;color:${item.current_stock<=item.max_stock*0.2?'var(--red)':'var(--ink2)'}">
-        ${(item.current_stock||0).toLocaleString()}
-      </td>
-      <td style="text-align:right;padding:10px 12px;font-size:12px;color:var(--ink4)">${(item.max_stock||0).toLocaleString()}</td>
-      <td style="text-align:right;padding:10px 12px;font-size:12px;font-weight:500">${(item.suggested_qty||0).toLocaleString()}</td>
-      <td style="text-align:right;padding:10px 12px">
-        ${isDone
-          ? `<span style="font-size:12px;font-weight:500">${(item.prepared_qty||item.suggested_qty||0).toLocaleString()}</span>`
-          : `<input type="number" min="0" step="1" inputmode="decimal"
-              value="${item.prepared_qty||''}" placeholder="—"
-              style="width:64px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;text-align:right;background:var(--surface);color:var(--ink);outline:none"
-              onchange="dwSetPreparedQty(${item.id},this.value)">`
-        }
-      </td>
-      <td style="padding:10px 12px">
-        ${isDone
-          ? `<span style="font-size:10px;color:var(--ink4)">รับแล้ว</span>`
-          : `<select style="font-size:10px;padding:4px 6px;border-radius:5px;border:0.5px solid var(--line);cursor:pointer;width:100%;background:var(--surface);color:${statusColor};font-family:inherit"
-              onchange="dwSetStatus(${item.id},this.value).then(()=>renderDailyWithdrawPage())">
-              ${statusOpts}
-            </select>`
-        }
-      </td>
-      <td style="padding:10px 12px">
-        ${isDone
-          ? `<span style="font-size:10px;color:var(--ink4)">✓</span>`
-          : `<button class="btn btn-sm ${item.status==='ready'?'btn-primary':''}"
-              onclick="dwReceive(${item.id})"
-              ${item.status!=='ready'?'disabled style="opacity:.35"':''}
-              style="font-size:10px;white-space:nowrap">รับเข้า</button>`
-        }
-      </td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="7" style="padding:32px;text-align:center;color:var(--ink4)">ไม่มีรายการ</td></tr>`;
+    const secReceived = items.filter(x => x.status === 'received').length;
+    const secReady    = items.filter(x => x.status === 'ready').length;
 
-  const readyInTab = items.filter(x => x.status === 'ready').length;
+    const rows = items.map(item => {
+      const isDone = item.status === 'received';
+      const loc = locationDB[item.item_code] || '—';
+      const isCarried = carriedCodes.has(item.item_code);
+      const statusOpts = Object.entries(DW_STATUS).filter(([v])=>v!=='received').map(([v,o]) =>
+        `<option value="${v}" ${item.status===v?'selected':''}>${o.label}</option>`).join('');
+      const statusColor = DW_STATUS[item.status]?.color || 'var(--ink4)';
+
+      return `<tr style="${isDone?'opacity:.4':''}">
+        <td style="padding:9px 12px;vertical-align:top">
+          <div style="font-size:12px;font-weight:500">${item.item_name}</div>
+          <div style="font-size:10px;color:var(--ink4);margin-top:1px">${loc}</div>
+          ${isCarried && !isDone?`<div style="font-size:9px;color:var(--ink4);margin-top:2px">ค้างจากเมื่อวาน</div>`:''}
+          ${!isDone?`<div style="margin-top:5px;display:flex;align-items:center;gap:5px">
+            <span style="font-size:9px;color:var(--ink4);white-space:nowrap">หมายเหตุ</span>
+            <input style="flex:1;padding:3px 7px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;background:var(--surface);color:var(--ink);outline:none;font-family:inherit"
+              placeholder="หมายเหตุสำหรับพนักงาน..." value="${item.note||''}"
+              onchange="dwSetNote(${item.id},this.value)">
+          </div>`:''}
+          ${isDone && item.note?`<div style="font-size:10px;color:var(--ink4);margin-top:2px;font-style:italic">${item.note}</div>`:''}
+        </td>
+        <td style="text-align:right;padding:9px 12px;font-size:12px;font-weight:500;color:${item.current_stock<=item.max_stock*0.2?'var(--red)':'var(--ink2)'}">
+          ${(item.current_stock||0).toLocaleString()}
+        </td>
+        <td style="text-align:right;padding:9px 12px;font-size:12px;color:var(--ink4)">${(item.max_stock||0).toLocaleString()}</td>
+        <td style="text-align:right;padding:9px 12px;font-size:12px;font-weight:500">${(item.suggested_qty||0).toLocaleString()}</td>
+        <td style="text-align:right;padding:9px 12px">
+          ${isDone
+            ? `<span style="font-size:12px;font-weight:500">${(item.prepared_qty||item.suggested_qty||0).toLocaleString()}</span>`
+            : `<input type="number" min="0" step="1" inputmode="decimal"
+                value="${item.prepared_qty||''}" placeholder="—"
+                style="width:64px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;text-align:right;background:var(--surface);color:var(--ink);outline:none"
+                onchange="dwSetPreparedQty(${item.id},this.value)">`
+          }
+        </td>
+        <td style="padding:9px 12px">
+          ${isDone
+            ? `<span style="font-size:10px;color:var(--ink4)">รับแล้ว</span>`
+            : `<select style="font-size:10px;padding:4px 6px;border-radius:5px;border:0.5px solid var(--line);cursor:pointer;width:100%;background:var(--surface);color:${statusColor};font-family:inherit"
+                onchange="dwSetStatus(${item.id},this.value).then(()=>renderDailyWithdrawPage())">
+                ${statusOpts}
+              </select>`
+          }
+        </td>
+        <td style="padding:9px 12px">
+          ${isDone
+            ? `<span style="font-size:10px;color:var(--ink4)">✓</span>`
+            : `<button class="btn btn-sm ${item.status==='ready'?'btn-primary':''}"
+                onclick="dwReceive(${item.id})"
+                ${item.status!=='ready'?'disabled style="opacity:.35"':''}
+                style="font-size:10px;white-space:nowrap">รับเข้า</button>`
+          }
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `<div style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:500">${label}</div>
+        <div style="font-size:11px;color:var(--ink4)">${items.length} รายการ${secReceived?` · รับแล้ว ${secReceived}`:''}</div>
+      </div>
+      <div class="sc-table-wrap">
+        <table class="sc-table">
+          <thead><tr>
+            <th>รายการ</th>
+            <th style="text-align:right">คงเหลือ</th>
+            <th style="text-align:right">Max</th>
+            <th style="text-align:right">แนะนำ</th>
+            <th style="text-align:right;width:80px">เตรียมจริง</th>
+            <th style="width:120px">สถานะ</th>
+            <th style="width:70px"></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${secReady>0?`<div style="display:flex;justify-content:flex-end;margin-top:8px">
+        <button class="btn btn-primary" onclick="dwReceiveAllSection('${pg}')" style="font-size:11px">
+          <i class="ti ti-checks"></i> ยืนยันรับเข้าที่จัดเตรียมแล้ว (${secReady})
+        </button>
+      </div>`:''}
+    </div>`;
+  }
 
   div.innerHTML = `
     <div class="page-header">
       <div><div class="page-title">รายการเบิกประจำวัน</div>
         <div class="page-sub">${dateStr}</div></div>
-      <button class="btn btn-sm" onclick="dbGenerateDailyList().then(()=>renderDailyWithdrawPage())" style="font-size:11px">
+      <button class="btn btn-sm" onclick="dwItems=[];dbGenerateDailyList().then(()=>renderDailyWithdrawPage())" style="font-size:11px">
         <i class="ti ti-refresh"></i> รีเฟรช
       </button>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:14px">
+    <div style="display:flex;gap:8px;margin-bottom:16px">
       <div class="card" style="flex:1;padding:10px 14px;text-align:center">
         <div style="font-size:18px;font-weight:600">${dwItems.length}</div>
         <div style="font-size:10px;color:var(--ink4)">ทั้งหมด</div>
@@ -4110,32 +4136,9 @@ async function renderDailyWithdrawPage() {
         <div style="font-size:10px;color:var(--ink4)">ยังไม่ดำเนินการ</div>
       </div>
     </div>
-    <div style="display:flex;gap:0;border-bottom:1px solid var(--line);margin-bottom:14px">
-      ${tabs}
-    </div>
-    <style>
-      .dw-tab{font-size:12px;padding:6px 16px;border:none;background:transparent;color:var(--ink3);border-bottom:2px solid transparent;cursor:pointer;margin-bottom:-1px;font-family:inherit}
-      .dw-tab.active{color:var(--ink);border-bottom:2px solid var(--ink);font-weight:500}
-    </style>
-    <div class="sc-table-wrap">
-      <table class="sc-table">
-        <thead><tr>
-          <th>รายการ</th>
-          <th style="text-align:right">คงเหลือ</th>
-          <th style="text-align:right">Max</th>
-          <th style="text-align:right">แนะนำ</th>
-          <th style="text-align:right">เตรียมจริง</th>
-          <th>สถานะ</th>
-          <th style="width:70px"></th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-    ${readyInTab>0?`<div style="display:flex;justify-content:flex-end;margin-top:12px">
-      <button class="btn btn-primary" onclick="dwReceiveAll()" style="font-size:11px">
-        <i class="ti ti-checks"></i> ยืนยันรับเข้าที่จัดเตรียมแล้ว (${readyInTab} รายการ)
-      </button>
-    </div>`:''}`;
+    ${buildSection('finish','คลังสินค้าสำเร็จรูป')}
+    <div style="height:1px;background:var(--line);margin:4px 0 20px"></div>
+    ${buildSection('store2','Store 2')}`;
 }
 
 function renderAlertGroupPage(group) {
