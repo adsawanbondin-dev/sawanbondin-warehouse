@@ -3905,18 +3905,35 @@ async function dbLoadDailyWithdrawals() {
 
 async function dbGenerateDailyList() {
   const today = new Date().toISOString().split('T')[0];
-  // เช็คว่ามีรายการวันนี้แล้วไหม
-  const { data: existing } = await sb.from('daily_withdrawals')
-    .select('id').eq('date', today).limit(1);
-  if (existing && existing.length > 0) return; // มีแล้วไม่สร้างซ้ำ
 
-  // ดึงรายการที่ต้องเติม (stock < max) จาก finish และ equip_th
-  const pgs = ['finish', 'store2'];
-  const items = masterDB.filter(m =>
-    pgs.includes(m.pg) && m.is_active !== false && m.max > 0
+  // ลบรายการวันนี้ที่ยังไม่ได้รับ แล้วสร้างใหม่ทุกครั้ง (เพื่อให้ stock ล่าสุด)
+  const { data: existing } = await sb.from('daily_withdrawals')
+    .select('id,status').eq('date', today);
+  if (existing && existing.length > 0) {
+    // ถ้ามีอยู่แล้ว ไม่สร้างใหม่
+    return;
+  }
+
+  // finish — เฉพาะ subcat = 'สินค้า' และ stock < min
+  const finishItems = masterDB.filter(m =>
+    m.pg === 'finish' &&
+    m.is_active !== false &&
+    m.min > 0 &&
+    m.stock < m.min &&
+    m.subcat === 'สินค้า'
   );
 
+  // store2 — ทุก subcat และ stock < min
+  const store2Items = masterDB.filter(m =>
+    m.pg === 'store2' &&
+    m.is_active !== false &&
+    m.min > 0 &&
+    m.stock < m.min
+  );
+
+  const items = [...finishItems, ...store2Items];
   if (!items.length) return;
+
   const rows = items.map(m => ({
     date: today,
     item_code: m.code,
@@ -3924,7 +3941,7 @@ async function dbGenerateDailyList() {
     pg: m.pg,
     current_stock: m.stock,
     max_stock: m.max,
-    suggested_qty: Math.max(0, m.max - m.stock),
+    suggested_qty: m.max > 0 ? Math.max(0, m.max - m.stock) : null,
     status: 'pending',
   }));
   await sb.from('daily_withdrawals').insert(rows);
@@ -4114,7 +4131,13 @@ async function renderDailyWithdrawPage() {
     <div class="page-header">
       <div><div class="page-title">รายการเบิกประจำวัน</div>
         <div class="page-sub">${dateStr}</div></div>
-      <button class="btn btn-sm" onclick="dwItems=[];dbGenerateDailyList().then(()=>renderDailyWithdrawPage())" style="font-size:11px">
+      <button class="btn btn-sm" onclick="(async()=>{
+        const today=new Date().toISOString().split('T')[0];
+        await sb.from('daily_withdrawals').delete().eq('date',today).neq('status','received');
+        dwItems=[];
+        await dbGenerateDailyList();
+        renderDailyWithdrawPage();
+      })()" style="font-size:11px">
         <i class="ti ti-refresh"></i> รีเฟรช
       </button>
     </div>
