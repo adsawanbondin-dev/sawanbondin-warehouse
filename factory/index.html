@@ -796,6 +796,24 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
 </div></div>
 
+<div class="modal-wrap" id="moveWhModal"><div class="modal" style="max-width:360px;width:95%">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-building-warehouse"></i> ย้ายคลัง</div>
+    <button class="btn btn-sm" onclick="closeModal('moveWhModal')">ยกเลิก</button>
+  </div>
+  <div style="font-size:12px;font-weight:500;margin-bottom:6px" id="moveWhName"></div>
+  <div style="font-size:11px;color:var(--ink4);margin-bottom:12px">คลังปัจจุบัน: <span id="moveWhCurrent" style="color:var(--ink2)"></span></div>
+  <div class="fg" style="margin-bottom:12px">
+    <label class="fl">ย้ายไปคลัง</label>
+    <select class="fi" id="moveWhTarget" style="padding:5px 8px"></select>
+  </div>
+  <input type="hidden" id="moveWhId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('moveWhModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveMovedWarehouse()"><i class="ti ti-arrow-right"></i> ย้าย</button>
+  </div>
+</div></div>
+
 <!-- Payment Request Modal — ใบแจ้งเบิก -->
 <div class="modal-wrap" id="paymentRequestModal"><div class="modal" style="max-width:620px;width:96%">
   <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
