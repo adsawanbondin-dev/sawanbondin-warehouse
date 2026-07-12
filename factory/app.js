@@ -64,6 +64,7 @@ let bomRecipes      = []; // cache สูตรการผลิตทั้ง
 let purchaseOrders  = []; // cache temp PO
 let locationDB      = {};    // { code: string }
 let specDB          = {};    // { code: string } — สเปกอุปกรณ์
+let remarkDB        = {};    // { code: string } — หมายเหตุ
 let lotDB           = {};    // { code: [{id,lot_sw,stock,updated_at}] }
 let masterCatFilter = 'all';
 let curPage         = 'master';
@@ -235,7 +236,8 @@ async function dbUpsertItem(m) {
     if (SUPPLIER_FIELDS === 'date') payload.next_delivery_date = m.next_delivery_date || null;
   }
   if (WAREHOUSE_CONFIG[m.pg]?.hasSpec) {
-    payload.spec = specDB[m.code] || null;
+    payload.spec   = specDB[m.code]   || null;
+    payload.remark = remarkDB[m.code] || null;
   }
   payload.pay_status    = m.pay_status    || null;
   payload.ship_status   = m.ship_status   || null;
@@ -330,7 +332,7 @@ async function dbLoadItems() {
   const supplierCols = SUPPLIER_FIELDS === 'days' ? ',supplier_name,lead_time_days'
                       : SUPPLIER_FIELDS === 'date' ? ',supplier_name,next_delivery_date'
                       : '';
-  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,spec,seq,updated_at,pay_status,ship_status,tracking_url,supplier_qty,supplier_price,expected_arrival_date,next_order_date' + supplierCols;
+  const cols = 'code,name,pg,subcat,stock,min_stock,max_stock,note,remark,spec,seq,updated_at,pay_status,ship_status,tracking_url,supplier_qty,supplier_price,expected_arrival_date,next_order_date' + supplierCols;
   const { data, error } = await sb.from('items')
     .select(cols)
     .eq('is_active', true)   // โหลดเฉพาะที่ยังใช้งานอยู่
@@ -350,10 +352,12 @@ async function dbLoadItems() {
     supplier_price:r.supplier_price||null,
     expected_arrival_date:r.expected_arrival_date||null,
     next_order_date:r.next_order_date||null,
+    remark:r.remark||null,
   }));
   (data||[]).forEach(r => {
     if (r.note) locationDB[r.code] = r.note;
     if (r.spec) specDB[r.code] = r.spec;
+    if (r.remark) remarkDB[r.code] = r.remark;
   });
   return true;
 }
@@ -2972,6 +2976,26 @@ async function saveEditSpec(){
   showToast('บันทึกสเปกเรียบร้อย');
 }
 
+function editRemark(code){
+  const m=masterDB.find(x=>x.code===code);if(!m)return;
+  document.getElementById('editRemarkId').value=code;
+  document.getElementById('editRemarkName').textContent=m.name;
+  document.getElementById('editRemarkVal').value=remarkDB[code]||'';
+  document.getElementById('editRemarkModal').classList.add('show');
+}
+async function saveEditRemark(){
+  const code=(document.getElementById('editRemarkId').value||'').trim();
+  const remark=(document.getElementById('editRemarkVal').value||'').trim();
+  remarkDB[code]=remark||'';
+  const m=masterDB.find(x=>x.code===code);
+  if(m) m.remark=remark||null;
+  const { error } = await sb.from('items').update({ remark: remark||null }).eq('code', code);
+  if(error){ showToast('บันทึกไม่สำเร็จ','err'); return; }
+  closeModal('editRemarkModal');
+  renderMasterContent();
+  showToast('บันทึกหมายเหตุเรียบร้อย');
+}
+
 function editName(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editNameId').value=code;document.getElementById('editNameVal').value=m.name;document.getElementById('editNameModal').classList.add('show'); }
 async function saveEditName(){
   const code = document.getElementById('editNameId').value;
@@ -3157,7 +3181,7 @@ function renderMasterContent(){
         <button class="icon-btn" onclick="editSubcat('${m.code}')" title="ย้ายหมวดหมู่"><i class="ti ti-folder-symlink"></i></button>
         <button class="icon-btn" onclick="editStock('${m.code}')" title="สต็อก"><i class="ti ti-edit"></i></button>
         <button class="icon-btn" onclick="editMinMax('${m.code}')" title="Min/Max"><i class="ti ti-adjustments-horizontal"></i></button>
-        ${WAREHOUSE_CONFIG[m.pg]?.hasSpec?`<button class="icon-btn" onclick="editSpec('${m.code}')" title="แก้ไขสเปก"><i class="ti ti-file-description"></i></button>`:''}
+        ${WAREHOUSE_CONFIG[m.pg]?.hasSpec?`<button class="icon-btn" onclick="editSpec('${m.code}')" title="แก้ไขสเปก"><i class="ti ti-file-description"></i></button>`:''}\n        <button class="icon-btn" onclick="editRemark('${m.code}')" title="หมายเหตุ"><i class="ti ti-message-2"></i></button>
         <button class="icon-btn danger" onclick="deleteMasterItem('${m.code}')" title="ลบ"><i class="ti ti-trash"></i></button>
         ` : ''}
       </div>
