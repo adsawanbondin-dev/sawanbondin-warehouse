@@ -3208,6 +3208,7 @@ function renderMasterContent(){
         ${canManageMaster() ? `
         <button class="icon-btn" onclick="editName('${m.code}')" title="แก้ไขชื่อ"><i class="ti ti-pencil"></i></button>
         <button class="icon-btn" onclick="editSubcat('${m.code}')" title="ย้ายหมวดหมู่"><i class="ti ti-folder-symlink"></i></button>
+        <button class="icon-btn" onclick="moveWarehouse('${m.code}')" title="ย้ายคลัง"><i class="ti ti-arrows-transfer-up"></i></button>
         <button class="icon-btn" onclick="editStock('${m.code}')" title="สต็อก"><i class="ti ti-edit"></i></button>
         <button class="icon-btn" onclick="editMinMax('${m.code}')" title="Min/Max"><i class="ti ti-adjustments-horizontal"></i></button>
         ${WAREHOUSE_CONFIG[m.pg]?.hasSpec?`<button class="icon-btn" onclick="editSpec('${m.code}')" title="แก้ไขสเปก"><i class="ti ti-file-description"></i></button>`:''}\n        <button class="icon-btn" onclick="editRemark('${m.code}')" title="หมายเหตุ"><i class="ti ti-message-2"></i></button>
