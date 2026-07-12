@@ -3751,7 +3751,8 @@ async function renderStockCountPage() {
   // สร้าง table rows — แยก lot แต่ละแถว
   const tableRows = filtered.map((m,i) => {
     const lots = hasLotPg ? (lotDB[m.code]||[]) : [];
-    const hasLots = lots.length > 0;
+    const activeLots = lots.filter(l => l.stock > 0);
+    const hasLots = activeLots.length > 0;
 
     if (!hasLots) {
       // รายการปกติ ไม่มี lot
@@ -3781,7 +3782,6 @@ async function renderStockCountPage() {
     }
 
     // รายการที่มี lot — แสดงหัวแถว + แถว lot แต่ละ lot (ซ่อน lot stock=0)
-    const activeLots = lots.filter(l => l.stock > 0);
     const lotRows = activeLots.map((l, li) => {
       const sw     = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '?';
       const sp     = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
@@ -3794,11 +3794,11 @@ async function renderStockCountPage() {
       const diffCls= diff===null?'':diff>0?'sc-diff-pos':diff<0?'sc-diff-neg':'sc-diff-zero';
       const diffTxt= diff===null?'—':(diff>0?'+':'')+diff.toLocaleString();
       const status = !hasVal?'<span class="sc-status-blank">ยังไม่นับ</span>':diff===0?'<span class="sc-status-ok">✓ ตรงกัน</span>':'<span class="sc-status-diff">ไม่ตรง</span>';
-      const nextKey = li+1 < lots.length ? m.code+'_lot_'+lots[li+1].id : '';
+      const nextKey = li+1 < activeLots.length ? m.code+'_lot_'+activeLots[li+1].id : '';
       return `<tr id="sc-row-${key}" style="${diff!==null&&diff!==0?'background:#fef8f8':''};border-top:${li===0?'1px solid var(--line)':'none'}">
         ${li===0?`<td rowspan="${activeLots.length}" style="color:var(--ink4);font-size:11px;border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${i+1}</td>
-        <td rowspan="${lots.length}" style="font-weight:500;color:var(--ink);border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${m.name}</td>
-        <td rowspan="${lots.length}" style="font-family:monospace;font-size:10px;color:var(--ink4);border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${m.code}</td>`:''}
+        <td rowspan="${activeLots.length}" style="font-weight:500;color:var(--ink);border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${m.name}</td>
+        <td rowspan="${activeLots.length}" style="font-family:monospace;font-size:10px;color:var(--ink4);border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${m.code}</td>`:''}
         <td style="font-size:10px;padding-left:8px">
           <div style="font-family:monospace;font-weight:500;color:var(--ink2)">${sw}</div>
           ${sp?`<div style="color:var(--ink4)">Sup: ${sp}</div>`:''}
