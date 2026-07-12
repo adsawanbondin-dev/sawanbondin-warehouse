@@ -180,6 +180,7 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
       <div class="opt-row"><span class="opt-label">แบ่งถุง (lot)</span><div class="opt-ctrl"><button class="opt-btn active" id="bagOn" onclick="toggle('showBag',true,'bagOn','bagOff')">แสดง</button><button class="opt-btn" id="bagOff" onclick="toggle('showBag',false,'bagOn','bagOff')">ซ่อน</button></div></div>
       <div class="opt-row" id="bagCountRow"><span class="opt-label">จำนวนถุงต่อ Lot</span><input class="opt-num" id="bagCount" type="number" value="1" min="1" max="50" onchange="renderPreview()"></div>
       <div class="opt-row"><span class="opt-label">สเปก</span><div class="opt-ctrl"><button class="opt-btn" id="spOn" onclick="toggle('showSpec',true,'spOn','spOff')">แสดง</button><button class="opt-btn active" id="spOff" onclick="toggle('showSpec',false,'spOn','spOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">หมายเหตุ</span><div class="opt-ctrl"><button class="opt-btn" id="ntOn" onclick="toggle('showNote',true,'ntOn','ntOff')">แสดง</button><button class="opt-btn active" id="ntOff" onclick="toggle('showNote',false,'ntOn','ntOff')">ซ่อน</button></div></div>
       <div class="opt-row"><span class="opt-label">คอลัมน์</span><div class="opt-ctrl"><button class="opt-btn" id="c2" onclick="setCols(2)">2</button><button class="opt-btn active" id="c3" onclick="setCols(3)">3</button><button class="opt-btn" id="c4" onclick="setCols(4)">4</button><button class="opt-btn" id="c5" onclick="setCols(5)">5</button></div></div>
       <div class="opt-row"><span class="opt-label">ขนาด QR (px)</span><input class="opt-num" id="qrSize" type="number" value="80" min="48" max="160" step="8" onchange="renderPreview()"></div>
       <div class="opt-row"><span class="opt-label">จำนวนชุด</span><input class="opt-num" id="copies" type="number" value="1" min="1" max="20" onchange="renderPreview()"></div>
@@ -233,7 +234,7 @@ async function loadCatalog() {
   try {
     await loadLocations();
     const { data, error } = await sb.from('items')
-      .select('code,name,pg,subcat,spec')
+      .select('code,name,pg,subcat,spec,note')
       .eq('is_active', true)
       .order('pg').order('subcat').order('seq');
     if (error) throw error;
@@ -249,6 +250,7 @@ async function loadCatalog() {
       cat:  PG_LABEL[r.pg] || r.pg,
       sub:  r.subcat || '',
       spec: r.spec  || '',
+      note: r.note  || '',
       location: locationMap[r.code] || '',
     }));
   } catch(e) {
@@ -260,7 +262,7 @@ async function loadCatalog() {
 /* ══ STATE ══ */
 let selected=new Set(), lotSelected=new Set();
 let currentCat='ทั้งหมด', currentTab='items';
-let cols=3, showQR=true, showBC=false, showName=true, showBrand=true, showSpec=false, showLoc=true, showBilingual=true, showBag=true;
+let cols=3, showQR=true, showBC=false, showName=true, showBrand=true, showSpec=false, showLoc=true, showBilingual=true, showBag=true, showNote=false;
 let lotCatalog=[];
 
 /* ══ TABS ══ */
@@ -383,6 +385,7 @@ function toggle(key,val,onId,offId){
   else if(key==='showName')showName=val;
   else if(key==='showBrand')showBrand=val;
   else if(key==='showSpec')showSpec=val;
+  else if(key==='showNote')showNote=val;
   else if(key==='showLoc')showLoc=val;
   else if(key==='showBilingual')showBilingual=val;
   else if(key==='showBag'){showBag=val;document.getElementById('bagCountRow').style.display=val?'':'none';}
@@ -520,6 +523,7 @@ function renderPreview(){
     div.appendChild(cd);
     if(showBrand){const br=document.createElement('div');br.className='sticker-brand';br.textContent='SAWANBONDIN';div.appendChild(br);}
     if(showSpec && item.spec){const sp=document.createElement('div');sp.className='sticker-spec';sp.textContent=item.spec;div.appendChild(sp);}
+    if(showNote && item.note){const nt=document.createElement('div');nt.style.cssText='font-size:9px;color:#666;text-align:center;margin-top:2px;font-style:italic;padding:0 4px';nt.textContent=item.note;div.appendChild(nt);}
 
     const pair=document.createElement('div');
     pair.className='sticker-pair';
