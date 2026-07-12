@@ -2958,6 +2958,35 @@ async function saveEditMinMax(){
   }
   checkAlerts();closeModal('editMinMaxModal');renderMasterContent();
 }
+function moveWarehouse(code) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  document.getElementById('moveWhId').value = code;
+  document.getElementById('moveWhName').textContent = m.name;
+  document.getElementById('moveWhCurrent').textContent = WAREHOUSE_CONFIG[m.pg]?.label || m.pg;
+  const sel = document.getElementById('moveWhTarget');
+  sel.innerHTML = Object.entries(WAREHOUSE_CONFIG)
+    .filter(([pg]) => pg !== m.pg)
+    .map(([pg, cfg]) => `<option value="${pg}">${cfg.label}</option>`)
+    .join('');
+  document.getElementById('moveWhModal').classList.add('show');
+}
+
+async function saveMovedWarehouse() {
+  const code   = document.getElementById('moveWhId').value;
+  const newPg  = document.getElementById('moveWhTarget').value;
+  const m = masterDB.find(x => x.code === code);
+  if (!m || !newPg) return;
+
+  const { error } = await sb.from('items').update({ pg: newPg }).eq('code', code);
+  if (error) { showToast('ย้ายไม่สำเร็จ', 'err'); return; }
+
+  m.pg = newPg;
+  closeModal('moveWhModal');
+  renderMasterContent();
+  showToast(`ย้าย "${m.name}" ไป ${WAREHOUSE_CONFIG[newPg]?.label || newPg} แล้ว`);
+}
+
 function editSpec(code){
   const m=masterDB.find(x=>x.code===code);if(!m)return;
   document.getElementById('editSpecId').value=code;
