@@ -3780,8 +3780,9 @@ async function renderStockCountPage() {
       </tr>`;
     }
 
-    // รายการที่มี lot — แสดงหัวแถว + แถว lot แต่ละ lot
-    const lotRows = lots.map((l, li) => {
+    // รายการที่มี lot — แสดงหัวแถว + แถว lot แต่ละ lot (ซ่อน lot stock=0)
+    const activeLots = lots.filter(l => l.stock > 0);
+    const lotRows = activeLots.map((l, li) => {
       const sw     = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '?';
       const sp     = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
       const ex     = l.expiry_date  ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
@@ -3795,7 +3796,7 @@ async function renderStockCountPage() {
       const status = !hasVal?'<span class="sc-status-blank">ยังไม่นับ</span>':diff===0?'<span class="sc-status-ok">✓ ตรงกัน</span>':'<span class="sc-status-diff">ไม่ตรง</span>';
       const nextKey = li+1 < lots.length ? m.code+'_lot_'+lots[li+1].id : '';
       return `<tr id="sc-row-${key}" style="${diff!==null&&diff!==0?'background:#fef8f8':''};border-top:${li===0?'1px solid var(--line)':'none'}">
-        ${li===0?`<td rowspan="${lots.length}" style="color:var(--ink4);font-size:11px;border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${i+1}</td>
+        ${li===0?`<td rowspan="${activeLots.length}" style="color:var(--ink4);font-size:11px;border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${i+1}</td>
         <td rowspan="${lots.length}" style="font-weight:500;color:var(--ink);border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${m.name}</td>
         <td rowspan="${lots.length}" style="font-family:monospace;font-size:10px;color:var(--ink4);border-right:1px solid var(--line);vertical-align:top;padding-top:11px">${m.code}</td>`:''}
         <td style="font-size:10px;padding-left:8px">
@@ -3876,11 +3877,11 @@ async function scSave() {
   const hasLotPg = !!WAREHOUSE_CONFIG[scPg]?.hasLot;
   const items    = masterDB.filter(m => m.pg === scPg);
   const rows     = [];
+  const adjustments = []; // สำหรับปรับ stock
 
   items.forEach(m => {
-    const lots = hasLotPg ? (lotDB[m.code]||[]) : [];
+    const lots = hasLotPg ? (lotDB[m.code]||[]).filter(l => l.stock > 0) : [];
     if (lots.length) {
-      // บันทึกแยกตาม lot
       lots.forEach(l => {
         const key = m.code + '_lot_' + l.id;
         if (scData[key] === undefined) return;
@@ -3894,6 +3895,9 @@ async function scSave() {
           note:         scData[key+'_note'] || '',
           counted_by:   window._operatorName || '',
         });
+        if (scData[key] !== l.stock) {
+          adjustments.push({ m, l, actual: scData[key], key, note: scData[key+'_note']||'' });
+        }
       });
     } else {
       if (scData[m.code] === undefined) return;
@@ -3906,6 +3910,9 @@ async function scSave() {
         note:         scData[m.code+'_note'] || '',
         counted_by:   window._operatorName || '',
       });
+      if (scData[m.code] !== m.stock) {
+        adjustments.push({ m, l: null, actual: scData[m.code], key: m.code, note: scData[m.code+'_note']||'' });
+      }
     }
   });
 
@@ -3914,15 +3921,51 @@ async function scSave() {
   const btn = document.querySelector('#page-stockcount .btn-primary');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> กำลังบันทึก...'; }
 
+  // บันทึก stock count log
   const ok = await dbSaveStockCount(rows);
-  if (ok) {
-    showToast(`บันทึกผลตรวจนับ ${rows.length} แถวสำเร็จ`);
-    scData = {};
-    renderStockCountPage();
-  } else {
+  if (!ok) {
     showToast('บันทึกไม่สำเร็จ', 'err');
     if (btn) { btn.disabled = false; btn.innerHTML = `<i class="ti ti-device-floppy"></i> บันทึกผล`; }
+    return;
   }
+
+  // ปรับ stock อัตโนมัติ + บันทึก transaction
+  for (const adj of adjustments) {
+    const { m, l, actual, note } = adj;
+    const diff = actual - (l ? l.stock : m.stock);
+    const action = diff > 0 ? 'receive' : 'withdraw';
+    const qty = Math.abs(diff);
+    const lotSW = l?.lot_sw || null;
+    const lotId = l?.id || null;
+    const swStr = lotSW ? new Date(lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+    const txNote = `ปรับจากตรวจนับ: ระบบ ${(l?l.stock:m.stock).toLocaleString()} → จริง ${actual.toLocaleString()}${note?' — '+note:''}`;
+
+    // ปรับ lot stock
+    if (l) {
+      await sb.from('lots').update({ stock: actual, updated_at: new Date().toISOString() }).eq('id', l.id);
+      l.stock = actual;
+    }
+    // ปรับ items stock
+    const newItemStock = l
+      ? (m.stock + diff)
+      : actual;
+    await sb.from('items').update({ stock: newItemStock }).eq('code', m.code);
+    m.stock = newItemStock;
+
+    // บันทึก transaction
+    await dbInsertTransaction({
+      item_code: m.code, item_name: m.name, pg: m.pg,
+      action_type: action, quantity: qty,
+      lot_sw: lotSW, old_stock: l ? l.stock + (diff < 0 ? diff : 0) : m.stock - diff,
+      new_stock: newItemStock,
+      operator_name: window._operatorName || '',
+      note: txNote, via: 'stockcount'
+    });
+  }
+
+  showToast(`บันทึกผลตรวจนับ ${rows.length} แถว · ปรับ stock ${adjustments.length} รายการ`);
+  scData = {};
+  renderStockCountPage();
 }
 
 function scSetLotVal(itemCode, lotId, val, nextKey) {
