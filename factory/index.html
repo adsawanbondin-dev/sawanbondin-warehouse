@@ -779,6 +779,23 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
 </div></div>
 
+<div class="modal-wrap" id="editRemarkModal"><div class="modal">
+  <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+    <div class="card-title-left"><i class="ti ti-message-2"></i> หมายเหตุ</div>
+    <button class="btn btn-sm" onclick="closeModal('editRemarkModal')">ยกเลิก</button>
+  </div>
+  <div style="font-size:12px;font-weight:500;margin-bottom:10px" id="editRemarkName"></div>
+  <div class="fg" style="margin-bottom:12px">
+    <label class="fl">หมายเหตุ</label>
+    <textarea class="fta" id="editRemarkVal" rows="4" placeholder="หมายเหตุเพิ่มเติม..."></textarea>
+  </div>
+  <input type="hidden" id="editRemarkId">
+  <div class="form-actions" style="margin-top:0;padding-top:0;border-top:none">
+    <button class="btn" onclick="closeModal('editRemarkModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveEditRemark()"><i class="ti ti-check"></i> บันทึก</button>
+  </div>
+</div></div>
+
 <!-- Payment Request Modal — ใบแจ้งเบิก -->
 <div class="modal-wrap" id="paymentRequestModal"><div class="modal" style="max-width:620px;width:96%">
   <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
