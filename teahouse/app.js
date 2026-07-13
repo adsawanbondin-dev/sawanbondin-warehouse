@@ -2476,6 +2476,33 @@ async function saveEditLoc(){
 async function deleteMasterItem(code){ if(!canManageMaster()){showToast('ไม่มีสิทธิ์ลบรายการ','err');return;} if(!confirm('ลบรายการนี้? ข้อมูลจะหายถาวร'))return;masterDB=masterDB.filter(m=>m.code!==code);delete locationDB[code];await dbDeleteItem(code);checkAlerts();renderMasterContent(); }
 
 /* ── ย้ายหมวดหมู่ (subcat) ── */
+function moveWarehouse(code) {
+  const m = masterDB.find(x => x.code === code);
+  if (!m) return;
+  document.getElementById('moveWhId').value = code;
+  document.getElementById('moveWhName').textContent = m.name;
+  document.getElementById('moveWhCurrent').textContent = WAREHOUSE_CONFIG[m.pg]?.label || m.pg;
+  const sel = document.getElementById('moveWhTarget');
+  sel.innerHTML = Object.entries(WAREHOUSE_CONFIG)
+    .filter(([pg]) => pg !== m.pg)
+    .map(([pg, cfg]) => `<option value="${pg}">${cfg.label}</option>`)
+    .join('');
+  document.getElementById('moveWhModal').classList.add('show');
+}
+
+async function saveMovedWarehouse() {
+  const code  = document.getElementById('moveWhId').value;
+  const newPg = document.getElementById('moveWhTarget').value;
+  const m = masterDB.find(x => x.code === code);
+  if (!m || !newPg) return;
+  const { error } = await sb.from('items').update({ pg: newPg }).eq('code', code);
+  if (error) { showToast('ย้ายไม่สำเร็จ', 'err'); return; }
+  m.pg = newPg;
+  closeModal('moveWhModal');
+  renderMasterContent();
+  showToast(`ย้าย "${m.name}" ไป ${WAREHOUSE_CONFIG[newPg]?.label || newPg} แล้ว`);
+}
+
 function editSubcat(code){
   const m=masterDB.find(x=>x.code===code); if(!m) return;
   document.getElementById('editSubcatId').value=code;
@@ -2666,6 +2693,7 @@ function renderMasterContent(){
         ${canManageMaster() ? `
         <button class="icon-btn" onclick="editName('${m.code}')" title="แก้ไขชื่อ"><i class="ti ti-pencil"></i></button>
         <button class="icon-btn" onclick="editSubcat('${m.code}')" title="ย้ายหมวดหมู่"><i class="ti ti-folder-symlink"></i></button>
+        <button class="icon-btn" onclick="moveWarehouse('${m.code}')" title="ย้ายคลัง"><i class="ti ti-arrows-transfer-up"></i></button>
         <button class="icon-btn" onclick="editStock('${m.code}')" title="สต็อก"><i class="ti ti-edit"></i></button>
         <button class="icon-btn" onclick="editMinMax('${m.code}')" title="Min/Max"><i class="ti ti-adjustments-horizontal"></i></button>
         ${WAREHOUSE_CONFIG[m.pg]?.hasSpec ? `<button class="icon-btn" onclick="editSpec('${m.code}')" title="แก้ไขสเปก"><i class="ti ti-file-description"></i></button>` : ''}
