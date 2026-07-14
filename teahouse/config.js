@@ -16,14 +16,12 @@ window.WMS_CONFIG = {
   // โครงสร้างคลังของ Tea House — แทนที่ WAREHOUSE_CONFIG เริ่มต้นของ Factory ทั้งก้อน
   WAREHOUSE_CONFIG: {
     finish:     { label:'คลังสินค้าสำเร็จรูป',     prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
-    raw:        { label:'คลังวัตถุดิบ',             prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
     equip_th:   { label:'คลังอุปกรณ์ Tea House',   prefix:'TH', hasLot:false, lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
     store2:     { label:'Store 2',                  prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:false, hasItemLot:true },
   },
 
-  // แจ้งเตือนแบ่ง 2 กลุ่ม: สั่งซื้อ (วัตถุดิบ+อุปกรณ์ทั้ง2คลัง) / เบิก (สินค้าสำเร็จรูป)
   ALERT_GROUPS: {
-    purchase: ['raw', 'equip_th'],
+    purchase: ['equip_th'],
     withdraw: ['finish'],
   },
 
