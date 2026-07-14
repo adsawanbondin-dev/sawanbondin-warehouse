@@ -5144,16 +5144,20 @@ async function renderAlertGroupPage(group) {
     <div class="page-header">
       <div><div class="page-title">รายการแจ้งผลิต</div>
         <div class="page-sub">${today} · ${allAlerts.length} รายการ · หมดสต็อก ${totalZero} รายการ</div></div>
-      <button class="btn btn-sm" id="wd-copy-btn" onclick="
-        navigator.clipboard.writeText(${JSON.stringify('__COPY__')}.replace('__COPY__', document.getElementById('wd-copy-text').value)).then(()=>{
-          this.textContent='✓ คัดลอกแล้ว';
-          setTimeout(()=>this.innerHTML='<i class=\'ti ti-copy\'></i> คัดลอก',2000);
-        });" style="font-size:11px">
+      <button class="btn btn-sm" id="wd-copy-btn" style="font-size:11px">
         <i class="ti ti-copy"></i> คัดลอก
       </button>
     </div>
-    <textarea id="wd-copy-text" style="display:none">${copyText}</textarea>
-    ${sections || '<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-check" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</div>'}`;
+    ${sections || '<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-check" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</div>'}
+    <textarea id="wd-copy-text" style="display:none"></textarea>`;
+  document.getElementById('wd-copy-text').value = copyText;
+  document.getElementById('wd-copy-btn').addEventListener('click', function() {
+    const txt = document.getElementById('wd-copy-text').value;
+    navigator.clipboard.writeText(txt).then(() => {
+      this.textContent = '✓ คัดลอกแล้ว';
+      setTimeout(() => { this.innerHTML = '<i class="ti ti-copy"></i> คัดลอก'; }, 2000);
+    });
+  });
   return;
   }
 }
