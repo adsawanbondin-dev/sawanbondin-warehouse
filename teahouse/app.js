@@ -3467,6 +3467,11 @@ switchPage = async function(p) {
   const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
   const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'daily-withdraw', ...alertGroupPages];
 
+  // ถ้า page ไม่มีใน allPages ให้ไปหน้าแรก (finish)
+  if (!allPages.includes(p)) {
+    p = WAREHOUSE_PAGES[0] || 'master';
+  }
+
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelector(`[data-page="${p}"]`)?.classList.add('active');
   allPages.forEach(pg => {
@@ -3479,6 +3484,8 @@ switchPage = async function(p) {
     await renderStockCountPage();
   } else if (p === 'daily-withdraw') {
     await renderDailyWithdrawPage();
+  } else if (p.startsWith('alert-')) {
+    renderAlertGroupPage(p.replace('alert-',''));
   } else {
     _scOrigSwitch(p);
   }
