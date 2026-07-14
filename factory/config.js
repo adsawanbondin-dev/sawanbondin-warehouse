@@ -13,7 +13,7 @@ window.WMS_CONFIG = {
   // แจ้งเตือนแบ่ง 2 กลุ่ม: สั่งซื้อ (5 คลัง ไม่รวมสินค้าสำเร็จรูป/ชาตัวอย่าง) / แจ้งผลิต (สินค้าสำเร็จรูป)
   ALERT_GROUPS: {
     purchase: ['raw', 'matcha', 'pack', 'packaging', 'equip'],
-    withdraw: ['finish'],
+    withdraw: ['raw', 'matcha', 'finish'],
   },
 
   // ชื่อหน้าแจ้งเตือนกลุ่ม withdraw (ค่า default คือ "รายการเบิก" — Factory override เป็น "รายการแจ้งผลิต")
