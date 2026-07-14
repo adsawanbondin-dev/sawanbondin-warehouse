@@ -5099,80 +5099,64 @@ async function renderAlertGroupPage(group) {
   const withdrawLabel = _CFG.WITHDRAW_ALERT_LABEL || 'รายการเบิก';
 
   if (group === 'withdraw') {
-  // ── WITHDRAW — แจ้งผลิต (finish: raw, matcha) ──
-  const PURCHASE_GROUPS = [
+  const WD_GROUPS = [
     { pg: 'raw',    label: 'วัตถุดิบ' },
     { pg: 'matcha', label: 'ชาบดผงมัตจะ' },
     { pg: 'finish', label: 'สินค้าสำเร็จรูป' },
   ];
-
-  const groupPgs = (ALERT_GROUPS[group]||[]);
-  const allAlerts = masterDB.filter(m => {
-    const pgs = PURCHASE_GROUPS.map(g=>g.pg).filter(p => groupPgs.includes(p));
-    return pgs.includes(m.pg) && m.min > 0 && m.stock <= m.min;
-  });
-
-  const totalLow  = allAlerts.length;
+  const groupPgs = ALERT_GROUPS[group] || [];
+  const allAlerts = masterDB.filter(m =>
+    groupPgs.includes(m.pg) && m.min > 0 && m.stock <= m.min
+  );
+  const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
   const totalZero = allAlerts.filter(m => m.stock <= 0).length;
 
-  const sections = PURCHASE_GROUPS.map(({pg, label}) => {
+  const sections = WD_GROUPS.map(({pg, label}) => {
     const items = allAlerts.filter(m => m.pg === pg);
     if (!items.length) return '';
-
     const rows = items.map((m,i) => {
-      const stockColor = m.stock <= 0 ? 'var(--red)' : 'var(--warn)';
-      return `<tr>
-        <td style="color:var(--ink4);font-size:11px">${i+1}</td>
-        <td style="font-weight:500;font-size:12px">${m.name}</td>
-        <td style="text-align:right;font-weight:600;color:${stockColor};font-size:12px">${m.stock.toLocaleString()}</td>
-        <td style="text-align:right;color:var(--ink4);font-size:12px">${m.min.toLocaleString()}</td>
-      </tr>`;
+      const stockColor = m.stock <= 0 ? 'var(--red)' : 'var(--ink)';
+      return `<div style="display:flex;align-items:center;padding:8px 12px;border-bottom:0.5px solid var(--line);gap:8px">
+        <span style="font-size:10px;color:var(--ink4);width:16px;flex-shrink:0">${i+1}</span>
+        <span style="flex:1;font-size:12px;font-weight:500">${m.name}</span>
+        <span style="font-size:12px;font-weight:600;color:${stockColor}">${m.stock.toLocaleString()}</span>
+      </div>`;
     }).join('');
-
-    return `<div style="margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;margin-bottom:6px">
-        <span style="font-size:12px;font-weight:500">${label}</span>
+    return `<div style="margin-bottom:12px;border:0.5px solid var(--line);border-radius:10px;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:var(--s2);border-bottom:0.5px solid var(--line)">
+        <span style="font-size:11px;font-weight:500">${label}</span>
         <span style="font-size:10px;color:var(--ink4)">${items.length} รายการ</span>
-      </div>
-      <div class="sc-table-wrap">
-        <table class="sc-table">
-          <thead><tr>
-            <th style="width:28px">#</th>
-            <th>รายการ</th>
-            <th style="text-align:right">คงเหลือ</th>
-            <th style="text-align:right">Min</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
+      </div>${rows}
     </div>`;
   }).join('');
+
+  const copyLines = ['รายการแจ้งผลิต ' + today, ''];
+  WD_GROUPS.forEach(({pg, label}) => {
+    const items = allAlerts.filter(m => m.pg === pg);
+    if (!items.length) return;
+    copyLines.push('── ' + label + ' ──');
+    items.forEach((m,i) => copyLines.push((i+1) + '. ' + m.name + ' (' + m.stock + ')'));
+    copyLines.push('');
+  });
+  const copyText = copyLines.join('\n');
 
   div.innerHTML = `
     <div class="page-header">
       <div><div class="page-title">รายการแจ้งผลิต</div>
-        <div class="page-sub">สินค้าที่สต็อกต่ำกว่า Min</div></div>
+        <div class="page-sub">${today} · ${allAlerts.length} รายการ · หมดสต็อก ${totalZero} รายการ</div></div>
+      <button class="btn btn-sm" id="wd-copy-btn" onclick="
+        navigator.clipboard.writeText(${JSON.stringify('__COPY__')}.replace('__COPY__', document.getElementById('wd-copy-text').value)).then(()=>{
+          this.textContent='✓ คัดลอกแล้ว';
+          setTimeout(()=>this.innerHTML='<i class=\'ti ti-copy\'></i> คัดลอก',2000);
+        });" style="font-size:11px">
+        <i class="ti ti-copy"></i> คัดลอก
+      </button>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <div class="card" style="flex:1;padding:10px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:600">${totalLow}</div>
-        <div style="font-size:10px;color:var(--ink4)">รายการทั้งหมด</div>
-      </div>
-      <div class="card" style="flex:1;padding:10px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:600;color:var(--red)">${totalZero}</div>
-        <div style="font-size:10px;color:var(--ink4)">หมดสต็อก</div>
-      </div>
-      <div class="card" style="flex:1;padding:10px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:600;color:var(--warn)">${totalLow - totalZero}</div>
-        <div style="font-size:10px;color:var(--ink4)">ต่ำกว่า Min</div>
-      </div>
-    </div>
-    ${sections || `<div style="padding:40px;text-align:center;color:var(--ink4)">
-      <i class="ti ti-check" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>
-      สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</div>`}`;
+    <textarea id="wd-copy-text" style="display:none">${copyText}</textarea>
+    ${sections || '<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-check" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</div>'}`;
   return;
-}
   }
+}
 
 function openAlertReceiveModal(code, group) {
   const m = masterDB.find(x => x.code === code);
