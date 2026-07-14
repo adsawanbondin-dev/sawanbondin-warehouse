@@ -5099,40 +5099,16 @@ async function renderAlertGroupPage(group) {
   const withdrawLabel = _CFG.WITHDRAW_ALERT_LABEL || 'รายการเบิก';
 
   if (group === 'withdraw') {
-    const alerts = getAlertItems(null, group);
-    const rows = alerts.map((m,i) => {
-      const cfg = WAREHOUSE_CONFIG[m.pg];
-      const stockColor = m.stock<=0 ? 'var(--red)' : 'var(--warn)';
-      return `<tr>
-        <td style="color:var(--ink4)">${i+1}</td>
-        <td style="font-weight:500">${m.name}<div style="font-size:10px;color:var(--ink4)">${m.code}</div></td>
-        <td>${cfg?.label||m.pg}</td>
-        <td style="text-align:right;font-weight:600;color:${stockColor}">${m.stock}</td>
-        <td style="text-align:right;color:var(--ink3)">${m.min}</td>
-        <td style="text-align:right;color:var(--ink3)">${m.max||'—'}</td>
-        <td style="text-align:center;white-space:nowrap">
-          <button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','${group}')"><i class="ti ti-check"></i> รับเข้า</button>
-          <button class="btn btn-sm" onclick="editMinMax('${m.code}')"><i class="ti ti-pencil"></i></button>
-        </td>
-      </tr>`;
-    }).join('') || `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-check" style="font-size:20px;display:block;margin-bottom:6px;opacity:.5"></i>ไม่มีรายการ</td></tr>`;
-    div.innerHTML = `<div class="page-header"><div><div class="page-title">${withdrawLabel}</div><div class="page-sub">รายการที่สต็อกต่ำกว่า Min</div></div></div>
-      <div class="sc-table-wrap"><table class="sc-table"><thead><tr>
-        <th style="width:28px">#</th><th>รายการ</th><th>คลัง</th>
-        <th style="text-align:right">คงเหลือ</th><th style="text-align:right">Min</th><th style="text-align:right">Max</th><th></th>
-      </tr></thead><tbody>${rows}</tbody></table></div>`;
-    return;
-  }
-
-  // ── PURCHASE — แจ้งผลิต (raw, matcha, finish) ──
+  // ── WITHDRAW — แจ้งผลิต (finish: raw, matcha) ──
   const PURCHASE_GROUPS = [
     { pg: 'raw',    label: 'วัตถุดิบ' },
     { pg: 'matcha', label: 'ชาบดผงมัตจะ' },
     { pg: 'finish', label: 'สินค้าสำเร็จรูป' },
   ];
 
+  const groupPgs = (ALERT_GROUPS[group]||[]);
   const allAlerts = masterDB.filter(m => {
-    const pgs = PURCHASE_GROUPS.map(g=>g.pg);
+    const pgs = PURCHASE_GROUPS.map(g=>g.pg).filter(p => groupPgs.includes(p));
     return pgs.includes(m.pg) && m.min > 0 && m.stock <= m.min;
   });
 
@@ -5196,6 +5172,7 @@ async function renderAlertGroupPage(group) {
       สต็อกอยู่ในเกณฑ์ปกติทั้งหมด</div>`}`;
   return;
 }
+  }
 
 function openAlertReceiveModal(code, group) {
   const m = masterDB.find(x => x.code === code);
