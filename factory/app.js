@@ -2262,9 +2262,13 @@ async function submitF(pg) {
           const cached = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
           if (cached) lotId = cached.id;
         }
+        // สำหรับ finish: ถ้า receive และเลือก lot อยู่แล้ว ให้บวก stock ใน lot นั้น ไม่สร้างใหม่
+        const effectiveLotSW = (cfg.hasLot && lotSW && lotSW.length > 0)
+          ? (pg === 'finish' && action === 'receive' && !hasBags ? null : lotSW)
+          : null;
         rpcResult = await dbAdjustStockWithLot(code, action, qty, {
           lotId,
-          lotSW: (cfg.hasLot && lotSW && lotSW.length > 0) ? lotSW : null,
+          lotSW: effectiveLotSW,
           lotSP: (lotSP && lotSP.length > 0) ? lotSP : null,
           expiry: (expiry && expiry.length > 0) ? expiry : null,
           name: item,
