@@ -298,6 +298,7 @@ function mapTxRow(r) {
     qty:parseFloat(r.quantity), lotSW:r.lot_sw||'-', lotSP:r.lot_supplier||'',
     pg:r.pg, via:r.via||'manual',
     oldStock:r.old_stock, newStock:r.new_stock,
+    lotId: r.lot_id || null,
   };
 }
 
@@ -1025,10 +1026,10 @@ function canManageMaster() {
  * ใช้ทั้งตอน "ย้อนผลเดิม" (กลับด้าน action) และ "ใช้ค่าใหม่"
  * คืนค่า { ok, ... } จาก dbAdjustStockWithLot
  */
-async function applyStockDelta(code, type, qty, lotSW, name) {
+async function applyStockDelta(code, type, qty, lotSW, name, lotId=null) {
   if (type === 'return_bad' || !qty) return { ok: true, skipped: true };
-  let lotId = null;
-  if (lotSW && lotSW !== '-') {
+  // ใช้ lotId โดยตรงถ้ามี ไม่ต้องค้นหาจาก lotSW
+  if (!lotId && lotSW && lotSW !== '-') {
     if (!lotDB[code]) await dbLoadLotsForItem(code);
     const cached = (lotDB[code]||[]).find(l => l.lot_sw === lotSW);
     if (cached) lotId = cached.id;
@@ -1248,7 +1249,7 @@ async function deleteTx(id, pg) {
   if (mi) {
     const revertType = oppositeAction(r.type);
     if (revertType) {
-      const revertRes = await applyStockDelta(r.code, revertType, r.qty, r.lotSW, r.item);
+      const revertRes = await applyStockDelta(r.code, revertType, r.qty, r.lotSW, r.item, r.lotId);
       if (!revertRes.ok) return;
     }
     await dbUpsertItem(mi);
