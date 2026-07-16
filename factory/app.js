@@ -925,7 +925,9 @@ function handleScanResult(raw, pg) {
         const action = txState[pg]?.action;
         if (action==='withdraw'||action==='return_good'||action==='return_bad') {
           const first = pickerList.querySelector('.lot-select-item');
-          if (first) pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
+          // auto-select เฉพาะเมื่อ user ยังไม่ได้เลือก lot
+        const hiddenEl = document.getElementById(pg+'-lot-id-hidden');
+        if (first && (!hiddenEl || !hiddenEl.value)) pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
         }
       });
     }
@@ -2011,7 +2013,9 @@ function switchAction(pg, action) {
       buildLotPickerHtml(m.code, pg).then(html => {
         pickerList.innerHTML = html;
         const first = pickerList.querySelector('.lot-select-item');
-        if (first) pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
+        // auto-select เฉพาะเมื่อ user ยังไม่ได้เลือก lot
+        const hiddenEl = document.getElementById(pg+'-lot-id-hidden');
+        if (first && (!hiddenEl || !hiddenEl.value)) pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
       });
     }
   }
@@ -2070,6 +2074,9 @@ function selItem(pg, item, code) {
     if(sel){const opt=[...sel.options].find(o=>o.value===locationDB[m.code]);sel.value=opt?locationDB[m.code]:'';}
   }
   const pickerList=document.getElementById(pg+'-lot-picker-list');
+  // clear lot selection เมื่อเปลี่ยน item
+  const hiddenClear = document.getElementById(pg+'-lot-id-hidden');
+  if (hiddenClear) hiddenClear.value = '';
   if(m&&pickerList&&(WAREHOUSE_CONFIG[pg]?.hasLot)) {
     pickerList.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด Lot...</div>';
     buildLotPickerHtml(m.code,pg).then(html=>{
@@ -2078,7 +2085,9 @@ function selItem(pg, item, code) {
       const action = txState[pg]?.action;
       if (action==='withdraw'||action==='return_good'||action==='return_bad') {
         const first = pickerList.querySelector('.lot-select-item');
-        if (first) pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
+        // auto-select เฉพาะเมื่อ user ยังไม่ได้เลือก lot
+        const hiddenEl = document.getElementById(pg+'-lot-id-hidden');
+        if (first && (!hiddenEl || !hiddenEl.value)) pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
       }
     });
   }
