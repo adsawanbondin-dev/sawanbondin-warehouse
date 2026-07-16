@@ -1581,6 +1581,7 @@ function renderForm(pg) {
         <input class="fi" id="${pg}-lotsw" type="date">
         <div class="fhint">เลือก Lot ที่ต้องการเบิก/คืน</div>
       </div>
+      <input type="hidden" id="${pg}-lot-id-hidden">
       <div class="lot-select-wrap" id="${pg}-lot-picker">
         <div class="lot-select-label">
           <i class="ti ti-stack" style="font-size:10px"></i> Lot ที่มีอยู่
@@ -2236,7 +2237,11 @@ async function submitF(pg) {
         rpcResult = { ok: true, new_stock: mi.stock };
       } else {
         let lotId = null;
-        if ((WAREHOUSE_CONFIG[pg]?.hasLot) && lotSW && (action==='withdraw'||action==='return_good')) {
+        // ดึง lotId จาก hidden input ก่อน (เลือกจาก lot picker)
+        const hiddenLotId = document.getElementById(pg+'-lot-id-hidden')?.value;
+        if (hiddenLotId) {
+          lotId = parseInt(hiddenLotId);
+        } else if ((WAREHOUSE_CONFIG[pg]?.hasLot) && lotSW && (action==='withdraw'||action==='return_good')) {
           const cached = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
           if (cached) lotId = cached.id;
         }
