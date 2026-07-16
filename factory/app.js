@@ -925,7 +925,7 @@ function handleScanResult(raw, pg) {
         const action = txState[pg]?.action;
         if (action==='withdraw'||action==='return_good'||action==='return_bad') {
           const first = pickerList.querySelector('.lot-select-item');
-          if (first) pickLot(first, pg, first.dataset.lot);
+          if (first) pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
         }
       });
     }
@@ -2011,7 +2011,7 @@ function switchAction(pg, action) {
       buildLotPickerHtml(m.code, pg).then(html => {
         pickerList.innerHTML = html;
         const first = pickerList.querySelector('.lot-select-item');
-        if (first) pickLot(first, pg, first.dataset.lot);
+        if (first) pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
       });
     }
   }
@@ -2078,7 +2078,7 @@ function selItem(pg, item, code) {
       const action = txState[pg]?.action;
       if (action==='withdraw'||action==='return_good'||action==='return_bad') {
         const first = pickerList.querySelector('.lot-select-item');
-        if (first) pickLot(first, pg, first.dataset.lot);
+        if (first) pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
       }
     });
   }
