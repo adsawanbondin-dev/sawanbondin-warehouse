@@ -2228,6 +2228,7 @@ async function submitF(pg) {
   const code = mi ? mi.code : '-';
 
   let rpcResult = { ok: true, new_stock: mi?.stock };
+  let lotId = null;
   if (mi) {
     if (action !== 'return_bad') {
       if (hasBags) {
@@ -2246,6 +2247,7 @@ async function submitF(pg) {
             qr_payload: `${code}__LOT__${lotSW}__BAG${i+1}__${Date.now()}`,
             note: bagNote,
           }).select().single();
+          if (lotData) lotId = lotData.id;
           newStock += w;
           // อัปเดต items.stock
           await sb.from('items').update({ stock: newStock }).eq('code', code);
@@ -2253,7 +2255,6 @@ async function submitF(pg) {
         }
         rpcResult = { ok: true, new_stock: mi.stock };
       } else {
-        let lotId = null;
         // ดึง lotId จาก hidden input ก่อน (เลือกจาก lot picker)
         const hiddenLotId = document.getElementById(pg+'-lot-id-hidden')?.value;
         if (hiddenLotId) {
@@ -2262,7 +2263,7 @@ async function submitF(pg) {
           const cached = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
           if (cached) lotId = cached.id;
         }
-        // สำหรับ finish: ถ้า receive และเลือก lot อยู่แล้ว ให้บวก stock ใน lot นั้น ไม่สร้างใหม่
+        // สำหรับ finish: ถ้า receive และไม่ได้กรอกถุง ไม่สร้าง lot ใหม่
         const effectiveLotSW = (cfg.hasLot && lotSW && lotSW.length > 0)
           ? (pg === 'finish' && action === 'receive' && !hasBags ? null : lotSW)
           : null;
