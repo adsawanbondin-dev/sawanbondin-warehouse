@@ -2009,13 +2009,19 @@ function switchAction(pg, action) {
   if (sv.ival && (WAREHOUSE_CONFIG[pg]?.hasLot)) {
     const m = masterDB.find(x=>x.code===sv.ival || x.name===sv.idisp);
     const pickerList = document.getElementById(pg+'-lot-picker-list');
+    const hiddenEl = document.getElementById(pg+'-lot-id-hidden');
     if (m && pickerList && (action==='withdraw'||action==='return_good'||action==='return_bad')) {
       buildLotPickerHtml(m.code, pg).then(html => {
         pickerList.innerHTML = html;
         const first = pickerList.querySelector('.lot-select-item');
         // auto-select เฉพาะเมื่อ user ยังไม่ได้เลือก lot
-        const hiddenEl = document.getElementById(pg+'-lot-id-hidden');
-        if (first && (!hiddenEl || !hiddenEl.value)) pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
+        if (first && (!hiddenEl || !hiddenEl.value)) {
+          pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
+        } else if (hiddenEl?.value) {
+          // restore การ highlight lot ที่ user เลือกไว้
+          const selected = pickerList.querySelector(`[data-lot-id="${hiddenEl.value}"]`);
+          if (selected) selected.classList.add('active');
+        }
       });
     }
   }
