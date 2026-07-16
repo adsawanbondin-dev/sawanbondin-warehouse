@@ -2155,7 +2155,7 @@ async function buildLotPickerHtml(code, pg) {
     const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
     const isExpired = l.expiry_date && new Date(l.expiry_date) < new Date();
     const bagInfo = l.bag_number ? `ถุง ${l.bag_number}/${l.bag_total}` : (l.note||'');
-    const weightInfo = l.weight_kg ? `${l.weight_kg.toLocaleString()} กก.` : '';
+    const weightInfo = l.weight_kg && pg !== 'finish' ? `${l.weight_kg.toLocaleString()} กก.` : '';
     return `<div class="lot-select-item${isExpired?' lot-expired':''}" onclick="pickLot(this,'${pg}','${l.lot_sw}','${l.id}')" data-lot="${l.lot_sw}" data-lot-id="${l.id}">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
