@@ -263,6 +263,7 @@ async function dbInsertTransaction(rec) {
     department:   rec.dept,
     lot_sw:       rec.lotSW !== '-' ? rec.lotSW : null,
     lot_supplier: rec.lotSP || null,
+    lot_id:       rec.lotId || null,
     note:         rec.note || '',
     via:          rec.via || 'manual',
     old_stock:    rec.oldStock ?? null,
@@ -2286,6 +2287,7 @@ async function submitF(pg) {
       time:dateToday(), timeDetail:timeNow(), type:action, typeLabel:ACTION_LABELS[action],
       name, dept, item, code, qty,
       lotSW:lotSW||'-', lotSP, note, pg, via:'manual',
+      lotId: rpcResult.lot_id || lotId || null,
       oldStock: rpcResult.ok ? (rpcResult.new_stock - (action==='receive'||action==='return_good' ? qty : -qty)) : null,
       newStock:  rpcResult.ok ? rpcResult.new_stock : null,
     };
