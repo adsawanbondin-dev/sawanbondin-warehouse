@@ -39,6 +39,7 @@ const WAREHOUSE_CONFIG = _CFG.WAREHOUSE_CONFIG || {
   packaging: { label:'บรรจุภัณฑ์ภายนอก',  prefix:'PA', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
   equip:     { label:'อุปกรณ์',           prefix:'EQ', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'], hasSpec:true },
   finish:    { label:'สินค้าสำเร็จรูป',  prefix:'FG', hasLot:true,  lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
+  oem:       { label:'OEM',               prefix:'OEM', hasLot:true, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง'], hasSpec:true },
   sample:    { label:'ชาตัวอย่าง',          prefix:'SA', hasLot:true,  lotSupplier:true,  rawFields:false, hasExpiry:true, depts:['ผลิต','คลัง','Tea House'],
                subcats:['OEM','RD','ชาประกวด'],
                subPrefixes:{ OEM:'OEM', RD:'SWBD_RD', 'ชาประกวด':'TCT' } },
@@ -2050,8 +2051,12 @@ function buildDDList(pg, filter, isTransform=false) {
     if (grp!=='-') h += `<div class="dd-grp-label">${grp}</div>`;
     grpItems.forEach(m => {
       const es = m.name.replace(/'/g,"\\'");
-      h += `<div class="dd-item" onclick="${isTransform?`selTransformItem('${pg}','${es}','${m.code}')`:`selItem('${pg}','${es}','${m.code}')`}">
-        <span>${m.name}</span><span class="dd-code">${m.code}</span>
+      const cfg = WAREHOUSE_CONFIG[pg];
+      const showStock = !cfg?.hasLot;
+      const stockColor = m.stock <= 0 ? 'var(--red)' : m.min > 0 && m.stock <= m.min ? 'var(--warn)' : 'var(--ink4)';
+      const stockBadge = showStock ? `<span style="font-size:10px;color:${stockColor};margin-left:auto;padding-left:8px;flex-shrink:0">คงเหลือ ${m.stock.toLocaleString()}</span>` : '';
+      h += `<div class="dd-item" onclick="${isTransform?`selTransformItem('${pg}','${es}','${m.code}')`:`selItem('${pg}','${es}','${m.code}')`}" style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1;min-width:0"><span>${m.name}</span><span class="dd-code">${m.code}</span></div>${stockBadge}
       </div>`;
     });
   }
