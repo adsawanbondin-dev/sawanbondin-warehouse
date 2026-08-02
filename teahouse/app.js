@@ -3465,12 +3465,10 @@ function scExportCSV() {
 const _scOrigSwitch = switchPage;
 switchPage = async function(p) {
   const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
-  const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'daily-withdraw', ...alertGroupPages];
+  const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'daily-withdraw', 'booth-borrow', ...alertGroupPages];
 
-  // ถ้า page ไม่มีใน allPages ให้ไปหน้าแรก (finish)
-  if (!allPages.includes(p)) {
-    p = WAREHOUSE_PAGES[0] || 'master';
-  }
+  // ถ้า page ไม่มีใน allPages ให้ไปหน้าแรก
+  if (!allPages.includes(p)) p = WAREHOUSE_PAGES[0] || 'master';
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelector(`[data-page="${p}"]`)?.classList.add('active');
@@ -3484,12 +3482,377 @@ switchPage = async function(p) {
     await renderStockCountPage();
   } else if (p === 'daily-withdraw') {
     await renderDailyWithdrawPage();
+  } else if (p === 'booth-borrow') {
+    await renderBoothBorrowPage();
   } else if (p.startsWith('alert-')) {
     renderAlertGroupPage(p.replace('alert-',''));
   } else {
     _scOrigSwitch(p);
   }
 };
+
+/* ═══════════════════════════════════════════
+   BOOTH BORROW MODULE — ยืม-คืน บูธ
+═══════════════════════════════════════════ */
+
+let bbBorrows = [];
+let bbShowForm = false;
+let bbEditId   = null;
+
+async function bbLoadBorrows() {
+  const { data } = await sb.from('booth_borrows')
+    .select('*, booth_borrow_items(*)')
+    .order('created_at', { ascending: false });
+  bbBorrows = data || [];
+}
+
+async function renderBoothBorrowPage() {
+  const div = document.getElementById('page-booth-borrow');
+  if (!div) return;
+  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
+  await bbLoadBorrows();
+  bbRender();
+}
+
+function bbRender() {
+  const div = document.getElementById('page-booth-borrow');
+  if (!div) return;
+
+  const cards = bbBorrows.map(b => {
+    const storeItems  = (b.booth_borrow_items||[]).filter(i=>i.section==='store');
+    const productItems= (b.booth_borrow_items||[]).filter(i=>i.section==='product');
+    const statusLabel = { active:'กำลังยืม', returned:'คืนครบแล้ว', partial:'คืนบางส่วน' }[b.status] || b.status;
+    const statusColor = { active:'#7a5900', returned:'#2d4a0f', partial:'#7a2020' }[b.status] || 'var(--ink4)';
+    const statusBg    = { active:'#fff8e8', returned:'#f0f5ec', partial:'#fde8e8' }[b.status] || 'var(--s2)';
+    const borrowDate  = b.borrow_date ? new Date(b.borrow_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '—';
+    const dueDate     = b.return_due  ? new Date(b.return_due).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'})  : '—';
+
+    const storeRows = storeItems.map(i => {
+      const bal = (i.qty_borrowed||0) - (i.qty_returned||0);
+      const balColor = bal > 0 ? 'var(--red)' : 'var(--green)';
+      return `<div style="display:grid;grid-template-columns:1fr 56px 56px 56px 28px;padding:8px 12px;border-bottom:0.5px solid var(--line);align-items:center;gap:4px">
+        <div style="font-size:12px;font-weight:500">${i.item_name}</div>
+        <input type="number" value="${i.qty_borrowed||0}" min="0" style="padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;text-align:right;background:var(--surface);width:100%"
+          onchange="bbUpdateItem(${i.id},'qty_borrowed',this.value)">
+        <input type="number" value="${i.qty_returned||''}" min="0" placeholder="—" style="padding:3px 6px;border:0.5px solid #4a6b1a;border-radius:5px;font-size:11px;text-align:right;background:#f0f5ec;width:100%"
+          onchange="bbUpdateItem(${i.id},'qty_returned',this.value)">
+        <div style="text-align:right;font-size:12px;font-weight:600;color:${balColor}">${bal}</div>
+        <button onclick="bbDeleteItem(${i.id},${b.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:13px">✕</button>
+      </div>`;
+    }).join('');
+
+    const productRows = productItems.map(i => {
+      const bal = (i.qty_borrowed||0) - (i.qty_returned||0);
+      const balColor = bal > 0 ? 'var(--warn)' : '#2d4a0f';
+      return `<div style="display:grid;grid-template-columns:1fr 56px 56px 56px 28px;padding:8px 12px;border-bottom:0.5px solid var(--line);align-items:center;gap:4px">
+        <div style="font-size:12px;font-weight:500">${i.item_name}</div>
+        <input type="number" value="${i.qty_borrowed||0}" min="0" style="padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;text-align:right;background:var(--surface);width:100%"
+          onchange="bbUpdateItem(${i.id},'qty_borrowed',this.value)">
+        <input type="number" value="${i.qty_returned||''}" min="0" placeholder="—" style="padding:3px 6px;border:0.5px solid #4a6b1a;border-radius:5px;font-size:11px;text-align:right;background:#f0f5ec;width:100%"
+          onchange="bbUpdateItem(${i.id},'qty_returned',this.value)">
+        <div style="text-align:right;font-size:12px;font-weight:600;color:${balColor}">${bal}</div>
+        <button onclick="bbDeleteItem(${i.id},${b.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:13px">✕</button>
+      </div>`;
+    }).join('');
+
+    const storeReceiver = storeItems[0]?.receiver_name || '';
+    const storeNote     = storeItems[0]?.note || '';
+    const productReceiver = productItems[0]?.receiver_name || '';
+    const productNote     = productItems[0]?.note || '';
+
+    return `<div class="card" style="margin-bottom:12px">
+      <div style="padding:10px 16px;border-bottom:0.5px solid var(--line);background:var(--s2);display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:13px;font-weight:500">${b.title}</div>
+          <div style="font-size:10px;color:var(--ink4);margin-top:2px">ยืม ${borrowDate} · กำหนดคืน ${dueDate} · โดย ${b.borrower_name||'—'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:9px;padding:2px 8px;border-radius:10px;background:${statusBg};color:${statusColor};border:0.5px solid ${statusColor}">${statusLabel}</span>
+          <button onclick="bbDelete(${b.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:12px" title="ลบ"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+      <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px">
+
+        <!-- อุปกรณ์สโตว์ -->
+        <div style="border:0.5px solid var(--line);border-radius:8px;overflow:hidden">
+          <div style="padding:7px 12px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:11px;font-weight:500">อุปกรณ์สโตว์</span>
+              <span style="font-size:9px;padding:1px 6px;border-radius:5px;background:var(--surface);border:0.5px solid var(--line);color:var(--ink4)">หัก/บวก stock</span>
+            </div>
+            <span style="font-size:10px;color:var(--ink4)">${storeItems.length} รายการ</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 56px 56px 56px 28px;padding:5px 12px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line)">
+            <span>รายการ</span><span style="text-align:right">ยืมไป</span><span style="text-align:right">คืนแล้ว</span><span style="text-align:right;color:var(--ink2)">คงเหลือ</span><span></span>
+          </div>
+          ${storeRows || '<div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">ยังไม่มีรายการ</div>'}
+          <div style="padding:8px 12px;border-top:0.5px solid var(--line);background:var(--s2);display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <button onclick="bbAddItemModal(${b.id},'store')" style="font-size:11px;padding:4px 10px;border-radius:7px;border:0.5px dashed var(--line);background:transparent;color:var(--ink3);cursor:pointer">+ เพิ่มรายการ</button>
+              <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+                <span style="font-size:10px;color:var(--ink4);white-space:nowrap">ผู้รับคืน</span>
+                <input style="padding:3px 8px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;background:var(--surface);width:120px" placeholder="ชื่อผู้รับคืน" value="${storeReceiver}"
+                  onchange="bbUpdateSectionMeta(${b.id},'store','receiver_name',this.value)">
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:10px;color:var(--ink4);white-space:nowrap">หมายเหตุ</span>
+              <input style="padding:3px 8px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;background:var(--surface);flex:1" placeholder="หมายเหตุการคืนอุปกรณ์..." value="${storeNote}"
+                onchange="bbUpdateSectionMeta(${b.id},'store','note',this.value)">
+            </div>
+          </div>
+        </div>
+
+        <!-- โปรดัก -->
+        <div style="border:0.5px solid var(--line);border-radius:8px;overflow:hidden">
+          <div style="padding:7px 12px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:11px;font-weight:500">โปรดัก</span>
+              <span style="font-size:9px;padding:1px 6px;border-radius:5px;background:var(--surface);border:0.5px solid var(--line);color:var(--ink4)">บันทึกเท่านั้น</span>
+            </div>
+            <span style="font-size:10px;color:var(--ink4)">${productItems.length} รายการ</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 56px 56px 56px 28px;padding:5px 12px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line)">
+            <span>รายการ</span><span style="text-align:right">เอาไป</span><span style="text-align:right">คืนแล้ว</span><span style="text-align:right;color:var(--ink2)">คงเหลือ</span><span></span>
+          </div>
+          ${productRows || '<div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">ยังไม่มีรายการ</div>'}
+          <div style="padding:8px 12px;border-top:0.5px solid var(--line);background:var(--s2);display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <button onclick="bbAddItemModal(${b.id},'product')" style="font-size:11px;padding:4px 10px;border-radius:7px;border:0.5px dashed var(--line);background:transparent;color:var(--ink3);cursor:pointer">+ เพิ่มรายการ</button>
+              <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+                <span style="font-size:10px;color:var(--ink4);white-space:nowrap">ผู้รับคืน</span>
+                <input style="padding:3px 8px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;background:var(--surface);width:120px" placeholder="ชื่อผู้รับคืน" value="${productReceiver}"
+                  onchange="bbUpdateSectionMeta(${b.id},'product','receiver_name',this.value)">
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:10px;color:var(--ink4);white-space:nowrap">หมายเหตุ</span>
+              <input style="padding:3px 8px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;background:var(--surface);flex:1" placeholder="หมายเหตุการคืนโปรดัก..." value="${productNote}"
+                onchange="bbUpdateSectionMeta(${b.id},'product','note',this.value)">
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div style="padding:10px 16px;border-top:0.5px solid var(--line);display:flex;gap:8px;justify-content:flex-end;background:var(--s2)">
+        <button class="btn btn-sm" onclick="bbConfirmBorrow(${b.id})" style="background:#013c58;color:#fff;border-color:#013c58;font-size:11px">ยืนยันยืม → หักสต็อก</button>
+        <button class="btn btn-sm btn-primary" onclick="bbConfirmReturn(${b.id})" style="font-size:11px">ยืนยันคืน → บวกสต็อก</button>
+      </div>
+    </div>`;
+  }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-arrows-exchange" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>ยังไม่มีรายการยืม</div>`;
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">ยืม-คืน บูธ</div>
+        <div class="page-sub">อุปกรณ์และโปรดักสำหรับงานและบูธ</div></div>
+      <button class="btn btn-primary btn-sm" onclick="bbOpenNewForm()">
+        <i class="ti ti-plus"></i> สร้างรายการยืม
+      </button>
+    </div>
+    <div id="bb-new-form"></div>
+    ${cards}`;
+
+  if (bbShowForm) bbRenderNewForm();
+}
+
+function bbOpenNewForm() {
+  bbShowForm = true;
+  bbRender();
+  document.getElementById('bb-new-form')?.scrollIntoView({ behavior:'smooth' });
+}
+
+function bbRenderNewForm() {
+  const el = document.getElementById('bb-new-form');
+  if (!el) return;
+  const today = new Date().toISOString().split('T')[0];
+  el.innerHTML = `<div class="card" style="margin-bottom:12px;border:1.5px solid var(--acc)">
+    <div style="padding:10px 16px;border-bottom:0.5px solid var(--line);background:var(--s2);font-size:13px;font-weight:500">สร้างรายการยืมใหม่</div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:10px;color:var(--ink4)">ชื่องาน / บูธ <span style="color:var(--red)">*</span></label>
+        <input class="fi" id="bb-title" placeholder="เช่น งานเกษตรแฟร์ เชียงใหม่ 2569">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <label style="font-size:10px;color:var(--ink4)">วันที่ยืม</label>
+          <input class="fi" id="bb-date" type="date" value="${today}">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <label style="font-size:10px;color:var(--ink4)">กำหนดคืน</label>
+          <input class="fi" id="bb-due" type="date">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <label style="font-size:10px;color:var(--ink4)">ผู้เบิก</label>
+          <input class="fi" id="bb-borrower" placeholder="ชื่อผู้เบิก" value="${window._operatorName||''}">
+        </div>
+      </div>
+    </div>
+    <div style="padding:10px 16px;border-top:0.5px solid var(--line);display:flex;gap:8px;justify-content:flex-end;background:var(--s2)">
+      <button class="btn btn-sm" onclick="bbShowForm=false;bbRender()">ยกเลิก</button>
+      <button class="btn btn-primary btn-sm" onclick="bbSaveNew()"><i class="ti ti-check"></i> สร้าง</button>
+    </div>
+  </div>`;
+}
+
+async function bbSaveNew() {
+  const title    = document.getElementById('bb-title')?.value.trim();
+  const date     = document.getElementById('bb-date')?.value;
+  const due      = document.getElementById('bb-due')?.value;
+  const borrower = document.getElementById('bb-borrower')?.value.trim();
+  if (!title) { showToast('กรุณาใส่ชื่องาน','err'); return; }
+
+  const { data, error } = await sb.from('booth_borrows').insert({
+    title, borrow_date: date||null, return_due: due||null,
+    borrower_name: borrower||null, status:'active'
+  }).select().single();
+  if (error) { showToast('สร้างไม่สำเร็จ','err'); return; }
+
+  showToast(`สร้างรายการ "${title}" แล้ว`);
+  bbShowForm = false;
+  await bbLoadBorrows();
+  bbRender();
+}
+
+function bbAddItemModal(borrowId, section) {
+  const sectionLabel = section === 'store' ? 'อุปกรณ์สโตว์' : 'โปรดัก';
+  const items = masterDB.filter(m =>
+    section === 'store'
+      ? ['equip_th'].includes(m.pg)
+      : ['finish'].includes(m.pg) && m.subcat === 'สินค้า'
+  );
+  const opts = items.map(m =>
+    `<option value="${m.code}" data-name="${m.name}">${m.name}</option>`
+  ).join('');
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-wrap show';
+  modal.id = 'bb-add-modal';
+  modal.innerHTML = `<div class="modal" style="max-width:380px;width:95%">
+    <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+      <div class="card-title-left">เพิ่มรายการ ${sectionLabel}</div>
+      <button class="btn btn-sm" onclick="document.getElementById('bb-add-modal').remove()">ยกเลิก</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:10px;color:var(--ink4)">เลือกรายการ</label>
+        <select class="fi" id="bb-item-sel" style="padding:6px 8px">
+          <option value="">— เลือกรายการ —</option>
+          ${opts}
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:10px;color:var(--ink4)">จำนวนที่ยืม</label>
+        <input class="fi" id="bb-item-qty" type="number" min="1" value="1">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+      <button class="btn btn-sm" onclick="document.getElementById('bb-add-modal').remove()">ยกเลิก</button>
+      <button class="btn btn-primary btn-sm" onclick="bbAddItem(${borrowId},'${section}')"><i class="ti ti-plus"></i> เพิ่ม</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function bbAddItem(borrowId, section) {
+  const sel = document.getElementById('bb-item-sel');
+  const qty = parseFloat(document.getElementById('bb-item-qty')?.value)||1;
+  const code = sel?.value;
+  const name = sel?.options[sel.selectedIndex]?.dataset.name || sel?.value;
+  if (!name || !code) { showToast('กรุณาเลือกรายการ','err'); return; }
+
+  await sb.from('booth_borrow_items').insert({
+    borrow_id: borrowId, section, item_code: code,
+    item_name: name, qty_borrowed: qty, qty_returned: 0
+  });
+  document.getElementById('bb-add-modal')?.remove();
+  await bbLoadBorrows();
+  bbRender();
+}
+
+async function bbUpdateItem(itemId, field, value) {
+  await sb.from('booth_borrow_items').update({ [field]: parseFloat(value)||0, updated_at: new Date().toISOString() }).eq('id', itemId);
+  const item = bbBorrows.flatMap(b=>b.booth_borrow_items||[]).find(i=>i.id===itemId);
+  if (item) item[field] = parseFloat(value)||0;
+}
+
+async function bbUpdateSectionMeta(borrowId, section, field, value) {
+  await sb.from('booth_borrow_items')
+    .update({ [field]: value||null })
+    .eq('borrow_id', borrowId).eq('section', section);
+}
+
+async function bbDeleteItem(itemId, borrowId) {
+  if (!confirm('ลบรายการนี้?')) return;
+  await sb.from('booth_borrow_items').delete().eq('id', itemId);
+  await bbLoadBorrows();
+  bbRender();
+}
+
+async function bbDelete(borrowId) {
+  if (!confirm('ลบรายการยืมนี้ทั้งหมด?')) return;
+  await sb.from('booth_borrows').delete().eq('id', borrowId);
+  await bbLoadBorrows();
+  bbRender();
+}
+
+async function bbConfirmBorrow(borrowId) {
+  const b = bbBorrows.find(x=>x.id===borrowId);
+  if (!b) return;
+  const storeItems = (b.booth_borrow_items||[]).filter(i=>i.section==='store' && i.qty_borrowed>0);
+  if (!storeItems.length) { showToast('ไม่มีรายการอุปกรณ์สโตว์','err'); return; }
+  if (!confirm(`หักสต็อกอุปกรณ์สโตว์ ${storeItems.length} รายการ?`)) return;
+
+  for (const item of storeItems) {
+    if (!item.item_code) continue;
+    const m = masterDB.find(x=>x.code===item.item_code);
+    if (!m) continue;
+    const newStock = m.stock - item.qty_borrowed;
+    await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
+    m.stock = newStock;
+    await dbInsertTransaction({
+      code: item.item_code, item: item.item_name, pg: m.pg,
+      type:'withdraw', qty: item.qty_borrowed,
+      name: b.borrower_name||'', dept:'', lotSW:'-', lotSP:'',
+      note:`ยืม-คืน บูธ: ${b.title}`, via:'booth_borrow'
+    });
+  }
+  await sb.from('booth_borrows').update({ status:'active', updated_at: new Date().toISOString() }).eq('id', borrowId);
+  showToast('หักสต็อกอุปกรณ์เรียบร้อย');
+  await bbLoadBorrows(); bbRender();
+}
+
+async function bbConfirmReturn(borrowId) {
+  const b = bbBorrows.find(x=>x.id===borrowId);
+  if (!b) return;
+  const storeItems = (b.booth_borrow_items||[]).filter(i=>i.section==='store' && i.qty_returned>0);
+  if (!storeItems.length) { showToast('กรุณากรอกจำนวนที่คืน','err'); return; }
+  if (!confirm(`บวกสต็อกอุปกรณ์สโตว์ ${storeItems.length} รายการ?`)) return;
+
+  for (const item of storeItems) {
+    if (!item.item_code) continue;
+    const m = masterDB.find(x=>x.code===item.item_code);
+    if (!m) continue;
+    const newStock = m.stock + item.qty_returned;
+    await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
+    m.stock = newStock;
+    await dbInsertTransaction({
+      code: item.item_code, item: item.item_name, pg: m.pg,
+      type:'receive', qty: item.qty_returned,
+      name: item.receiver_name||'', dept:'', lotSW:'-', lotSP:'',
+      note:`คืน-บูธ: ${b.title}`, via:'booth_borrow'
+    });
+  }
+
+  const allReturned = (b.booth_borrow_items||[])
+    .filter(i=>i.section==='store')
+    .every(i=>(i.qty_returned||0)>=(i.qty_borrowed||0));
+  const newStatus = allReturned ? 'returned' : 'partial';
+  await sb.from('booth_borrows').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', borrowId);
+  showToast('บวกสต็อกอุปกรณ์เรียบร้อย');
+  await bbLoadBorrows(); bbRender();
+}
+
+
 
 
 /* ═══════════════════════════════════════════
