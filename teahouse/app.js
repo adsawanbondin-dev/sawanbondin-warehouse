@@ -3768,10 +3768,16 @@ async function bbSaveNew() {
   bbRender();
 }
 
-function bbAddItemModal(borrowId, section) {
+async function bbAddItemModal(borrowId, section) {
   const sectionLabel = section === 'store' ? 'อุปกรณ์สโตว์' : 'โปรดัก';
 
   document.getElementById('bb-add-modal')?.remove();
+
+  // ถ้าเป็น product section โหลดรายการจาก Factory ก่อน
+  if (section === 'product') {
+    await bbLoadFactoryItems();
+  }
+
   const modal = document.createElement('div');
   modal.className = 'modal-wrap show';
   modal.id = 'bb-add-modal';
@@ -3827,11 +3833,27 @@ function bbAddItemModal(borrowId, section) {
 }
 
 function bbGetItems(section) {
-  return masterDB.filter(m =>
-    section === 'store'
-      ? m.pg === 'equip_th'
-      : m.pg === 'finish' && m.subcat === 'สินค้า'
-  );
+  if (section === 'store') {
+    return masterDB.filter(m => m.pg === 'equip_th');
+  } else {
+    // product — ดึงจาก factoryItemsDB (คลัง finish ของ Factory)
+    return factoryItemsDB || [];
+  }
+}
+
+// cache รายการ Factory finish
+let factoryItemsDB = null;
+async function bbLoadFactoryItems() {
+  if (factoryItemsDB) return;
+  const { data } = await sbFactory.from('items')
+    .select('code,name,stock,subcat')
+    .eq('pg','finish')
+    .eq('subcat','สินค้า')
+    .eq('is_active', true)
+    .order('name');
+  factoryItemsDB = (data||[]).map(r => ({
+    code: r.code, name: r.name, stock: parseFloat(r.stock)||0
+  }));
 }
 
 function bbShowAllItems(section) {
