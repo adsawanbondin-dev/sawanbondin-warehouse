@@ -3655,6 +3655,10 @@ function bbRender() {
               <input style="padding:3px 8px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;background:var(--surface);flex:1" placeholder="หมายเหตุการคืนอุปกรณ์..." value="${storeNote}"
                 onchange="bbUpdateSectionMeta(${b.id},'store','note',this.value)">
             </div>
+            <div style="display:flex;gap:6px;justify-content:flex-end;padding-top:4px;border-top:0.5px solid var(--line)">
+              <button onclick="bbConfirmBorrowStore(${b.id})" style="font-size:10px;padding:4px 10px;border-radius:6px;background:#013c58;color:#fff;border:none;cursor:pointer"><i class="ti ti-arrow-down-left"></i> ยืมสโตว์</button>
+              <button onclick="bbConfirmReturnStore(${b.id})" style="font-size:10px;padding:4px 10px;border-radius:6px;background:#2d4a0f;color:#fff;border:none;cursor:pointer"><i class="ti ti-arrow-up-right"></i> คืนสโตว์</button>
+            </div>
           </div>
         </div>
 
@@ -3685,15 +3689,16 @@ function bbRender() {
               <input style="padding:3px 8px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;background:var(--surface);flex:1" placeholder="หมายเหตุการคืนโปรดัก..." value="${productNote}"
                 onchange="bbUpdateSectionMeta(${b.id},'product','note',this.value)">
             </div>
+            <div style="display:flex;gap:6px;justify-content:flex-end;padding-top:4px;border-top:0.5px solid var(--line)">
+              <button onclick="bbConfirmBorrowProduct(${b.id})" style="font-size:10px;padding:4px 10px;border-radius:6px;background:#5c3a00;color:#fff;border:none;cursor:pointer"><i class="ti ti-arrow-down-left"></i> ยืมโปรดัก → หัก Factory</button>
+              <button onclick="bbConfirmReturnProduct(${b.id})" style="font-size:10px;padding:4px 10px;border-radius:6px;background:#7a4500;color:#fff;border:none;cursor:pointer"><i class="ti ti-arrow-up-right"></i> คืนโปรดัก → บวก Factory</button>
+            </div>
           </div>
         </div>
 
       </div>
-      <div style="padding:10px 16px;border-top:0.5px solid var(--line);display:flex;gap:8px;justify-content:flex-end;background:var(--s2)">
-        <button class="btn btn-sm" onclick="bbConfirmBorrowStore(${b.id})" style="background:#013c58;color:#fff;border-color:#013c58;font-size:11px"><i class="ti ti-arrow-down-left"></i> ยืมสโตว์</button>
-        <button class="btn btn-sm" onclick="bbConfirmReturnStore(${b.id})" style="background:#2d4a0f;color:#fff;border-color:#2d4a0f;font-size:11px"><i class="ti ti-arrow-up-right"></i> คืนสโตว์</button>
-        <button class="btn btn-sm" onclick="bbConfirmBorrowProduct(${b.id})" style="background:#5c3a00;color:#fff;border-color:#5c3a00;font-size:11px"><i class="ti ti-arrow-down-left"></i> ยืมโปรดัก</button>
-        <button class="btn btn-sm" onclick="bbConfirmReturnProduct(${b.id})" style="background:#7a2d00;color:#fff;border-color:#7a2d00;font-size:11px"><i class="ti ti-arrow-up-right"></i> คืนโปรดัก</button>
+      <div style="padding:8px 16px;border-top:0.5px solid var(--line);background:var(--s2);display:flex;gap:6px;justify-content:flex-end">
+        <button onclick="bbDelete(${b.id})" class="btn btn-sm" style="font-size:11px;color:var(--red)"><i class="ti ti-trash"></i> ลบรายการนี้</button>
       </div>
     </div>`;
   }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-arrows-exchange" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>ยังไม่มีรายการยืม</div>`;
@@ -3794,7 +3799,7 @@ async function bbAddItemModal(borrowId, section) {
         <div style="position:relative" id="bb-search-wrap">
           <input class="fi" id="bb-search-input" placeholder="พิมพ์ชื่อ${sectionLabel}..." autocomplete="off"
             oninput="bbFilterItems('${section}')"
-            onfocus="bbShowAllItems('${section}')">
+            onfocus="(async()=>{if('${section}'==='product')await bbLoadFactoryItems();bbShowAllItems('${section}')})()">>
           <div id="bb-search-dd" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:0.5px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:200;max-height:200px;overflow-y:auto"></div>
         </div>
         <div style="font-size:10px;color:var(--ink4)">พิมพ์เพื่อค้นหา หรือคลิกเพื่อดูทั้งหมด</div>
@@ -3847,12 +3852,12 @@ function bbGetItems(section) {
 let factoryItemsDB = null;
 async function bbLoadFactoryItems() {
   if (factoryItemsDB) return;
-  const { data } = await sbFactory.from('items')
+  const { data, error } = await sbFactory.from('items')
     .select('code,name,stock,subcat')
     .eq('pg','finish')
     .eq('subcat','สินค้า')
-    .eq('is_active', true)
     .order('name');
+  if (error) { console.error('bbLoadFactoryItems:', error.message); factoryItemsDB = []; return; }
   factoryItemsDB = (data||[]).map(r => ({
     code: r.code, name: r.name, stock: parseFloat(r.stock)||0
   }));
