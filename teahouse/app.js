@@ -3715,11 +3715,6 @@ async function bbSaveNew() {
 
 function bbAddItemModal(borrowId, section) {
   const sectionLabel = section === 'store' ? 'อุปกรณ์สโตว์' : 'โปรดัก';
-  const items = masterDB.filter(m =>
-    section === 'store'
-      ? ['equip_th'].includes(m.pg)
-      : ['finish'].includes(m.pg) && m.subcat === 'สินค้า'
-  );
 
   document.getElementById('bb-add-modal')?.remove();
   const modal = document.createElement('div');
@@ -3735,13 +3730,13 @@ function bbAddItemModal(borrowId, section) {
         <label style="font-size:10px;color:var(--ink4)">ค้นหารายการ</label>
         <div style="position:relative" id="bb-search-wrap">
           <input class="fi" id="bb-search-input" placeholder="พิมพ์ชื่อ${sectionLabel}..." autocomplete="off"
-            oninput="bbFilterItems(${JSON.stringify(items.map(m=>({code:m.code,name:m.name,stock:m.stock})))})"
-            onfocus="bbShowAllItems(${JSON.stringify(items.map(m=>({code:m.code,name:m.name,stock:m.stock})))})">
+            oninput="bbFilterItems('${section}')"
+            onfocus="bbShowAllItems('${section}')">
           <div id="bb-search-dd" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:0.5px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:200;max-height:200px;overflow-y:auto"></div>
         </div>
         <div style="font-size:10px;color:var(--ink4)">พิมพ์เพื่อค้นหา หรือคลิกเพื่อดูทั้งหมด</div>
       </div>
-      <div id="bb-selected-item" style="display:none;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;padding:8px 12px;display:none;align-items:center;justify-content:space-between">
+      <div id="bb-selected-item" style="display:none;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;padding:8px 12px;align-items:center;justify-content:space-between">
         <div>
           <div style="font-size:12px;font-weight:500" id="bb-sel-name">—</div>
           <div style="font-size:10px;color:var(--ink4)" id="bb-sel-stock">—</div>
@@ -3763,22 +3758,34 @@ function bbAddItemModal(borrowId, section) {
 
   // ปิด dropdown เมื่อคลิกนอก
   setTimeout(() => {
-    document.addEventListener('click', function handler(e) {
+    document.addEventListener('click', function bbClickOut(e) {
       if (!e.target.closest('#bb-search-wrap')) {
-        document.getElementById('bb-search-dd').style.display = 'none';
+        const dd = document.getElementById('bb-search-dd');
+        if (dd) dd.style.display = 'none';
       }
-      if (!e.target.closest('#bb-add-modal')) return;
+      if (!document.getElementById('bb-add-modal')) {
+        document.removeEventListener('click', bbClickOut);
+      }
     });
+    document.getElementById('bb-search-input')?.focus();
   }, 100);
 }
 
-function bbShowAllItems(items) {
-  bbRenderItemDd(items, '');
+function bbGetItems(section) {
+  return masterDB.filter(m =>
+    section === 'store'
+      ? m.pg === 'equip_th'
+      : m.pg === 'finish' && m.subcat === 'สินค้า'
+  );
 }
 
-function bbFilterItems(items) {
+function bbShowAllItems(section) {
+  bbRenderItemDd(bbGetItems(section), '');
+}
+
+function bbFilterItems(section) {
   const q = document.getElementById('bb-search-input')?.value || '';
-  bbRenderItemDd(items, q);
+  bbRenderItemDd(bbGetItems(section), q);
 }
 
 function bbRenderItemDd(items, q) {
