@@ -3599,8 +3599,9 @@ function bbRender() {
     const productRows = productItems.map(i => {
       const bal = (i.qty_borrowed||0) - (i.qty_returned||0);
       const balColor = bal > 0 ? 'var(--warn)' : '#2d4a0f';
+      const lotLabel = i.lot_sw ? `<div style="font-size:10px;color:var(--ink4)">Lot ${new Date(i.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'})}</div>` : '';
       return `<div style="display:grid;grid-template-columns:1fr 56px 56px 56px 28px;padding:8px 12px;border-bottom:0.5px solid var(--line);align-items:center;gap:4px">
-        <div style="font-size:12px;font-weight:500">${i.item_name}</div>
+        <div><div style="font-size:12px;font-weight:500">${i.item_name}</div>${lotLabel}</div>
         <input type="number" value="${i.qty_borrowed||0}" min="0" style="padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;text-align:right;background:var(--surface);width:100%"
           onchange="bbUpdateItem(${i.id},'qty_borrowed',this.value)">
         <input type="number" value="${i.qty_returned||''}" min="0" placeholder="—" style="padding:3px 6px;border:0.5px solid #4a6b1a;border-radius:5px;font-size:11px;text-align:right;background:#f0f5ec;width:100%"
@@ -3812,6 +3813,15 @@ async function bbAddItemModal(borrowId, section) {
         <button onclick="bbClearItemSearch()" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px">✕</button>
       </div>
       <input type="hidden" id="bb-sel-code">
+      ${section === 'product' ? `
+      <div id="bb-lot-section" style="display:none;flex-direction:column;gap:4px">
+        <label style="font-size:10px;color:var(--ink4)">เลือก Lot <span style="color:var(--red)">*</span></label>
+        <div id="bb-lot-list" style="border:0.5px solid var(--line);border-radius:8px;overflow:hidden;max-height:160px;overflow-y:auto">
+          <div style="padding:10px;text-align:center;font-size:11px;color:var(--ink4)">เลือกสินค้าก่อน</div>
+        </div>
+        <input type="hidden" id="bb-sel-lot-id">
+        <input type="hidden" id="bb-sel-lot-sw">
+      </div>` : ''}
       <div style="display:flex;flex-direction:column;gap:4px">
         <label style="font-size:10px;color:var(--ink4)">จำนวนที่ยืม</label>
         <input class="fi" id="bb-item-qty" type="number" min="1" value="1" style="text-align:right">
@@ -3897,7 +3907,56 @@ function bbSelectItem(code, name, stock) {
   document.getElementById('bb-sel-name').textContent = name;
   document.getElementById('bb-sel-stock').textContent = `คงเหลือ ${stock}`;
   document.getElementById('bb-selected-item').style.display = 'flex';
+  // โหลด lot ถ้าเป็น product section
+  const lotSection = document.getElementById('bb-lot-section');
+  if (lotSection) {
+    lotSection.style.display = 'flex';
+    bbLoadProductLots(code);
+  }
   document.getElementById('bb-item-qty').focus();
+}
+
+async function bbLoadProductLots(code) {
+  const list = document.getElementById('bb-lot-list');
+  if (!list) return;
+  list.innerHTML = `<div style="padding:10px;text-align:center;font-size:11px;color:var(--ink4)"><i class="ti ti-loader"></i> กำลังโหลด...</div>`;
+  const { data } = await sbFactory.from('lots')
+    .select('id,lot_sw,lot_supplier,stock,bag_number,bag_total')
+    .eq('item_code', code)
+    .gt('stock', 0)
+    .order('lot_sw', { ascending: true });
+  if (!data || !data.length) {
+    list.innerHTML = `<div style="padding:10px;text-align:center;font-size:11px;color:var(--ink4)">ไม่มี Lot ที่มีสต็อก</div>`;
+    return;
+  }
+  list.innerHTML = data.map(l => {
+    const sw = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+    const bag = l.bag_number ? ` · ถุง ${l.bag_number}/${l.bag_total}` : '';
+    return `<div onclick="bbSelectLot(${l.id},'${l.lot_sw||''}','${sw}',${l.stock})"
+      style="padding:8px 12px;cursor:pointer;border-bottom:0.5px solid var(--line);display:flex;justify-content:space-between;align-items:center"
+      onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+      <div>
+        <span style="font-size:12px;font-weight:500">Lot ${sw}${bag}</span>
+      </div>
+      <span style="font-size:11px;color:var(--ink4)">คงเหลือ ${l.stock}</span>
+    </div>`;
+  }).join('');
+}
+
+function bbSelectLot(id, sw, swLabel, stock) {
+  document.getElementById('bb-sel-lot-id').value = id;
+  document.getElementById('bb-sel-lot-sw').value = sw;
+  // highlight selected
+  document.querySelectorAll('#bb-lot-list div').forEach(d => d.style.background = '');
+  event.currentTarget.style.background = 'var(--s2)';
+  event.currentTarget.style.border = '1px solid var(--ink)';
+  document.getElementById('bb-item-qty').focus();
+  // แสดง lot ที่เลือก
+  const lotSection = document.getElementById('bb-lot-section');
+  if (lotSection) {
+    const label = lotSection.querySelector('label');
+    if (label) label.textContent = `Lot ที่เลือก: ${swLabel} · คงเหลือ ${stock}`;
+  }
 }
 
 function bbClearItemSearch() {
@@ -3908,14 +3967,19 @@ function bbClearItemSearch() {
 }
 
 async function bbAddItem(borrowId, section) {
-  const code = document.getElementById('bb-sel-code')?.value;
-  const name = document.getElementById('bb-sel-name')?.textContent;
-  const qty  = parseFloat(document.getElementById('bb-item-qty')?.value)||1;
+  const code   = document.getElementById('bb-sel-code')?.value;
+  const name   = document.getElementById('bb-sel-name')?.textContent;
+  const qty    = parseFloat(document.getElementById('bb-item-qty')?.value)||1;
+  const lotId  = document.getElementById('bb-sel-lot-id')?.value || null;
+  const lotSw  = document.getElementById('bb-sel-lot-sw')?.value || null;
   if (!name || name === '—') { showToast('กรุณาเลือกรายการ','err'); return; }
+  if (section === 'product' && !lotId) { showToast('กรุณาเลือก Lot ก่อน','err'); return; }
 
   await sb.from('booth_borrow_items').insert({
     borrow_id: borrowId, section, item_code: code||null,
-    item_name: name, qty_borrowed: qty, qty_returned: 0
+    item_name: name, qty_borrowed: qty, qty_returned: 0,
+    lot_id: lotId ? parseInt(lotId) : null,
+    lot_sw: lotSw || null,
   });
   document.getElementById('bb-add-modal')?.remove();
   await bbLoadBorrows();
@@ -3996,6 +4060,14 @@ async function bbConfirmBorrowProduct(borrowId) {
   if (!confirm(`หักสต็อกโปรดัก ${items.length} รายการ จากคลัง Factory (finish)?`)) return;
   for (const item of items) {
     if (!item.item_code) continue;
+    if (item.lot_id) {
+      // หักจาก lot โดยตรง
+      const { data: lot } = await sbFactory.from('lots').select('stock').eq('id', item.lot_id).single();
+      if (!lot) continue;
+      const newLotStock = Math.max(0, lot.stock - item.qty_borrowed);
+      await sbFactory.from('lots').update({ stock: newLotStock, updated_at: new Date().toISOString() }).eq('id', item.lot_id);
+    }
+    // หัก item stock
     const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', item.item_code).single();
     if (!fItem) continue;
     const newStock = Math.max(0, fItem.stock - item.qty_borrowed);
@@ -4003,6 +4075,7 @@ async function bbConfirmBorrowProduct(borrowId) {
     await sbFactory.from('transactions').insert({
       item_code: item.item_code, item_name: item.item_name,
       pg: 'finish', action_type: 'withdraw', quantity: item.qty_borrowed,
+      lot_id: item.lot_id || null, lot_sw: item.lot_sw || null,
       operator_name: b.borrower_name||'', note: `ยืม-บูธ Tea House: ${b.title}`,
       via: 'booth_borrow', old_stock: fItem.stock, new_stock: newStock,
     });
@@ -4019,6 +4092,13 @@ async function bbConfirmReturnProduct(borrowId) {
   if (!confirm(`บวกสต็อกโปรดัก ${items.length} รายการ กลับคลัง Factory (finish)?`)) return;
   for (const item of items) {
     if (!item.item_code) continue;
+    if (item.lot_id) {
+      // บวกกลับ lot โดยตรง
+      const { data: lot } = await sbFactory.from('lots').select('stock').eq('id', item.lot_id).single();
+      if (lot) {
+        await sbFactory.from('lots').update({ stock: lot.stock + item.qty_returned, updated_at: new Date().toISOString() }).eq('id', item.lot_id);
+      }
+    }
     const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', item.item_code).single();
     if (!fItem) continue;
     const newStock = fItem.stock + item.qty_returned;
@@ -4026,6 +4106,7 @@ async function bbConfirmReturnProduct(borrowId) {
     await sbFactory.from('transactions').insert({
       item_code: item.item_code, item_name: item.item_name,
       pg: 'finish', action_type: 'receive', quantity: item.qty_returned,
+      lot_id: item.lot_id || null, lot_sw: item.lot_sw || null,
       operator_name: item.receiver_name||b.borrower_name||'', note: `คืน-บูธ Tea House: ${b.title}`,
       via: 'booth_borrow', old_stock: fItem.stock, new_stock: newStock,
     });
