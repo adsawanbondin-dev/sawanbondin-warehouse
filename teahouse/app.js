@@ -2698,6 +2698,7 @@ function renderMasterContent(){
 }
 
 function itemRowHtml(m){
+    const st=stockStatus(m);
     const pct=m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):0;
     const fC=st==='out'?'fill-out':st==='low'?'fill-low':'fill-ok';
     const sC=st==='out'?'si-out':st==='low'?'si-low':'si-ok';
