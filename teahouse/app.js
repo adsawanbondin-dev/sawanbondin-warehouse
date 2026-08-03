@@ -3720,29 +3720,38 @@ function bbAddItemModal(borrowId, section) {
       ? ['equip_th'].includes(m.pg)
       : ['finish'].includes(m.pg) && m.subcat === 'สินค้า'
   );
-  const opts = items.map(m =>
-    `<option value="${m.code}" data-name="${m.name}">${m.name}</option>`
-  ).join('');
 
+  document.getElementById('bb-add-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-wrap show';
   modal.id = 'bb-add-modal';
-  modal.innerHTML = `<div class="modal" style="max-width:380px;width:95%">
+  modal.innerHTML = `<div class="modal" style="max-width:400px;width:95%">
     <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
-      <div class="card-title-left">เพิ่มรายการ ${sectionLabel}</div>
+      <div class="card-title-left">เพิ่มรายการ${sectionLabel}</div>
       <button class="btn btn-sm" onclick="document.getElementById('bb-add-modal').remove()">ยกเลิก</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="display:flex;flex-direction:column;gap:3px">
-        <label style="font-size:10px;color:var(--ink4)">เลือกรายการ</label>
-        <select class="fi" id="bb-item-sel" style="padding:6px 8px">
-          <option value="">— เลือกรายการ —</option>
-          ${opts}
-        </select>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <label style="font-size:10px;color:var(--ink4)">ค้นหารายการ</label>
+        <div style="position:relative" id="bb-search-wrap">
+          <input class="fi" id="bb-search-input" placeholder="พิมพ์ชื่อ${sectionLabel}..." autocomplete="off"
+            oninput="bbFilterItems(${JSON.stringify(items.map(m=>({code:m.code,name:m.name,stock:m.stock})))})"
+            onfocus="bbShowAllItems(${JSON.stringify(items.map(m=>({code:m.code,name:m.name,stock:m.stock})))})">
+          <div id="bb-search-dd" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:0.5px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:200;max-height:200px;overflow-y:auto"></div>
+        </div>
+        <div style="font-size:10px;color:var(--ink4)">พิมพ์เพื่อค้นหา หรือคลิกเพื่อดูทั้งหมด</div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:3px">
+      <div id="bb-selected-item" style="display:none;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;padding:8px 12px;display:none;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:12px;font-weight:500" id="bb-sel-name">—</div>
+          <div style="font-size:10px;color:var(--ink4)" id="bb-sel-stock">—</div>
+        </div>
+        <button onclick="bbClearItemSearch()" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px">✕</button>
+      </div>
+      <input type="hidden" id="bb-sel-code">
+      <div style="display:flex;flex-direction:column;gap:4px">
         <label style="font-size:10px;color:var(--ink4)">จำนวนที่ยืม</label>
-        <input class="fi" id="bb-item-qty" type="number" min="1" value="1">
+        <input class="fi" id="bb-item-qty" type="number" min="1" value="1" style="text-align:right">
       </div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
@@ -3751,17 +3760,71 @@ function bbAddItemModal(borrowId, section) {
     </div>
   </div>`;
   document.body.appendChild(modal);
+
+  // ปิด dropdown เมื่อคลิกนอก
+  setTimeout(() => {
+    document.addEventListener('click', function handler(e) {
+      if (!e.target.closest('#bb-search-wrap')) {
+        document.getElementById('bb-search-dd').style.display = 'none';
+      }
+      if (!e.target.closest('#bb-add-modal')) return;
+    });
+  }, 100);
+}
+
+function bbShowAllItems(items) {
+  bbRenderItemDd(items, '');
+}
+
+function bbFilterItems(items) {
+  const q = document.getElementById('bb-search-input')?.value || '';
+  bbRenderItemDd(items, q);
+}
+
+function bbRenderItemDd(items, q) {
+  const dd = document.getElementById('bb-search-dd');
+  if (!dd) return;
+  const filtered = q ? items.filter(i => i.name.toLowerCase().includes(q.toLowerCase())) : items;
+  if (!filtered.length) {
+    dd.innerHTML = `<div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">ไม่พบรายการ</div>`;
+    dd.style.display = 'block';
+    return;
+  }
+  dd.innerHTML = filtered.map(i => `
+    <div onclick="bbSelectItem('${i.code}','${i.name.replace(/'/g,"\\'")}',${i.stock})"
+      style="padding:8px 12px;cursor:pointer;border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between"
+      onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+      <span style="font-size:12px;font-weight:500">${i.name}</span>
+      <span style="font-size:10px;color:var(--ink4)">คงเหลือ ${i.stock}</span>
+    </div>`).join('');
+  dd.style.display = 'block';
+}
+
+function bbSelectItem(code, name, stock) {
+  document.getElementById('bb-search-input').value = name;
+  document.getElementById('bb-search-dd').style.display = 'none';
+  document.getElementById('bb-sel-code').value = code;
+  document.getElementById('bb-sel-name').textContent = name;
+  document.getElementById('bb-sel-stock').textContent = `คงเหลือ ${stock}`;
+  document.getElementById('bb-selected-item').style.display = 'flex';
+  document.getElementById('bb-item-qty').focus();
+}
+
+function bbClearItemSearch() {
+  document.getElementById('bb-search-input').value = '';
+  document.getElementById('bb-sel-code').value = '';
+  document.getElementById('bb-selected-item').style.display = 'none';
+  document.getElementById('bb-search-input').focus();
 }
 
 async function bbAddItem(borrowId, section) {
-  const sel = document.getElementById('bb-item-sel');
-  const qty = parseFloat(document.getElementById('bb-item-qty')?.value)||1;
-  const code = sel?.value;
-  const name = sel?.options[sel.selectedIndex]?.dataset.name || sel?.value;
-  if (!name || !code) { showToast('กรุณาเลือกรายการ','err'); return; }
+  const code = document.getElementById('bb-sel-code')?.value;
+  const name = document.getElementById('bb-sel-name')?.textContent;
+  const qty  = parseFloat(document.getElementById('bb-item-qty')?.value)||1;
+  if (!name || name === '—') { showToast('กรุณาเลือกรายการ','err'); return; }
 
   await sb.from('booth_borrow_items').insert({
-    borrow_id: borrowId, section, item_code: code,
+    borrow_id: borrowId, section, item_code: code||null,
     item_name: name, qty_borrowed: qty, qty_returned: 0
   });
   document.getElementById('bb-add-modal')?.remove();
