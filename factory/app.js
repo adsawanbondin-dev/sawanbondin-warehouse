@@ -39,6 +39,7 @@ const WAREHOUSE_CONFIG = _CFG.WAREHOUSE_CONFIG || {
   packaging: { label:'บรรจุภัณฑ์ภายนอก',  prefix:'PA', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
   equip:     { label:'อุปกรณ์',           prefix:'EQ', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'], hasSpec:true },
   finish:    { label:'สินค้าสำเร็จรูป',  prefix:'FG', hasLot:true,  lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
+  oem:       { label:'OEM',               prefix:'OEM',hasLot:true,  lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง'], hasSpec:true },
   oem:       { label:'OEM',               prefix:'OEM', hasLot:true, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง'], hasSpec:true },
   sample:    { label:'ชาตัวอย่าง',          prefix:'SA', hasLot:true,  lotSupplier:true,  rawFields:false, hasExpiry:true, depts:['ผลิต','คลัง','Tea House'],
                subcats:['OEM','RD','ชาประกวด'],
