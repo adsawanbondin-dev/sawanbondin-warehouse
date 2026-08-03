@@ -3545,6 +3545,11 @@ switchPage = async function(p) {
    BOOTH BORROW MODULE — ยืม-คืน บูธ
 ═══════════════════════════════════════════ */
 
+// Factory Supabase client — สำหรับหัก/บวก stock คลัง finish ตอนยืม-คืน product บูธ
+const FACTORY_SB_URL = 'https://rsmcrshvcbtcxvvhdmnk.supabase.co';
+const FACTORY_SB_KEY = 'sb_publishable__RK27ReptMhtMdc8EdA-KQ_K4zfhMwJ';
+const sbFactory = supabase.createClient(FACTORY_SB_URL, FACTORY_SB_KEY);
+
 let bbBorrows = [];
 let bbShowForm = false;
 let bbEditId   = null;
@@ -3918,36 +3923,59 @@ async function bbDelete(borrowId) {
 async function bbConfirmBorrow(borrowId) {
   const b = bbBorrows.find(x=>x.id===borrowId);
   if (!b) return;
-  const storeItems = (b.booth_borrow_items||[]).filter(i=>i.section==='store' && i.qty_borrowed>0);
-  if (!storeItems.length) { showToast('ไม่มีรายการอุปกรณ์สโตว์','err'); return; }
-  if (!confirm(`หักสต็อกอุปกรณ์สโตว์ ${storeItems.length} รายการ?`)) return;
+  const storeItems   = (b.booth_borrow_items||[]).filter(i=>i.section==='store'   && i.qty_borrowed>0);
+  const productItems = (b.booth_borrow_items||[]).filter(i=>i.section==='product' && i.qty_borrowed>0);
+  if (!storeItems.length && !productItems.length) { showToast('ไม่มีรายการ','err'); return; }
 
+  const msg = [];
+  if (storeItems.length)   msg.push(`อุปกรณ์สโตว์ ${storeItems.length} รายการ → หักคลัง Tea House`);
+  if (productItems.length) msg.push(`โปรดัก ${productItems.length} รายการ → หักคลัง Factory (finish)`);
+  if (!confirm(msg.join('\n') + '\n\nยืนยันหักสต็อก?')) return;
+
+  // หักอุปกรณ์สโตว์จาก Tea House
   for (const item of storeItems) {
     if (!item.item_code) continue;
     const m = masterDB.find(x=>x.code===item.item_code);
     if (!m) continue;
-    const newStock = m.stock - item.qty_borrowed;
+    const newStock = Math.max(0, m.stock - item.qty_borrowed);
     await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
     m.stock = newStock;
-    await dbInsertTransaction({
-      code: item.item_code, item: item.item_name, pg: m.pg,
-      type:'withdraw', qty: item.qty_borrowed,
-      name: b.borrower_name||'', dept:'', lotSW:'-', lotSP:'',
-      note:`ยืม-คืน บูธ: ${b.title}`, via:'booth_borrow'
+  }
+
+  // หัก product จาก Factory คลัง finish
+  for (const item of productItems) {
+    if (!item.item_code) continue;
+    const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', item.item_code).single();
+    if (!fItem) continue;
+    const newStock = Math.max(0, fItem.stock - item.qty_borrowed);
+    await sbFactory.from('items').update({ stock: newStock }).eq('code', item.item_code);
+    // บันทึก transaction ใน Factory
+    await sbFactory.from('transactions').insert({
+      item_code: item.item_code, item_name: item.item_name,
+      pg: 'finish', action_type: 'withdraw', quantity: item.qty_borrowed,
+      operator_name: b.borrower_name||'', note: `ยืม-คืน บูธ Tea House: ${b.title}`,
+      via: 'booth_borrow', old_stock: fItem.stock, new_stock: newStock,
     });
   }
+
   await sb.from('booth_borrows').update({ status:'active', updated_at: new Date().toISOString() }).eq('id', borrowId);
-  showToast('หักสต็อกอุปกรณ์เรียบร้อย');
+  showToast('หักสต็อกเรียบร้อยค่ะ');
   await bbLoadBorrows(); bbRender();
 }
 
 async function bbConfirmReturn(borrowId) {
   const b = bbBorrows.find(x=>x.id===borrowId);
   if (!b) return;
-  const storeItems = (b.booth_borrow_items||[]).filter(i=>i.section==='store' && i.qty_returned>0);
-  if (!storeItems.length) { showToast('กรุณากรอกจำนวนที่คืน','err'); return; }
-  if (!confirm(`บวกสต็อกอุปกรณ์สโตว์ ${storeItems.length} รายการ?`)) return;
+  const storeItems   = (b.booth_borrow_items||[]).filter(i=>i.section==='store'   && i.qty_returned>0);
+  const productItems = (b.booth_borrow_items||[]).filter(i=>i.section==='product' && i.qty_returned>0);
+  if (!storeItems.length && !productItems.length) { showToast('กรุณากรอกจำนวนที่คืน','err'); return; }
 
+  const msg = [];
+  if (storeItems.length)   msg.push(`อุปกรณ์สโตว์ ${storeItems.length} รายการ → บวกคลัง Tea House`);
+  if (productItems.length) msg.push(`โปรดัก ${productItems.length} รายการ → บวกคลัง Factory (finish)`);
+  if (!confirm(msg.join('\n') + '\n\nยืนยันบวกสต็อก?')) return;
+
+  // บวกอุปกรณ์สโตว์กลับ Tea House
   for (const item of storeItems) {
     if (!item.item_code) continue;
     const m = masterDB.find(x=>x.code===item.item_code);
@@ -3955,20 +3983,29 @@ async function bbConfirmReturn(borrowId) {
     const newStock = m.stock + item.qty_returned;
     await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
     m.stock = newStock;
-    await dbInsertTransaction({
-      code: item.item_code, item: item.item_name, pg: m.pg,
-      type:'receive', qty: item.qty_returned,
-      name: item.receiver_name||'', dept:'', lotSW:'-', lotSP:'',
-      note:`คืน-บูธ: ${b.title}`, via:'booth_borrow'
+  }
+
+  // บวก product กลับ Factory คลัง finish
+  for (const item of productItems) {
+    if (!item.item_code) continue;
+    const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', item.item_code).single();
+    if (!fItem) continue;
+    const newStock = fItem.stock + item.qty_returned;
+    await sbFactory.from('items').update({ stock: newStock }).eq('code', item.item_code);
+    await sbFactory.from('transactions').insert({
+      item_code: item.item_code, item_name: item.item_name,
+      pg: 'finish', action_type: 'receive', quantity: item.qty_returned,
+      operator_name: item.receiver_name||b.borrower_name||'', note: `คืน-บูธ Tea House: ${b.title}`,
+      via: 'booth_borrow', old_stock: fItem.stock, new_stock: newStock,
     });
   }
 
-  const allReturned = (b.booth_borrow_items||[])
+  const allStoreReturned = (b.booth_borrow_items||[])
     .filter(i=>i.section==='store')
     .every(i=>(i.qty_returned||0)>=(i.qty_borrowed||0));
-  const newStatus = allReturned ? 'returned' : 'partial';
+  const newStatus = allStoreReturned ? 'returned' : 'partial';
   await sb.from('booth_borrows').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', borrowId);
-  showToast('บวกสต็อกอุปกรณ์เรียบร้อย');
+  showToast('บวกสต็อกเรียบร้อยค่ะ');
   await bbLoadBorrows(); bbRender();
 }
 
