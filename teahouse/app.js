@@ -3849,13 +3849,12 @@ function bbGetItems(section) {
 }
 
 // cache รายการ Factory finish
-let factoryItemsDB = null;
+let factoryItemsDB = null;  // reset ทุกครั้งที่เปิดหน้า booth-borrow
 async function bbLoadFactoryItems() {
   if (factoryItemsDB) return;
   const { data, error } = await sbFactory.from('items')
     .select('code,name,stock,subcat')
     .eq('pg','finish')
-    .eq('subcat','สินค้า')
     .order('name');
   if (error) { console.error('bbLoadFactoryItems:', error.message); factoryItemsDB = []; return; }
   factoryItemsDB = (data||[]).map(r => ({
