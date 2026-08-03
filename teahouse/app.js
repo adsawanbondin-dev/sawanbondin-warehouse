@@ -3569,11 +3569,18 @@ async function renderBoothBorrowPage() {
   bbRender();
 }
 
+let bbSearchText = '';
+
 function bbRender() {
   const div = document.getElementById('page-booth-borrow');
   if (!div) return;
 
-  const cards = bbBorrows.map(b => {
+  const searchLower = bbSearchText.toLowerCase();
+  const filtered = searchLower
+    ? bbBorrows.filter(b => b.title.toLowerCase().includes(searchLower))
+    : bbBorrows;
+
+  const cards = filtered.map(b => {
     const storeItems  = (b.booth_borrow_items||[]).filter(i=>i.section==='store');
     const productItems= (b.booth_borrow_items||[]).filter(i=>i.section==='product');
     const statusLabel = { active:'กำลังยืม', returned:'คืนครบแล้ว', partial:'คืนบางส่วน' }[b.status] || b.status;
@@ -3657,8 +3664,8 @@ function bbRender() {
                 onchange="bbUpdateSectionMeta(${b.id},'store','note',this.value)">
             </div>
             <div style="display:flex;gap:6px;justify-content:flex-end;padding-top:4px;border-top:0.5px solid var(--line)">
-              <button onclick="bbConfirmBorrowStore(${b.id})" style="font-size:10px;padding:4px 10px;border-radius:6px;background:#013c58;color:#fff;border:none;cursor:pointer"><i class="ti ti-arrow-down-left"></i> ยืมสโตว์</button>
-              <button onclick="bbConfirmReturnStore(${b.id})" style="font-size:10px;padding:4px 10px;border-radius:6px;background:#2d4a0f;color:#fff;border:none;cursor:pointer"><i class="ti ti-arrow-up-right"></i> คืนสโตว์</button>
+              <button onclick="bbConfirmBorrowStore(${b.id})" class="btn btn-sm" style="font-size:10px;background:var(--acc);color:#fff;border-color:var(--acc)"><i class="ti ti-arrow-down-left"></i> ยืมสโตว์</button>
+              <button onclick="bbConfirmReturnStore(${b.id})" class="btn btn-sm" style="font-size:10px;background:var(--green,#2d4a0f);color:#fff;border-color:var(--green,#2d4a0f)"><i class="ti ti-arrow-up-right"></i> คืนสโตว์</button>
             </div>
           </div>
         </div>
@@ -3691,8 +3698,8 @@ function bbRender() {
                 onchange="bbUpdateSectionMeta(${b.id},'product','note',this.value)">
             </div>
             <div style="display:flex;gap:6px;justify-content:flex-end;padding-top:4px;border-top:0.5px solid var(--line)">
-              <button onclick="bbConfirmBorrowProduct(${b.id})" style="font-size:10px;padding:4px 10px;border-radius:6px;background:#5c3a00;color:#fff;border:none;cursor:pointer"><i class="ti ti-arrow-down-left"></i> ยืมโปรดัก → หัก Factory</button>
-              <button onclick="bbConfirmReturnProduct(${b.id})" style="font-size:10px;padding:4px 10px;border-radius:6px;background:#7a4500;color:#fff;border:none;cursor:pointer"><i class="ti ti-arrow-up-right"></i> คืนโปรดัก → บวก Factory</button>
+              <button onclick="bbConfirmBorrowProduct(${b.id})" class="btn btn-sm" style="font-size:10px;background:var(--acc);color:#fff;border-color:var(--acc);opacity:.85"><i class="ti ti-arrow-down-left"></i> ยืมโปรดัก → Factory</button>
+              <button onclick="bbConfirmReturnProduct(${b.id})" class="btn btn-sm" style="font-size:10px;background:var(--green,#2d4a0f);color:#fff;border-color:var(--green,#2d4a0f);opacity:.85"><i class="ti ti-arrow-up-right"></i> คืนโปรดัก → Factory</button>
             </div>
           </div>
         </div>
@@ -3702,7 +3709,34 @@ function bbRender() {
         <button onclick="bbDelete(${b.id})" class="btn btn-sm" style="font-size:11px;color:var(--red)"><i class="ti ti-trash"></i> ลบรายการนี้</button>
       </div>
     </div>`;
-  }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-arrows-exchange" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>ยังไม่มีรายการยืม</div>`;
+  });
+
+  // การ์ดย่อสำหรับที่คืนครบแล้ว
+  const renderedCards = filtered.map((b, idx) => {
+    const allItems = b.booth_borrow_items||[];
+    const isFullyReturned = b.status === 'returned';
+    if (isFullyReturned) {
+      const storeCount  = allItems.filter(i=>i.section==='store').length;
+      const productCount= allItems.filter(i=>i.section==='product').length;
+      const borrowDate  = b.borrow_date ? new Date(b.borrow_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '—';
+      return `<div class="card" style="margin-bottom:8px;opacity:.7">
+        <div style="padding:10px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="this.parentElement.querySelector('.bb-collapsed-detail').style.display=this.parentElement.querySelector('.bb-collapsed-detail').style.display==='none'?'block':'none'">
+          <div>
+            <div style="font-size:12px;font-weight:500">${b.title}</div>
+            <div style="font-size:10px;color:var(--ink4)">ยืม ${borrowDate} · สโตว์ ${storeCount} / โปรดัก ${productCount} รายการ</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:9px;padding:2px 8px;border-radius:10px;background:#f0f5ec;color:#2d4a0f;border:0.5px solid #4a6b1a">คืนครบแล้ว</span>
+            <button onclick="event.stopPropagation();bbDelete(${b.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:12px"><i class="ti ti-trash"></i></button>
+          </div>
+        </div>
+        <div class="bb-collapsed-detail" style="display:none;padding:0 16px 10px;font-size:11px;color:var(--ink4)">
+          ${allItems.map(i=>`<div style="padding:2px 0">${i.item_name} · ยืม ${i.qty_borrowed} / คืน ${i.qty_returned}</div>`).join('')}
+        </div>
+      </div>`;
+    }
+    return cards[idx];
+  }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-arrows-exchange" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>${searchLower?'ไม่พบรายการที่ค้นหา':'ยังไม่มีรายการยืม'}</div>`;
 
   div.innerHTML = `
     <div class="page-header">
@@ -3712,8 +3746,12 @@ function bbRender() {
         <i class="ti ti-plus"></i> สร้างรายการยืม
       </button>
     </div>
+    <div style="margin-bottom:12px">
+      <input class="fi" placeholder="ค้นหาตามชื่องาน..." value="${bbSearchText}"
+        oninput="bbSearchText=this.value;bbRender()" style="max-width:300px">
+    </div>
     <div id="bb-new-form"></div>
-    ${cards}`;
+    ${renderedCards}`;
 
   if (bbShowForm) bbRenderNewForm();
 }
