@@ -4083,9 +4083,12 @@ async function bbConfirmReturnStore(borrowId) {
     await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
     m.stock = newStock;
   }
-  const allReturned = (b.booth_borrow_items||[]).filter(i=>i.section==='store')
+  const storeAllReturned = (b.booth_borrow_items||[]).filter(i=>i.section==='store')
     .every(i=>(i.qty_returned||0)>=(i.qty_borrowed||0));
-  await sb.from('booth_borrows').update({ status: allReturned?'returned':'partial', updated_at: new Date().toISOString() }).eq('id', borrowId);
+  const productAllReturned = (b.booth_borrow_items||[]).filter(i=>i.section==='product')
+    .every(i=>(i.qty_returned||0)>=(i.qty_borrowed||0));
+  const newStatus = (storeAllReturned && productAllReturned) ? 'returned' : 'partial';
+  await sb.from('booth_borrows').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', borrowId);
   showToast('บวกสต็อกอุปกรณ์สโตว์เรียบร้อยค่ะ');
   await bbLoadBorrows(); bbRender();
 }
@@ -4150,7 +4153,19 @@ async function bbConfirmReturnProduct(borrowId) {
     });
   }
   showToast('บวกสต็อกโปรดักกลับ Factory เรียบร้อยค่ะ');
-  await bbLoadBorrows(); bbRender();
+  // อัปเดต status เฉพาะเมื่อคืนครบทั้ง 2 ส่วน
+  await bbLoadBorrows();
+  const bUpdated = bbBorrows.find(x=>x.id===borrowId);
+  if (bUpdated) {
+    const storeAllReturned = (bUpdated.booth_borrow_items||[]).filter(i=>i.section==='store')
+      .every(i=>(i.qty_returned||0)>=(i.qty_borrowed||0));
+    const productAllReturned = (bUpdated.booth_borrow_items||[]).filter(i=>i.section==='product')
+      .every(i=>(i.qty_returned||0)>=(i.qty_borrowed||0));
+    const newStatus = (storeAllReturned && productAllReturned) ? 'returned' : 'partial';
+    await sb.from('booth_borrows').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', borrowId);
+    await bbLoadBorrows();
+  }
+  bbRender();
 }
 
 
