@@ -64,6 +64,8 @@ let locationDB      = {};    // { code: string }
 let specDB          = {};    // { code: string } — สเปกอุปกรณ์
 let lotDB           = {};    // { code: [{id,lot_sw,stock,updated_at}] }
 let masterCatFilter = 'all';
+let masterPgFilter  = '';  // คลังที่เลือกอยู่ใน Master
+let masterSubFilter = '';  // หมวดหมู่ย่อยที่เลือก
 let curPage         = 'master';
 let currentQRPage   = null;
 let camScanner      = null;
@@ -2628,12 +2630,74 @@ async function deleteBinLocation(id){
 }
 
 function renderMasterContent(){
-  const search=(document.getElementById('masterSearch')?.value||'').toLowerCase();
-  const cat=masterCatFilter;
-  const content=document.getElementById('masterContent'); if(!content)return;
+  const search  = (document.getElementById('masterSearch')?.value||'').toLowerCase();
+  const content = document.getElementById('masterContent'); if(!content)return;
 
-  function itemRowHtml(m){
-    const st=stockStatus(m);
+  // init pg filter
+  if(!masterPgFilter) masterPgFilter = WAREHOUSE_PAGES[0] || 'finish';
+
+  const cfg = WAREHOUSE_CONFIG[masterPgFilter] || {};
+
+  // หมวดหมู่ย่อยของคลังที่เลือก
+  const pgItems = masterDB.filter(m => m.pg === masterPgFilter);
+  const subcats = [...new Set(pgItems.map(m => m.subcat||'ไม่มีหมวดหมู่'))].filter(Boolean).sort();
+  if(!masterSubFilter || !subcats.includes(masterSubFilter)) masterSubFilter = subcats[0] || '';
+
+  // รายการในหมวดย่อยนั้น
+  const filtered = pgItems.filter(m => {
+    const sub = m.subcat||'ไม่มีหมวดหมู่';
+    if(sub !== masterSubFilter) return false;
+    if(search && !m.name.toLowerCase().includes(search) && !m.code.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  // Warehouse tabs
+  const whTabs = WAREHOUSE_PAGES.map(pg => {
+    const c = WAREHOUSE_CONFIG[pg];
+    const cnt = masterDB.filter(m=>m.pg===pg).length;
+    return `<button onclick="masterPgFilter='${pg}';masterSubFilter='';renderMasterContent()"
+      style="padding:6px 16px;border-radius:8px;border:0.5px solid var(--line);font-size:12px;cursor:pointer;white-space:nowrap;font-family:inherit;
+      background:${masterPgFilter===pg?'var(--ink)':'var(--surface)'};
+      color:${masterPgFilter===pg?'var(--surface)':'var(--ink3)'};
+      border-color:${masterPgFilter===pg?'var(--ink)':'var(--line)'}">
+      ${c?.label||pg}
+      <span style="font-size:10px;opacity:.6;margin-left:4px">${cnt}</span>
+    </button>`;
+  }).join('');
+
+  // Category cards
+  const catCards = subcats.map(sub => {
+    const subItems = pgItems.filter(m=>(m.subcat||'ไม่มีหมวดหมู่')===sub);
+    const lowCnt = subItems.filter(m=>m.min>0&&m.stock<=m.min).length;
+    const isActive = sub === masterSubFilter;
+    return `<div onclick="masterSubFilter='${sub}';renderMasterContent()"
+      style="background:var(--surface);border:0.5px solid ${isActive?'var(--ink)':'var(--line)'};border-radius:10px;padding:10px 12px;cursor:pointer;
+      background:${isActive?'var(--s2)':'var(--surface)'}">
+      <div style="font-size:11px;font-weight:500">${sub}</div>
+      <div style="font-size:10px;color:var(--ink4);margin-top:2px">${subItems.length} รายการ</div>
+      ${lowCnt?`<div style="font-size:10px;color:var(--red);margin-top:1px">${lowCnt} ต่ำกว่า Min</div>`:''}
+    </div>`;
+  }).join('');
+
+  // Item rows
+  const rows = filtered.map(m => itemRowHtml(m)).join('') ||
+    `<div style="padding:32px;text-align:center;color:var(--ink4)"><i class="ti ti-search" style="font-size:24px;display:block;margin-bottom:8px;opacity:.3"></i>ไม่พบรายการ</div>`;
+
+  content.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="wh-tabs">${whTabs}</div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:12px">${catCards}</div>
+
+    <div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden">
+      <div style="padding:9px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;font-weight:500">${masterSubFilter} · ${filtered.length} รายการ</span>
+        ${canManageMaster()?`<button class="btn btn-sm" onclick="showAddForm()" style="font-size:11px">+ เพิ่มรายการ</button>`:''}
+      </div>
+      <div class="item-list">${rows}</div>
+    </div>`;
+}
+
+function itemRowHtml(m){
     const pct=m.max>0?Math.min(100,Math.round(m.stock/m.max*100)):0;
     const fC=st==='out'?'fill-out':st==='low'?'fill-low':'fill-ok';
     const sC=st==='out'?'si-out':st==='low'?'si-low':'si-ok';
@@ -2703,32 +2767,17 @@ function renderMasterContent(){
     </div>`;
   }
 
-  function renderSection(items,label){
-    const filtered=items.filter(m=>{
-      if(search&&!m.name.toLowerCase().includes(search)&&!m.code.toLowerCase().includes(search))return false;
-      if(cat==='alert')return stockStatus(m)!=='ok'&&(m.min>0||m.max>0);
-      return true;
-    });
-    if(!filtered.length)return'';
-    return`<div class="master-section">
-      <div class="master-section-header"><div class="master-section-title">${label} <span class="mcount">${filtered.length}</span></div></div>
-      <div class="item-list">${filtered.map(itemRowHtml).join('')}</div>
-    </div>`;
-  }
-
-  const showAll=cat==='all'||cat==='alert';
-  let html='';
-  WAREHOUSE_PAGES.forEach(pg=>{
-    if(!showAll&&cat!==pg)return;
-    const cfg=WAREHOUSE_CONFIG[pg];
-    const pgItems=masterDB.filter(m=>m.pg===pg);
-    const subcats=[...new Set(pgItems.map(m=>m.subcat||''))];
-    subcats.forEach(sub=>{
-      const items=pgItems.filter(m=>(m.subcat||'')===sub);
-      html+=renderSection(items,sub?`${cfg.label} — ${sub}`:cfg.label);
-    });
+function renderSection(items,label){
+  const filtered=items.filter(m=>{
+    const search=(document.getElementById('masterSearch')?.value||'').toLowerCase();
+    if(search&&!m.name.toLowerCase().includes(search)&&!m.code.toLowerCase().includes(search))return false;
+    return true;
   });
-  content.innerHTML=html||'<div class="empty" style="padding:32px"><i class="ti ti-search"></i><div class="empty-text">ไม่พบรายการ</div></div>';
+  if(!filtered.length)return'';
+  return`<div class="master-section">
+    <div class="master-section-header"><div class="master-section-title">${label} <span class="mcount">${filtered.length}</span></div></div>
+    <div class="item-list">${filtered.map(itemRowHtml).join('')}</div>
+  </div>`;
 }
 
 function syncLocFromSelect(pg){
