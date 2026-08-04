@@ -51,18 +51,23 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 }
 
 /* ══ NAV ══ */
-.nav{background:var(--surface);border-bottom:1px solid var(--line);display:flex;padding:0 8px;position:sticky;top:46px;z-index:190;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-.nav::-webkit-scrollbar{display:none}
-.nav-item{padding:11px 12px;cursor:pointer;font-size:12px;color:var(--ink3);border-bottom:2px solid transparent;white-space:nowrap;transition:all .12s;display:flex;align-items:center;gap:5px;flex-shrink:0;min-height:42px;-webkit-tap-highlight-color:transparent}
-.nav-item:hover{color:var(--ink2)}
-.nav-item.active{color:var(--ink);border-bottom-color:var(--ink);font-weight:500}
+.app-body{display:flex;height:calc(100vh - 46px);overflow:hidden}
+.sidebar{width:200px;min-width:200px;background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow-y:auto;position:sticky;top:46px;height:calc(100vh - 46px);z-index:190;scrollbar-width:none}
+.sidebar::-webkit-scrollbar{display:none}
+.sidebar-group{padding:8px 0 4px}
+.sidebar-group-label{font-size:10px;font-weight:600;color:var(--ink4);padding:4px 14px 2px;text-transform:uppercase;letter-spacing:.5px}
+.sidebar-divider{height:1px;background:var(--line);margin:6px 10px}
+.content-wrap{flex:1;overflow-y:auto;padding:12px 14px}
+.nav-item{padding:8px 14px;cursor:pointer;font-size:12px;color:var(--ink3);white-space:nowrap;transition:all .12s;display:flex;align-items:center;gap:8px;min-height:36px;-webkit-tap-highlight-color:transparent;border-radius:6px;margin:1px 6px}
+.nav-item:hover{color:var(--ink2);background:var(--s2)}
+.nav-item.active{color:var(--ink);background:var(--s3);font-weight:500}
 @media(max-width:600px){
   .nav{top:44px;padding:0 4px}
   .nav-item{padding:10px 10px;font-size:11px;min-height:40px}
 }
 
 /* ══ LAYOUT ══ */
-.main{padding:12px 14px;max-width:1280px;margin:0 auto}
+.main{max-width:1280px;margin:0 auto}
 .wh-layout{display:grid;grid-template-columns:340px 1fr;gap:12px;align-items:start}
 @media(max-width:900px){.wh-layout{grid-template-columns:1fr}}
 @media(max-width:600px){.main{padding:10px 10px}}
@@ -474,31 +479,47 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
 </div>
 
-<!-- NAV — โครงสร้างคลังของ Tea House (4 คลัง ต่างจาก Factory) -->
-<nav class="nav">
-  <div class="nav-item active" onclick="switchPage('master')" data-page="master">
-    <i class="ti ti-database"></i> Master
+<!-- SIDEBAR + CONTENT -->
+<div class="app-body">
+<aside class="sidebar">
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">ภาพรวม</div>
+    <div class="nav-item active" onclick="switchPage('master')" data-page="master">
+      <i class="ti ti-database"></i> Master
+    </div>
+    <div class="nav-item" onclick="switchPage('stockcount')" data-page="stockcount">
+      <i class="ti ti-clipboard-check"></i> ตรวจนับ
+    </div>
   </div>
-  <div class="nav-item" onclick="switchPage('finish')"      data-page="finish">คลังสินค้าสำเร็จรูป</div>
-  <div class="nav-item" onclick="switchPage('equip_th')"    data-page="equip_th">คลังอุปกรณ์ Tea House</div>
-  <div class="nav-item" onclick="switchPage('store2')"      data-page="store2">Store 2</div>
-  <div class="nav-item" onclick="switchPage('alert-purchase')" data-page="alert-purchase" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
-    <i class="ti ti-shopping-cart"></i> รายการจัดซื้อ
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">คลังสินค้า</div>
+    <div class="nav-item" onclick="switchPage('finish')" data-page="finish">
+      <i class="ti ti-package"></i> สินค้าสำเร็จรูป
+    </div>
+    <div class="nav-item" onclick="switchPage('equip_th')" data-page="equip_th">
+      <i class="ti ti-tool"></i> อุปกรณ์ Tea House
+    </div>
+    <div class="nav-item" onclick="switchPage('store2')" data-page="store2">
+      <i class="ti ti-building-store"></i> Store 2
+    </div>
   </div>
-  <div class="nav-item" onclick="switchPage('daily-withdraw')" data-page="daily-withdraw">
-    <i class="ti ti-calendar-check"></i> รายการเบิกประจำวัน
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-group">
+    <div class="sidebar-group-label">การจัดการ</div>
+    <div class="nav-item" onclick="switchPage('daily-withdraw')" data-page="daily-withdraw">
+      <i class="ti ti-calendar-check"></i> เบิกประจำวัน
+    </div>
+    <div class="nav-item" onclick="switchPage('booth-borrow')" data-page="booth-borrow">
+      <i class="ti ti-arrows-exchange"></i> ยืม-คืน บูธ
+    </div>
+    <div class="nav-item" onclick="switchPage('alert-purchase')" data-page="alert-purchase">
+      <i class="ti ti-shopping-cart"></i> รายการจัดซื้อ
+    </div>
   </div>
-  <div class="nav-item" onclick="switchPage('booth-borrow')" data-page="booth-borrow">
-    <i class="ti ti-arrows-exchange"></i> ยืม-คืน บูธ
-  </div>
-  <div class="nav-item" onclick="switchPage('stockcount')"" data-page="stockcount" style="border-left:1px solid var(--line);margin-left:4px;padding-left:14px">
-    <i class="ti ti-clipboard-check"></i> ตรวจนับ
-  </div>
+</aside>
+<div class="content-wrap"><div class="main">
 
-</nav>
-
-<!-- PAGE CONTAINERS -->
-<div class="main">
   <div id="page-master"      class="page-visible"></div>
   <div id="page-finish"      class="page-hidden"></div>
   <div id="page-equip_th"    class="page-hidden"></div>
@@ -873,4 +894,6 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 
+</div><!-- /content-wrap -->
+</div><!-- /app-body -->
 </div><!-- /appRoot -->
