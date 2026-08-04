@@ -4845,15 +4845,20 @@ async function renderDailyWithdrawPage() {
     <div class="page-header">
       <div><div class="page-title">รายการเบิกประจำวัน</div>
         <div class="page-sub">${dateStr}</div></div>
-      <button class="btn btn-sm" onclick="(async()=>{
-        const today=new Date().toISOString().split('T')[0];
-        await sb.from('daily_withdrawals').delete().eq('date',today).neq('status','received');
-        dwItems=[];
-        await dbGenerateDailyList();
-        renderDailyWithdrawPage();
-      })()" style="font-size:11px">
-        <i class="ti ti-refresh"></i> รีเฟรช
-      </button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-primary" onclick="dwOpenAddModal()" style="font-size:11px">
+          <i class="ti ti-plus"></i> เพิ่มรายการ
+        </button>
+        <button class="btn btn-sm" onclick="(async()=>{
+          const today=new Date().toISOString().split('T')[0];
+          await sb.from('daily_withdrawals').delete().eq('date',today).neq('status','received');
+          dwItems=[];
+          await dbGenerateDailyList();
+          renderDailyWithdrawPage();
+        })()" style="font-size:11px">
+          <i class="ti ti-refresh"></i> รีเฟรช
+        </button>
+      </div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px">
       <div class="card" style="flex:1;padding:10px 14px;text-align:center">
@@ -4876,6 +4881,141 @@ async function renderDailyWithdrawPage() {
     ${buildSection('finish','คลังสินค้าสำเร็จรูป')}
     <div style="height:1px;background:var(--line);margin:4px 0 20px"></div>
     ${buildSection('store2','Store 2')}`;
+}
+
+let dwAddTab = 'finish';
+
+function dwOpenAddModal() {
+  document.getElementById('dw-add-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-wrap show';
+  modal.id = 'dw-add-modal';
+  modal.innerHTML = `<div class="modal" style="max-width:400px;width:95%">
+    <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+      <div class="card-title-left"><i class="ti ti-plus"></i> เพิ่มรายการ</div>
+      <button class="btn btn-sm" onclick="document.getElementById('dw-add-modal').remove()">ยกเลิก</button>
+    </div>
+    <div style="display:flex;gap:0;border-bottom:0.5px solid var(--line);margin-bottom:12px">
+      <button onclick="dwSetAddTab('finish',this)" id="dw-tab-finish"
+        style="font-size:12px;padding:6px 16px;border:none;background:transparent;cursor:pointer;font-family:inherit;border-bottom:2px solid var(--ink);color:var(--ink);font-weight:500">
+        สินค้าสำเร็จรูป
+      </button>
+      <button onclick="dwSetAddTab('store2',this)" id="dw-tab-store2"
+        style="font-size:12px;padding:6px 16px;border:none;background:transparent;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;color:var(--ink4)">
+        Store 2
+      </button>
+    </div>
+    <div style="position:relative;margin-bottom:8px">
+      <input class="fi" id="dw-add-search" placeholder="พิมพ์ชื่อสินค้า..." autocomplete="off"
+        oninput="dwFilterItems()" onfocus="dwFilterItems()">
+    </div>
+    <div id="dw-add-dd" style="border:0.5px solid var(--line);border-radius:8px;overflow:hidden;max-height:200px;overflow-y:auto;margin-bottom:10px">
+      <div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">กำลังโหลด...</div>
+    </div>
+    <div id="dw-add-selected" style="display:none;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;padding:8px 12px;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div>
+        <div style="font-size:12px;font-weight:500" id="dw-sel-name">—</div>
+        <div style="font-size:10px;color:var(--ink4)" id="dw-sel-stock">—</div>
+      </div>
+      <button onclick="dwClearSel()" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px">✕</button>
+    </div>
+    <input type="hidden" id="dw-sel-code">
+    <input type="hidden" id="dw-sel-pg">
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:10px;border-top:0.5px solid var(--line)">
+      <button class="btn btn-sm" onclick="document.getElementById('dw-add-modal').remove()">ยกเลิก</button>
+      <button class="btn btn-primary btn-sm" onclick="dwAddManualItem()"><i class="ti ti-plus"></i> เพิ่มในรายการวันนี้</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  dwAddTab = 'finish';
+  setTimeout(() => dwFilterItems(), 50);
+
+  document.addEventListener('click', function dwOut(e) {
+    if (!e.target.closest('#dw-add-modal')) return;
+    if (!document.getElementById('dw-add-modal')) document.removeEventListener('click', dwOut);
+  });
+}
+
+function dwSetAddTab(pg, el) {
+  dwAddTab = pg;
+  ['finish','store2'].forEach(t => {
+    const btn = document.getElementById('dw-tab-'+t);
+    if (btn) {
+      btn.style.borderBottom = t===pg ? '2px solid var(--ink)' : '2px solid transparent';
+      btn.style.color = t===pg ? 'var(--ink)' : 'var(--ink4)';
+      btn.style.fontWeight = t===pg ? '500' : 'normal';
+    }
+  });
+  document.getElementById('dw-add-search').value = '';
+  dwClearSel();
+  dwFilterItems();
+}
+
+function dwFilterItems() {
+  const q = (document.getElementById('dw-add-search')?.value||'').toLowerCase();
+  const dd = document.getElementById('dw-add-dd');
+  if (!dd) return;
+  const items = masterDB.filter(m => {
+    if (m.pg !== dwAddTab) return false;
+    if (dwAddTab === 'finish' && m.subcat !== 'สินค้า') return false;
+    if (q && !m.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if (!items.length) {
+    dd.innerHTML = `<div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">ไม่พบรายการ</div>`;
+    return;
+  }
+  dd.innerHTML = items.map(m => `
+    <div onclick="dwSelectItem('${m.code}','${m.name.replace(/'/g,"\\'")}',${m.stock},'${m.pg}')"
+      style="padding:8px 12px;cursor:pointer;border-bottom:0.5px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:12px"
+      onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+      <span style="font-weight:500">${m.name}</span>
+      <span style="font-size:10px;color:${m.stock<=0?'var(--red)':'var(--ink4)'}">คงเหลือ ${m.stock}</span>
+    </div>`).join('');
+}
+
+function dwSelectItem(code, name, stock, pg) {
+  document.getElementById('dw-add-search').value = name;
+  document.getElementById('dw-sel-code').value = code;
+  document.getElementById('dw-sel-pg').value = pg;
+  document.getElementById('dw-sel-name').textContent = name;
+  document.getElementById('dw-sel-stock').textContent = `คงเหลือ ${stock}`;
+  document.getElementById('dw-add-selected').style.display = 'flex';
+  document.getElementById('dw-add-dd').style.display = 'none';
+}
+
+function dwClearSel() {
+  document.getElementById('dw-sel-code').value = '';
+  document.getElementById('dw-sel-pg').value = '';
+  document.getElementById('dw-add-selected').style.display = 'none';
+  document.getElementById('dw-add-dd').style.display = 'block';
+}
+
+async function dwAddManualItem() {
+  const code = document.getElementById('dw-sel-code')?.value;
+  const pg   = document.getElementById('dw-sel-pg')?.value;
+  const name = document.getElementById('dw-sel-name')?.textContent;
+  if (!code || !name || name==='—') { showToast('กรุณาเลือกรายการก่อน','err'); return; }
+
+  const m = masterDB.find(x=>x.code===code);
+  const today = new Date().toISOString().split('T')[0];
+
+  // เช็คว่ามีอยู่แล้วไหม
+  const exists = dwItems.find(x=>x.item_code===code);
+  if (exists) { showToast('รายการนี้มีอยู่แล้วในรายการวันนี้','err'); return; }
+
+  const { error } = await sb.from('daily_withdrawals').insert({
+    date: today, item_code: code, item_name: name, pg,
+    current_stock: m?.stock||0, max_stock: m?.max||0,
+    suggested_qty: m?.max>0 ? Math.max(0,(m.max||0)-(m.stock||0)) : null,
+    status: 'pending',
+  });
+  if (error) { showToast('เพิ่มไม่สำเร็จ','err'); return; }
+
+  document.getElementById('dw-add-modal').remove();
+  showToast(`เพิ่ม "${name}" ในรายการวันนี้แล้ว`);
+  await dbLoadDailyWithdrawals();
+  renderDailyWithdrawPage();
 }
 
 function renderAlertGroupPage(group) {
