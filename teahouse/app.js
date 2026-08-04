@@ -4794,19 +4794,9 @@ async function renderDailyWithdrawPage() {
         </td>
         <td style="padding:9px 12px">
           ${isDone
-            ? `<span style="font-size:10px;color:var(--ink4)">รับแล้ว</span>`
-            : `<select style="font-size:10px;padding:4px 6px;border-radius:5px;border:0.5px solid var(--line);cursor:pointer;width:100%;background:var(--surface);color:${statusColor};font-family:inherit"
-                onchange="dwSetStatus(${item.id},this.value).then(()=>renderDailyWithdrawPage())">
-                ${statusOpts}
-              </select>`
-          }
-        </td>
-        <td style="padding:9px 12px">
-          ${isDone
             ? `<span style="font-size:10px;color:var(--ink4)">✓</span>`
-            : `<button class="btn btn-sm ${item.status==='ready'?'btn-primary':''}"
+            : `<button class="btn btn-sm btn-primary"
                 onclick="dwReceive(${item.id})"
-                ${item.status!=='ready'?'disabled style="opacity:.35"':''}
                 style="font-size:10px;white-space:nowrap">รับเข้า</button>`
           }
         </td>
@@ -4826,7 +4816,6 @@ async function renderDailyWithdrawPage() {
             <th style="text-align:right">Max</th>
             <th style="text-align:right">แนะนำ</th>
             <th style="text-align:right;width:80px">เตรียมจริง</th>
-            <th style="width:120px">สถานะ</th>
             <th style="width:70px"></th>
           </tr></thead>
           <tbody>${rows}</tbody>
