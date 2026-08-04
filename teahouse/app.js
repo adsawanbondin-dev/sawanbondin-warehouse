@@ -4628,13 +4628,12 @@ async function dbGenerateDailyList() {
     return;
   }
 
-  // finish — เฉพาะ subcat = 'สินค้า' และ stock < min
+  // finish — ทุก subcat และ stock < min
   const finishItems = masterDB.filter(m =>
     m.pg === 'finish' &&
     m.is_active !== false &&
     m.min > 0 &&
-    m.stock < m.min &&
-    m.subcat === 'สินค้า'
+    m.stock < m.min
   );
 
   // store2 — ทุก subcat และ stock < min
@@ -4957,7 +4956,7 @@ function dwFilterItems() {
   if (!dd) return;
   const items = masterDB.filter(m => {
     if (m.pg !== dwAddTab) return false;
-    if (dwAddTab === 'finish' && m.subcat !== 'สินค้า') return false;
+    // finish — ดึงทุก subcat
     if (q && !m.name.toLowerCase().includes(q)) return false;
     return true;
   });
