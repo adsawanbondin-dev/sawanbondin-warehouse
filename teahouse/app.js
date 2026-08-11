@@ -3710,6 +3710,346 @@ switchPage = async function(p) {
 };
 
 /* ═══════════════════════════════════════════
+   DAILY WITHDRAW MODULE — เบิกประจำวัน
+═══════════════════════════════════════════ */
+
+let dwOrders = [];
+let dwShowForm = false;
+let dwSearchText = '';
+
+async function dwLoadOrders() {
+  const { data } = await sb.from('dw_orders')
+    .select('*, dw_order_items(*)')
+    .order('created_at', { ascending: false });
+  dwOrders = data || [];
+}
+
+async function renderDailyWithdrawPage() {
+  const div = document.getElementById('page-daily-withdraw');
+  if (!div) return;
+  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
+
+  // ถ้าไม่มี table ใช้ในหน่วย memory แทน
+  if (!dwOrders.length) {
+    const { data, error } = await sb.from('dw_orders').select('*, dw_order_items(*)').order('created_at',{ascending:false}).limit(1);
+    if (error?.code === '42P01') {
+      // table ยังไม่มี แสดง setup message
+      div.innerHTML = `<div class="page-header"><div><div class="page-title">เบิกประจำวัน</div></div></div>
+        <div style="padding:32px;text-align:center;color:var(--ink4)">
+          <i class="ti ti-table-off" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>
+          <div style="font-size:13px;margin-bottom:8px">ยังไม่ได้สร้าง table สำหรับโมดูลนี้</div>
+          <div style="font-size:11px;color:var(--ink4)">กรุณารัน SQL สร้าง dw_orders และ dw_order_items ใน Tea House DB ก่อนค่ะ</div>
+        </div>`;
+      return;
+    }
+  }
+
+  await dwLoadOrders();
+  dwRender();
+}
+
+function dwRender() {
+  const div = document.getElementById('page-daily-withdraw');
+  if (!div) return;
+
+  const searchLower = dwSearchText.toLowerCase();
+  const filtered = searchLower
+    ? dwOrders.filter(o => (o.note||'').toLowerCase().includes(searchLower) || new Date(o.created_at).toLocaleDateString('th-TH').includes(searchLower))
+    : dwOrders;
+
+  const cards = filtered.map(order => {
+    const finishItems = (order.dw_order_items||[]).filter(i=>i.section==='finish');
+    const store2Items  = (order.dw_order_items||[]).filter(i=>i.section==='store2');
+    const dateStr = new Date(order.created_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'});
+    const isFullyDone = order.status === 'received';
+    const statusLabel = {pending:'รอดำเนินการ', preparing:'กำลังเตรียม', received:'รับเข้าครบแล้ว'}[order.status] || order.status;
+    const statusColor = {pending:'#7a5900', preparing:'#013c58', received:'#2d4a0f'}[order.status] || 'var(--ink4)';
+    const statusBg    = {pending:'#fff8e8', preparing:'#e8f0f5', received:'#f0f5ec'}[order.status] || 'var(--s2)';
+    const statusBorder= {pending:'#c8960a', preparing:'#013c58', received:'#4a6b1a'}[order.status] || 'var(--line)';
+
+    if (isFullyDone) {
+      const allItems = order.dw_order_items||[];
+      return `<div class="card" style="margin-bottom:8px;opacity:.65">
+        <div style="padding:10px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+          onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+          <div>
+            <div style="font-size:12px;font-weight:500">${dateStr}${order.note?' · '+order.note:''}</div>
+            <div style="font-size:10px;color:var(--ink4)">สินค้า ${finishItems.length} / Store 2 ${store2Items.length} รายการ</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:9px;padding:2px 8px;border-radius:10px;background:${statusBg};color:${statusColor};border:0.5px solid ${statusBorder}">${statusLabel}</span>
+            <button onclick="event.stopPropagation();dwDeleteOrder(${order.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:12px"><i class="ti ti-trash"></i></button>
+          </div>
+        </div>
+        <div style="display:none;padding:0 16px 10px;font-size:11px;color:var(--ink4)">
+          ${allItems.map(i=>`<div style="padding:2px 0">${i.item_name} · เบิก ${i.qty_withdraw||0} / เตรียม ${i.qty_prepare||0}</div>`).join('')}
+        </div>
+      </div>`;
+    }
+
+    function buildSection(items, section, label) {
+      if (!items.length) return '';
+      const rows = items.map(i => {
+        return `<div style="display:grid;grid-template-columns:1fr 72px 72px 28px;padding:8px 12px;border-bottom:0.5px solid var(--line);align-items:center;gap:4px">
+          <div style="font-size:12px;font-weight:500">${i.item_name}</div>
+          <input type="number" value="${i.qty_withdraw||''}" min="0" placeholder="—"
+            style="padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;text-align:right;background:var(--surface);width:100%"
+            onchange="dwUpdateItem(${i.id},'qty_withdraw',this.value)">
+          <input type="number" value="${i.qty_prepare||''}" min="0" placeholder="—"
+            style="padding:3px 6px;border:0.5px solid #4a6b1a;border-radius:5px;font-size:11px;text-align:right;background:#f0f5ec;width:100%"
+            onchange="dwUpdateItem(${i.id},'qty_prepare',this.value)">
+          <button onclick="dwDeleteItem(${i.id},${order.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:13px">✕</button>
+        </div>`;
+      }).join('');
+
+      return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden">
+        <div style="padding:7px 12px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:11px;font-weight:500">${label}</span>
+          <span style="font-size:10px;color:var(--ink4)">${items.length} รายการ</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 72px 72px 28px;padding:5px 12px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
+          <span>รายการเบิก</span><span style="text-align:right">จำนวนเบิก</span><span style="text-align:right">จำนวนเตรียม</span><span></span>
+        </div>
+        ${rows}
+        <div style="padding:8px 12px;border-top:0.5px solid var(--line);background:var(--s2);display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <button onclick="dwAddItemModal(${order.id},'${section}')"
+              style="font-size:11px;padding:4px 10px;border-radius:7px;border:0.5px dashed var(--line);background:transparent;color:var(--ink3);cursor:pointer">+ เพิ่มรายการ</button>
+          </div>
+          <div style="display:flex;gap:6px;justify-content:flex-end;padding-top:4px;border-top:0.5px solid var(--line)">
+            <button onclick="dwConfirmWithdrawSection(${order.id},'${section}')"
+              class="btn btn-sm" style="font-size:10px;background:var(--ink);color:var(--surface);border-color:var(--ink)">
+              <i class="ti ti-arrow-down-left"></i> ยืนยันเบิก → หักสต็อก
+            </button>
+            <button onclick="dwConfirmReceiveSection(${order.id},'${section}')"
+              class="btn btn-sm" style="font-size:10px;background:#2d4a0f;color:#fff;border-color:#2d4a0f">
+              <i class="ti ti-arrow-up-right"></i> ยืนยันรับเข้า → บวกสต็อก
+            </button>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    return `<div class="card" style="margin-bottom:12px">
+      <div style="padding:10px 16px;border-bottom:0.5px solid var(--line);background:var(--s2);display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:13px;font-weight:500">${dateStr}${order.note?' · '+order.note:''}</div>
+          <div style="font-size:10px;color:var(--ink4);margin-top:2px">สร้างโดย ${order.created_by||'—'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:9px;padding:2px 8px;border-radius:10px;background:${statusBg};color:${statusColor};border:0.5px solid ${statusBorder}">${statusLabel}</span>
+          <button onclick="dwDeleteOrder(${order.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:12px"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+      <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px">
+        ${buildSection(finishItems,'finish','คลังสินค้าสำเร็จรูป')}
+        ${buildSection(store2Items,'store2','Store 2')}
+      </div>
+    </div>`;
+  }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4)">
+    <i class="ti ti-calendar-check" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>
+    ${dwSearchText?'ไม่พบรายการที่ค้นหา':'ยังไม่มีรายการเบิก'}
+  </div>`;
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">เบิกประจำวัน</div>
+        <div class="page-sub">จัดการรายการเบิกสินค้าประจำวัน</div></div>
+      <button class="btn btn-primary btn-sm" onclick="dwOpenNewForm()">
+        <i class="ti ti-plus"></i> สร้างรายการเบิก
+      </button>
+    </div>
+    <div style="margin-bottom:12px">
+      <input class="fi" placeholder="ค้นหา..." value="${dwSearchText}"
+        oninput="dwSearchText=this.value;dwRender()" style="max-width:280px">
+    </div>
+    <div id="dw-new-form"></div>
+    ${cards}`;
+
+  if (dwShowForm) dwRenderNewForm();
+}
+
+function dwOpenNewForm() { dwShowForm=true; dwRender(); document.getElementById('dw-new-form')?.scrollIntoView({behavior:'smooth'}); }
+
+function dwRenderNewForm() {
+  const el = document.getElementById('dw-new-form');
+  if (!el) return;
+  const today = new Date().toLocaleDateString('th-TH',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  el.innerHTML = `<div class="card" style="margin-bottom:12px;border:1.5px solid var(--acc)">
+    <div style="padding:10px 16px;border-bottom:0.5px solid var(--line);background:var(--s2);font-size:13px;font-weight:500">สร้างรายการเบิกใหม่</div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:11px;color:var(--ink4)">${today}</div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:10px;color:var(--ink4)">หมายเหตุ (ไม่บังคับ)</label>
+        <input class="fi" id="dw-note" placeholder="เช่น เช้า / บ่าย / กะ 1">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:10px;color:var(--ink4)">ผู้เบิก</label>
+        <input class="fi" id="dw-creator" placeholder="ชื่อผู้เบิก" value="${window._operatorName||''}">
+      </div>
+    </div>
+    <div style="padding:10px 16px;border-top:0.5px solid var(--line);display:flex;gap:8px;justify-content:flex-end;background:var(--s2)">
+      <button class="btn btn-sm" onclick="dwShowForm=false;dwRender()">ยกเลิก</button>
+      <button class="btn btn-primary btn-sm" onclick="dwSaveNew()"><i class="ti ti-check"></i> สร้าง</button>
+    </div>
+  </div>`;
+}
+
+async function dwSaveNew() {
+  const note    = document.getElementById('dw-note')?.value.trim();
+  const creator = document.getElementById('dw-creator')?.value.trim();
+
+  // สร้าง table ถ้ายังไม่มี (fallback)
+  const { data, error } = await sb.from('dw_orders').insert({
+    note: note||null, created_by: creator||null, status:'pending'
+  }).select().single();
+
+  if (error) { showToast('สร้างไม่สำเร็จ: '+error.message,'err'); return; }
+
+  showToast('สร้างรายการเบิกแล้วค่ะ');
+  dwShowForm = false;
+  await dwLoadOrders();
+  dwRender();
+}
+
+async function dwAddItemModal(orderId, section) {
+  const sectionLabel = section==='finish'?'สินค้าสำเร็จรูป':'Store 2';
+  document.getElementById('dw-item-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-wrap show';
+  modal.id = 'dw-item-modal';
+  modal.innerHTML = `<div class="modal" style="max-width:400px;width:95%">
+    <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+      <div class="card-title-left">เพิ่มรายการ ${sectionLabel}</div>
+      <button class="btn btn-sm" onclick="document.getElementById('dw-item-modal').remove()">ยกเลิก</button>
+    </div>
+    <div style="position:relative;margin-bottom:8px">
+      <input class="fi" id="dw-item-search" placeholder="พิมพ์ชื่อสินค้า..." autocomplete="off"
+        oninput="dwFilterItemsModal('${section}')" onfocus="dwFilterItemsModal('${section}')">
+    </div>
+    <div id="dw-item-dd" style="border:0.5px solid var(--line);border-radius:8px;overflow:hidden;max-height:200px;overflow-y:auto;margin-bottom:10px">
+      <div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">พิมพ์เพื่อค้นหา</div>
+    </div>
+    <div id="dw-item-selected" style="display:none;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;padding:8px 12px;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:500" id="dw-item-sel-name">—</div>
+      <button onclick="dwClearItemSel()" style="background:none;border:none;cursor:pointer;color:var(--ink4)">✕</button>
+    </div>
+    <input type="hidden" id="dw-item-sel-code">
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:10px;border-top:0.5px solid var(--line)">
+      <button class="btn btn-sm" onclick="document.getElementById('dw-item-modal').remove()">ยกเลิก</button>
+      <button class="btn btn-primary btn-sm" onclick="dwAddItem(${orderId},'${section}')"><i class="ti ti-plus"></i> เพิ่ม</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  setTimeout(()=>dwFilterItemsModal(section),50);
+}
+
+function dwFilterItemsModal(section) {
+  const q = (document.getElementById('dw-item-search')?.value||'').toLowerCase();
+  const dd = document.getElementById('dw-item-dd');
+  if (!dd) return;
+  const items = masterDB.filter(m => {
+    if (section==='finish' && m.pg!=='finish') return false;
+    if (section==='store2' && m.pg!=='store2') return false;
+    if (q && !m.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if (!items.length) { dd.innerHTML=`<div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">ไม่พบรายการ</div>`; return; }
+  dd.innerHTML = items.map(m=>`
+    <div onclick="dwSelectItemModal('${m.code}','${m.name.replace(/'/g,"\\'")}')"
+      style="padding:8px 12px;cursor:pointer;border-bottom:0.5px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:12px"
+      onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+      <span style="font-weight:500">${m.name}</span>
+      <span style="font-size:10px;color:${m.stock<=0?'var(--red)':'var(--ink4)'}">คงเหลือ ${m.stock}</span>
+    </div>`).join('');
+}
+
+function dwSelectItemModal(code, name) {
+  document.getElementById('dw-item-sel-code').value = code;
+  document.getElementById('dw-item-sel-name').textContent = name;
+  document.getElementById('dw-item-search').value = name;
+  document.getElementById('dw-item-selected').style.display = 'flex';
+  document.getElementById('dw-item-dd').style.display = 'none';
+}
+
+function dwClearItemSel() {
+  document.getElementById('dw-item-sel-code').value = '';
+  document.getElementById('dw-item-selected').style.display = 'none';
+  document.getElementById('dw-item-dd').style.display = 'block';
+  document.getElementById('dw-item-search').value = '';
+}
+
+async function dwAddItem(orderId, section) {
+  const code = document.getElementById('dw-item-sel-code')?.value;
+  const name = document.getElementById('dw-item-sel-name')?.textContent;
+  if (!code || name==='—') { showToast('กรุณาเลือกรายการก่อน','err'); return; }
+  await sb.from('dw_order_items').insert({ order_id: orderId, section, item_code: code, item_name: name, qty_withdraw:0, qty_prepare:0 });
+  document.getElementById('dw-item-modal')?.remove();
+  await dwLoadOrders(); dwRender();
+}
+
+async function dwUpdateItem(itemId, field, value) {
+  const v = parseFloat(value)||0;
+  await sb.from('dw_order_items').update({ [field]: v }).eq('id', itemId);
+  const order = dwOrders.find(o=>(o.dw_order_items||[]).find(i=>i.id===itemId));
+  if (order) { const item=order.dw_order_items.find(i=>i.id===itemId); if(item) item[field]=v; }
+}
+
+async function dwDeleteItem(itemId, orderId) {
+  if (!confirm('ลบรายการนี้?')) return;
+  await sb.from('dw_order_items').delete().eq('id', itemId);
+  await dwLoadOrders(); dwRender();
+}
+
+async function dwDeleteOrder(orderId) {
+  if (!confirm('ลบรายการเบิกนี้ทั้งหมด?')) return;
+  await sb.from('dw_orders').delete().eq('id', orderId);
+  await dwLoadOrders(); dwRender();
+}
+
+async function dwConfirmWithdrawSection(orderId, section) {
+  const order = dwOrders.find(o=>o.id===orderId);
+  if (!order) return;
+  const items = (order.dw_order_items||[]).filter(i=>i.section===section && i.qty_withdraw>0);
+  if (!items.length) { showToast('กรุณากรอกจำนวนเบิกก่อน','err'); return; }
+  if (!confirm(`ยืนยันเบิก ${items.length} รายการ → หักสต็อก?`)) return;
+  for (const item of items) {
+    const m = masterDB.find(x=>x.code===item.item_code);
+    if (!m) continue;
+    const newStock = Math.max(0, m.stock - item.qty_withdraw);
+    await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
+    m.stock = newStock;
+  }
+  await sb.from('dw_orders').update({ status:'preparing', updated_at: new Date().toISOString() }).eq('id', orderId);
+  showToast('เบิกสต็อกเรียบร้อยค่ะ');
+  await dwLoadOrders(); dwRender();
+}
+
+async function dwConfirmReceiveSection(orderId, section) {
+  const order = dwOrders.find(o=>o.id===orderId);
+  if (!order) return;
+  const items = (order.dw_order_items||[]).filter(i=>i.section===section && i.qty_prepare>0);
+  if (!items.length) { showToast('กรุณากรอกจำนวนเตรียมก่อน','err'); return; }
+  if (!confirm(`ยืนยันรับเข้า ${items.length} รายการ → บวกสต็อก?`)) return;
+  for (const item of items) {
+    const m = masterDB.find(x=>x.code===item.item_code);
+    if (!m) continue;
+    const newStock = m.stock + item.qty_prepare;
+    await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
+    m.stock = newStock;
+  }
+  // เช็คว่าครบทั้งหมดไหม
+  const allSections = ['finish','store2'];
+  const allDone = allSections.every(sec => {
+    const secItems = (order.dw_order_items||[]).filter(i=>i.section===sec);
+    return !secItems.length || secItems.every(i=>i.qty_prepare>0);
+  });
+  await sb.from('dw_orders').update({ status: allDone?'received':'preparing', updated_at: new Date().toISOString() }).eq('id', orderId);
+  showToast('รับเข้าสต็อกเรียบร้อยค่ะ');
+  await dwLoadOrders(); dwRender();
+}
+
+/* ═══════════════════════════════════════════
    BOOTH BORROW MODULE — ยืม-คืน บูธ
 ═══════════════════════════════════════════ */
 
