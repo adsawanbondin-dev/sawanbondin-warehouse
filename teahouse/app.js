@@ -3738,23 +3738,31 @@ async function dbLoadDailyWithdrawals() {
 
 async function dbGenerateDailyList() {
   const today = new Date().toISOString().split('T')[0];
-  const { data: existing } = await sb.from('daily_withdrawals')
-    .select('id').eq('date', today).limit(1);
-  if (existing && existing.length > 0) return;
 
+  // ดึงรายการที่มีอยู่แล้ววันนี้
+  const { data: existing } = await sb.from('daily_withdrawals')
+    .select('item_code').eq('date', today);
+  const existingCodes = new Set((existing||[]).map(x => x.item_code));
+
+  // ดึงรายการที่ stock < min ที่ยังไม่มีในรายการวันนี้
   const pgs = ['finish', 'store2'];
   const items = masterDB.filter(m =>
-    pgs.includes(m.pg) && m.is_active !== false && m.max > 0
+    pgs.includes(m.pg) &&
+    m.is_active !== false &&
+    m.min > 0 &&
+    m.stock < m.min &&
+    !existingCodes.has(m.code)
   );
   if (!items.length) return;
+
   const rows = items.map(m => ({
     date: today,
     item_code: m.code,
     item_name: m.name,
     pg: m.pg,
     current_stock: m.stock,
-    max_stock: m.max,
-    suggested_qty: Math.max(0, m.max - m.stock),
+    max_stock: m.max||0,
+    suggested_qty: Math.max(0, (m.max||0) - m.stock),
     status: 'pending',
   }));
   await sb.from('daily_withdrawals').insert(rows);
@@ -4259,16 +4267,46 @@ async function dscSaveCat() {
   if (!toUpdate.length) { showToast('กรุณากรอกยอดนับจริงก่อน','err'); return; }
   if (!confirm(`ยืนยันปรับยอด stock ${toUpdate.length} รายการ ในหมวด "${dscCat}"?`)) return;
 
+  // ปรับ stock
   for (const m of toUpdate) {
     const actual = dscData[m.code].actual;
-    if (actual === m.stock) continue;
     await sb.from('items').update({ stock: actual }).eq('code', m.code);
     m.stock = actual;
   }
 
+  // เพิ่มรายการที่ stock < min เข้า daily_withdrawals อัตโนมัติ
+  const today = new Date().toISOString().split('T')[0];
+  const { data: existing } = await sb.from('daily_withdrawals')
+    .select('item_code').eq('date', today);
+  const existingCodes = new Set((existing||[]).map(x => x.item_code));
+
+  const needWithdraw = toUpdate.filter(m => {
+    const actual = dscData[m.code].actual;
+    return actual < (m.min||0) && !existingCodes.has(m.code);
+  });
+
+  if (needWithdraw.length) {
+    const rows = needWithdraw.map(m => {
+      const actual = dscData[m.code].actual;
+      return {
+        date: today,
+        item_code: m.code,
+        item_name: m.name,
+        pg: m.pg,
+        current_stock: actual,
+        max_stock: m.max||0,
+        suggested_qty: Math.max(0, (m.max||0) - actual),
+        status: 'pending',
+      };
+    });
+    await sb.from('daily_withdrawals').insert(rows);
+    showToast(`ปรับยอด ${toUpdate.length} รายการ · เพิ่ม ${needWithdraw.length} รายการเข้าเบิกประจำวันแล้วค่ะ`);
+  } else {
+    showToast(`ปรับยอด ${toUpdate.length} รายการเรียบร้อยค่ะ`);
+  }
+
   // ลบข้อมูลหมวดที่ save แล้ว
   catItems.forEach(m => delete dscData[m.code]);
-  showToast(`ปรับยอด ${toUpdate.length} รายการเรียบร้อยค่ะ`);
   dscRender();
 }
 
