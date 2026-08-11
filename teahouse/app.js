@@ -3416,6 +3416,9 @@ async function renderStockCountPage() {
         <button class="btn btn-sm" id="sc-copy-equip" style="font-size:11px">
           <i class="ti ti-copy"></i> คัดลอกอุปกรณ์
         </button>
+        <button class="btn btn-sm" onclick="renderScHistoryPage()" style="font-size:11px">
+          <i class="ti ti-history"></i> ประวัติ
+        </button>
         <button class="btn btn-sm" onclick="scData={};renderStockCountPage()" style="font-size:11px">
           <i class="ti ti-eraser"></i> ล้าง
         </button>
@@ -3465,10 +3468,20 @@ async function scSaveAll() {
   const btn = document.querySelector('#page-stockcount .btn-primary');
   if (btn) { btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> กำลังบันทึก...'; }
 
+  const logRows = [];
   let ok = 0;
+
   for (const m of toUpdate) {
     const actual = scData[m.code];
     const diff   = actual - m.stock;
+
+    // บันทึก log ทุกรายการที่กรอก (ไม่ว่าจะต่างหรือไม่)
+    logRows.push({
+      pg: m.pg, item_code: m.code, item_name: m.name,
+      system_stock: m.stock, actual_stock: actual,
+      counted_by: window._operatorName || '',
+    });
+
     if (diff === 0) { ok++; continue; }
 
     const { error } = await sb.from('items').update({ stock: actual }).eq('code', m.code);
@@ -3487,9 +3500,95 @@ async function scSaveAll() {
     ok++;
   }
 
+  // บันทึก log ทั้งหมดพร้อมกัน
+  if (logRows.length) {
+    await sb.from('stock_count_logs').insert(logRows);
+  }
+
   showToast(`ปรับยอด stock เรียบร้อย ${ok} รายการ`);
   scData = {};
   renderStockCountPage();
+}
+
+async function renderScHistoryPage() {
+  const div = document.getElementById('page-stockcount');
+  if (!div) return;
+
+  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
+
+  const { data } = await sb.from('stock_count_logs')
+    .select('*')
+    .order('counted_at', { ascending: false })
+    .limit(200);
+
+  if (!data || !data.length) {
+    div.innerHTML = `<div class="page-header">
+      <div><div class="page-title">ประวัติการตรวจนับ</div></div>
+      <button class="btn btn-sm" onclick="renderStockCountPage()"><i class="ti ti-arrow-left"></i> กลับ</button>
+    </div>
+    <div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-history" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>ยังไม่มีประวัติ</div>`;
+    return;
+  }
+
+  // จัดกลุ่มตามวันที่
+  const byDate = {};
+  data.forEach(r => {
+    const d = new Date(r.counted_at).toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push(r);
+  });
+
+  const sections = Object.entries(byDate).map(([date, rows]) => {
+    const diffCount = rows.filter(r => r.diff !== 0).length;
+    const countedBy = [...new Set(rows.map(r=>r.counted_by).filter(Boolean))].join(', ') || '—';
+
+    const tableRows = rows.map(r => {
+      const diff = r.diff || 0;
+      const diffColor = diff > 0 ? '#2d6a4f' : diff < 0 ? '#b03030' : 'var(--ink4)';
+      const diffTxt = diff > 0 ? `+${diff}` : diff < 0 ? `${diff}` : '0';
+      const time = new Date(r.counted_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+      return `<tr>
+        <td style="padding:7px 12px;font-size:12px;font-weight:500">${r.item_name}</td>
+        <td style="padding:7px 12px;font-size:10px;color:var(--ink4)">${r.pg}</td>
+        <td style="padding:7px 12px;text-align:right;font-size:12px">${r.system_stock}</td>
+        <td style="padding:7px 12px;text-align:right;font-size:12px;font-weight:500">${r.actual_stock}</td>
+        <td style="padding:7px 12px;text-align:right;font-size:12px;font-weight:600;color:${diffColor}">${diffTxt}</td>
+        <td style="padding:7px 12px;font-size:10px;color:var(--ink4)">${time}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;margin-bottom:6px">
+        <div>
+          <div style="font-size:12px;font-weight:500">${date}</div>
+          <div style="font-size:10px;color:var(--ink4);margin-top:2px">นับโดย ${countedBy} · ${rows.length} รายการ · ต่างจากระบบ ${diffCount} รายการ</div>
+        </div>
+      </div>
+      <div class="sc-table-wrap">
+        <table class="sc-table">
+          <thead><tr>
+            <th>รายการ</th>
+            <th>คลัง</th>
+            <th style="text-align:right">ยอดระบบ</th>
+            <th style="text-align:right">ยอดจริง</th>
+            <th style="text-align:right">ต่าง</th>
+            <th>เวลา</th>
+          </tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">ประวัติการตรวจนับ</div>
+        <div class="page-sub">${data.length} รายการล่าสุด</div></div>
+      <button class="btn btn-sm" onclick="renderStockCountPage()">
+        <i class="ti ti-arrow-left"></i> กลับ
+      </button>
+    </div>
+    ${sections}`;
 }
 
 function scSetVal(code, val) {
