@@ -3683,7 +3683,7 @@ function scExportCSV() {
 const _scOrigSwitch = switchPage;
 switchPage = async function(p) {
   const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
-  const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'daily-withdraw', 'booth-borrow', ...alertGroupPages];
+  const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'daily-withdraw', 'daily-stockcount', 'booth-borrow', ...alertGroupPages];
 
   // ถ้า page ไม่มีใน allPages ให้ไปหน้าแรก
   if (!allPages.includes(p)) p = WAREHOUSE_PAGES[0] || 'master';
@@ -3700,6 +3700,8 @@ switchPage = async function(p) {
     await renderStockCountPage();
   } else if (p === 'daily-withdraw') {
     await renderDailyWithdrawPage();
+  } else if (p === 'daily-stockcount') {
+    await renderDailyStockcountPage();
   } else if (p === 'booth-borrow') {
     await renderBoothBorrowPage();
   } else if (p.startsWith('alert-')) {
@@ -4076,8 +4078,201 @@ async function dwAddManualItem() {
 }
 
 /* ═══════════════════════════════════════════
-   BOOTH BORROW MODULE — ยืม-คืน บูธ
+   DAILY STOCKCOUNT MODULE — ตรวจนับเบิกประจำวัน
 ═══════════════════════════════════════════ */
+
+let dscCat    = '';   // หมวดหมู่ที่เลือก
+let dscData   = {};   // { code: { actual, note } }
+let dscSearch = '';
+
+async function renderDailyStockcountPage() {
+  const div = document.getElementById('page-daily-stockcount');
+  if (!div) return;
+  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
+  dscRender();
+}
+
+function dscRender() {
+  const div = document.getElementById('page-daily-stockcount');
+  if (!div) return;
+
+  const today = new Date().toLocaleDateString('th-TH',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  const finishItems = masterDB.filter(m => m.pg === 'finish');
+
+  // หาหมวดหมู่
+  const subcats = [...new Set(finishItems.map(m => m.subcat||'ไม่มีหมวดหมู่'))].sort();
+  if (!dscCat || !subcats.includes(dscCat)) dscCat = subcats[0] || '';
+
+  // การ์ดหมวดหมู่
+  const catCards = subcats.map(sub => {
+    const subItems = finishItems.filter(m => (m.subcat||'ไม่มีหมวดหมู่') === sub);
+    const lowCnt   = subItems.filter(m => m.min > 0 && m.stock <= m.min).length;
+    const counted  = subItems.filter(m => dscData[m.code] !== undefined).length;
+    const isActive = sub === dscCat;
+    return `<div onclick="dscCat='${sub.replace(/'/g,"\\'")}';dscRender()"
+      style="background:var(--surface);border:0.5px solid ${isActive?'var(--ink)':'var(--line)'};border-radius:10px;padding:10px 12px;cursor:pointer;${isActive?'background:var(--s2)':''}">
+      <div style="font-size:11px;font-weight:500">${sub}</div>
+      <div style="font-size:10px;color:var(--ink4);margin-top:2px">${subItems.length} รายการ${counted?` · นับแล้ว ${counted}`:''}
+      </div>
+      ${lowCnt?`<div style="font-size:10px;color:var(--red);margin-top:1px">${lowCnt} ต่ำกว่า Min</div>`:''}
+    </div>`;
+  }).join('');
+
+  // รายการในหมวดที่เลือก
+  const catItems = finishItems.filter(m => {
+    const sub = m.subcat||'ไม่มีหมวดหมู่';
+    if (sub !== dscCat) return false;
+    if (dscSearch && !m.name.toLowerCase().includes(dscSearch.toLowerCase())) return false;
+    return true;
+  });
+
+  const countedInCat = catItems.filter(m => dscData[m.code] !== undefined).length;
+
+  const rows = catItems.map(m => {
+    const entry   = dscData[m.code];
+    const hasVal  = entry !== undefined;
+    const actual  = hasVal ? entry.actual : '';
+    const note    = hasVal ? (entry.note||'') : '';
+    const isLow   = hasVal && actual < m.stock;
+    const isOk    = hasVal && actual >= m.stock;
+    const inputStyle = !hasVal
+      ? 'border:0.5px solid var(--line);background:var(--surface)'
+      : isLow ? 'border:0.5px solid #b03030;background:#fdf0f0'
+              : 'border:0.5px solid #2d6a4f;background:#edf5f0';
+
+    return `<div style="display:grid;grid-template-columns:1fr 60px 60px 1fr 28px;padding:9px 14px;border-bottom:0.5px solid var(--line);align-items:center;gap:8px">
+      <div>
+        <div style="font-size:12px;font-weight:500">${m.name}</div>
+        <div style="font-size:10px;color:var(--ink4)">${m.code}</div>
+      </div>
+      <div style="text-align:right;font-size:12px;font-weight:500;color:${m.stock<=0?'var(--red)':'var(--ink4)'}">${m.stock.toLocaleString()}</div>
+      <input type="number" min="0" step="0.01" inputmode="decimal" placeholder="—"
+        value="${actual}"
+        style="padding:4px 8px;border-radius:6px;font-size:12px;text-align:right;width:100%;${inputStyle};outline:none;font-family:inherit"
+        onchange="dscSetVal('${m.code}',this.value)">
+      <input type="text" placeholder="หมายเหตุ..."
+        value="${note}"
+        style="padding:4px 8px;border:0.5px solid var(--line);border-radius:6px;font-size:11px;width:100%;background:var(--surface);outline:none;font-family:inherit"
+        onchange="dscSetNote('${m.code}',this.value)">
+      <button onclick="dscClear('${m.code}')"
+        style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:13px;${!hasVal?'opacity:.3':''}">✕</button>
+    </div>`;
+  }).join('') || `<div style="padding:32px;text-align:center;color:var(--ink4)">ไม่พบรายการ</div>`;
+
+  // สรุป
+  const allCounted = Object.keys(dscData).length;
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">ตรวจนับเบิกประจำวัน</div>
+        <div class="page-sub">${today}</div></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="dscCopy()" style="font-size:11px">
+          <i class="ti ti-copy"></i> คัดลอกรายการ
+        </button>
+        <button class="btn btn-sm" onclick="dscData={};dscRender()" style="font-size:11px">
+          <i class="ti ti-eraser"></i> ล้าง
+        </button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div class="card" style="flex:1;padding:8px 12px;text-align:center">
+        <div style="font-size:18px;font-weight:600">${finishItems.length}</div>
+        <div style="font-size:10px;color:var(--ink4)">ทั้งหมด</div>
+      </div>
+      <div class="card" style="flex:1;padding:8px 12px;text-align:center">
+        <div style="font-size:18px;font-weight:600;color:var(--acc)">${allCounted}</div>
+        <div style="font-size:10px;color:var(--ink4)">นับแล้ว</div>
+      </div>
+      <div class="card" style="flex:1;padding:8px 12px;text-align:center">
+        <div style="font-size:18px;font-weight:600;color:${finishItems.length-allCounted>0?'var(--ink4)':'#2d6a4f'}">${finishItems.length-allCounted}</div>
+        <div style="font-size:10px;color:var(--ink4)">ยังไม่นับ</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:12px">
+      ${catCards}
+    </div>
+
+    <div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden">
+      <div style="padding:9px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;font-weight:500">${dscCat} · ${catItems.length} รายการ${countedInCat?' · นับแล้ว '+countedInCat:''}</span>
+        <input class="fi" placeholder="ค้นหา..." value="${dscSearch}"
+          oninput="dscSearch=this.value;dscRender()" style="width:140px;font-size:11px;padding:4px 8px">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 60px 60px 1fr 28px;padding:5px 14px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
+        <span>รายการ</span>
+        <span style="text-align:right">ระบบ</span>
+        <span style="text-align:right">นับจริง</span>
+        <span>หมายเหตุ</span>
+        <span></span>
+      </div>
+      ${rows}
+    </div>
+
+    <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="dscData={};dscRender()">ล้างทั้งหมด</button>
+      <button class="btn btn-primary" onclick="dscSaveCat()">
+        <i class="ti ti-check"></i> ยืนยันปรับยอดหมวด "${dscCat}" (${countedInCat})
+      </button>
+    </div>`;
+}
+
+function dscSetVal(code, val) {
+  const v = val === '' ? undefined : parseFloat(val);
+  if (v === undefined) {
+    if (dscData[code]) { delete dscData[code].actual; if (!dscData[code].note) delete dscData[code]; }
+  } else {
+    if (!dscData[code]) dscData[code] = {};
+    dscData[code].actual = v;
+  }
+}
+
+function dscSetNote(code, note) {
+  if (!dscData[code]) dscData[code] = {};
+  dscData[code].note = note;
+}
+
+function dscClear(code) {
+  delete dscData[code];
+  dscRender();
+}
+
+function dscCopy() {
+  const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+  const finishItems = masterDB.filter(m => m.pg === 'finish');
+  const subcats = [...new Set(finishItems.map(m => m.subcat||'ไม่มีหมวดหมู่'))].sort();
+  const lines = [`ตรวจนับเบิกประจำวัน ${today}`, ''];
+  subcats.forEach(sub => {
+    const items = finishItems.filter(m => (m.subcat||'ไม่มีหมวดหมู่') === sub);
+    lines.push(`── ${sub} ──`);
+    items.forEach((m,i) => lines.push(`${i+1}. ${m.name} (ระบบ: ${m.stock}) นับจริง: ___`));
+    lines.push('');
+  });
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกรายการแล้วค่ะ'));
+}
+
+async function dscSaveCat() {
+  const catItems = masterDB.filter(m => m.pg === 'finish' && (m.subcat||'ไม่มีหมวดหมู่') === dscCat);
+  const toUpdate = catItems.filter(m => dscData[m.code] !== undefined && dscData[m.code].actual !== undefined);
+  if (!toUpdate.length) { showToast('กรุณากรอกยอดนับจริงก่อน','err'); return; }
+  if (!confirm(`ยืนยันปรับยอด stock ${toUpdate.length} รายการ ในหมวด "${dscCat}"?`)) return;
+
+  for (const m of toUpdate) {
+    const actual = dscData[m.code].actual;
+    if (actual === m.stock) continue;
+    await sb.from('items').update({ stock: actual }).eq('code', m.code);
+    m.stock = actual;
+  }
+
+  // ลบข้อมูลหมวดที่ save แล้ว
+  catItems.forEach(m => delete dscData[m.code]);
+  showToast(`ปรับยอด ${toUpdate.length} รายการเรียบร้อยค่ะ`);
+  dscRender();
+}
+
+
 
 // Factory Supabase client — สำหรับหัก/บวก stock คลัง finish ตอนยืม-คืน product บูธ
 const FACTORY_SB_URL = 'https://rsmcrshvcbtcxvvhdmnk.supabase.co';
