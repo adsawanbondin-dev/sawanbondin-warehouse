@@ -3730,9 +3730,10 @@ const DW_GROUPS = {
 };
 
 async function dbLoadDailyWithdrawals() {
-  const today = new Date().toISOString().split('T')[0];
   const { data } = await sb.from('daily_withdrawals')
-    .select('*').eq('date', today).order('pg').order('item_name');
+    .select('*')
+    .neq('status', 'received')
+    .order('pg').order('item_name');
   dwItems = data || [];
 }
 
@@ -3933,14 +3934,21 @@ async function renderDailyWithdrawPage() {
       <div><div class="page-title">เบิกประจำวัน</div>
         <div class="page-sub">${dateStr}</div></div>
       <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="dwCopySection('finish')" style="font-size:11px">
+          <i class="ti ti-copy"></i> คัดลอกสินค้า
+        </button>
+        <button class="btn btn-sm" onclick="dwCopySection('store2')" style="font-size:11px">
+          <i class="ti ti-copy"></i> คัดลอก Store 2
+        </button>
+        <button class="btn btn-sm" onclick="renderDwHistoryPage()" style="font-size:11px">
+          <i class="ti ti-history"></i> ประวัติ
+        </button>
         <button class="btn btn-sm btn-primary" onclick="dwOpenAddModal('')" style="font-size:11px">
           <i class="ti ti-plus"></i> เพิ่มรายการ
         </button>
         <button class="btn btn-sm" onclick="(async()=>{
-          const today=new Date().toISOString().split('T')[0];
-          await sb.from('daily_withdrawals').delete().eq('date',today).neq('status','received');
-          dwItems=[];
           await dbGenerateDailyList();
+          await dbLoadDailyWithdrawals();
           renderDailyWithdrawPage();
         })()" style="font-size:11px">
           <i class="ti ti-refresh"></i> รีเฟรช
@@ -3966,7 +3974,101 @@ async function renderDailyWithdrawPage() {
     ${buildSection('store2','Store 2')}`;
 }
 
-let dwAddTab = 'finish';
+function dwCopySection(pg) {
+  const label = pg === 'finish' ? 'สินค้าสำเร็จรูป' : 'Store 2';
+  const items = dwItems.filter(x => x.pg === pg && x.status !== 'received');
+  if (!items.length) { showToast(`ไม่มีรายการ${label}`,'err'); return; }
+  const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+  const lines = [`รายการเบิก${label} ${today}`, ''];
+  items.forEach((item, i) => {
+    const qty = item.suggested_qty || 0;
+    const dateTag = item.date !== new Date().toISOString().split('T')[0] ? ` [ค้างจาก ${new Date(item.date).toLocaleDateString('th-TH',{day:'2-digit',month:'short'})}]` : '';
+    lines.push(`${i+1}. ${item.item_name}${dateTag} — เบิก ${qty}`);
+  });
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast(`คัดลอกรายการ${label} ${items.length} รายการแล้วค่ะ`));
+}
+
+async function renderDwHistoryPage() {
+  const div = document.getElementById('page-daily-withdraw');
+  if (!div) return;
+  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
+
+  const { data } = await sb.from('daily_withdrawals')
+    .select('*')
+    .eq('status','received')
+    .order('received_at', { ascending: false })
+    .limit(200);
+
+  if (!data || !data.length) {
+    div.innerHTML = `<div class="page-header">
+      <div><div class="page-title">ประวัติการรับเข้า</div></div>
+      <button class="btn btn-sm" onclick="renderDailyWithdrawPage()"><i class="ti ti-arrow-left"></i> กลับ</button>
+    </div>
+    <div style="padding:40px;text-align:center;color:var(--ink4)">
+      <i class="ti ti-history" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>ยังไม่มีประวัติ
+    </div>`;
+    return;
+  }
+
+  // จัดกลุ่มตามวันที่รับเข้า
+  const byDate = {};
+  data.forEach(r => {
+    const d = r.received_at
+      ? new Date(r.received_at).toLocaleDateString('th-TH',{weekday:'short',day:'2-digit',month:'long',year:'numeric'})
+      : new Date(r.date).toLocaleDateString('th-TH',{weekday:'short',day:'2-digit',month:'long',year:'numeric'});
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push(r);
+  });
+
+  const sections = Object.entries(byDate).map(([date, rows]) => {
+    const byPg = { finish: rows.filter(r=>r.pg==='finish'), store2: rows.filter(r=>r.pg==='store2') };
+    const tableRows = rows.map(r => {
+      const prepQty = r.prepared_qty ?? r.suggested_qty ?? 0;
+      const recvTime = r.received_at
+        ? new Date(r.received_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})
+        : '—';
+      const pgLabel = r.pg === 'finish' ? 'สินค้า' : 'Store 2';
+      return `<tr>
+        <td style="padding:7px 12px;font-size:12px;font-weight:500">${r.item_name}</td>
+        <td style="padding:7px 12px;font-size:10px;color:var(--ink4)">${pgLabel}</td>
+        <td style="padding:7px 12px;text-align:right;font-size:12px">${r.suggested_qty||0}</td>
+        <td style="padding:7px 12px;text-align:right;font-size:12px;font-weight:500;color:#2d4a0f">${prepQty}</td>
+        <td style="padding:7px 12px;font-size:10px;color:var(--ink4)">${recvTime}</td>
+        <td style="padding:7px 12px;font-size:11px;color:var(--ink4)">${r.note||'—'}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div style="margin-bottom:16px">
+      <div style="padding:8px 12px;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:12px;font-weight:500">${date}</div>
+        <div style="font-size:10px;color:var(--ink4)">${rows.length} รายการ · สินค้า ${byPg.finish.length} / Store 2 ${byPg.store2.length}</div>
+      </div>
+      <div class="sc-table-wrap">
+        <table class="sc-table">
+          <thead><tr>
+            <th>รายการ</th><th>คลัง</th>
+            <th style="text-align:right">แนะนำ</th>
+            <th style="text-align:right">รับเข้า</th>
+            <th>เวลา</th><th>หมายเหตุ</th>
+          </tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">ประวัติการรับเข้า</div>
+        <div class="page-sub">${data.length} รายการล่าสุด</div></div>
+      <button class="btn btn-sm" onclick="renderDailyWithdrawPage()">
+        <i class="ti ti-arrow-left"></i> กลับ
+      </button>
+    </div>
+    ${sections}`;
+}
+
+
 
 function dwOpenAddModal(pg) {
   dwAddTab = pg || 'finish';
