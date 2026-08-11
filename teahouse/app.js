@@ -3713,270 +3713,322 @@ switchPage = async function(p) {
    DAILY WITHDRAW MODULE — เบิกประจำวัน
 ═══════════════════════════════════════════ */
 
-let dwOrders    = [];
-let dwShowForm  = false;
-let dwSearchText = '';
+let dwItems = [];
+let dwTab = 'finish';
 
-async function dwLoadOrders() {
-  const { data } = await sb.from('dw_orders')
-    .select('*, dw_order_items(*)')
-    .order('created_at', { ascending: false });
-  dwOrders = data || [];
+const DW_STATUS = {
+  pending:    { label:'รอดำเนินการ',  color:'var(--ink4)' },
+  preparing:  { label:'กำลังเตรียม', color:'#7a5900' },
+  ready:      { label:'จัดเตรียมแล้ว', color:'#013c58' },
+};
+
+const DW_GROUPS = {
+  finish: { label:'สินค้าสำเร็จรูป', pgs:['finish'] },
+  store2: { label:'Store 2',         pgs:['store2'] },
+};
+
+async function dbLoadDailyWithdrawals() {
+  const today = new Date().toISOString().split('T')[0];
+  const { data } = await sb.from('daily_withdrawals')
+    .select('*').eq('date', today).order('pg').order('item_name');
+  dwItems = data || [];
+}
+
+async function dbGenerateDailyList() {
+  const today = new Date().toISOString().split('T')[0];
+  const { data: existing } = await sb.from('daily_withdrawals')
+    .select('id').eq('date', today).limit(1);
+  if (existing && existing.length > 0) return;
+
+  const pgs = ['finish', 'store2'];
+  const items = masterDB.filter(m =>
+    pgs.includes(m.pg) && m.is_active !== false && m.max > 0
+  );
+  if (!items.length) return;
+  const rows = items.map(m => ({
+    date: today,
+    item_code: m.code,
+    item_name: m.name,
+    pg: m.pg,
+    current_stock: m.stock,
+    max_stock: m.max,
+    suggested_qty: Math.max(0, m.max - m.stock),
+    status: 'pending',
+  }));
+  await sb.from('daily_withdrawals').insert(rows);
+  await dbLoadDailyWithdrawals();
+}
+
+async function dwSetStatus(id, status) {
+  await sb.from('daily_withdrawals').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
+  const item = dwItems.find(x => x.id === id);
+  if (item) item.status = status;
+}
+
+async function dwSetNote(id, note) {
+  await sb.from('daily_withdrawals').update({ note, updated_at: new Date().toISOString() }).eq('id', id);
+  const item = dwItems.find(x => x.id === id);
+  if (item) item.note = note;
+}
+
+async function dwSetSuggestedQty(id, val) {
+  const qty = val === '' ? null : parseFloat(val);
+  await sb.from('daily_withdrawals').update({ suggested_qty: qty }).eq('id', id);
+  const item = dwItems.find(x => x.id === id);
+  if (item) item.suggested_qty = qty;
+}
+
+async function dwSetPreparedQty(id, val) {
+  const qty = val === '' ? null : parseFloat(val);
+  await sb.from('daily_withdrawals').update({ prepared_qty: qty, updated_at: new Date().toISOString() }).eq('id', id);
+  const item = dwItems.find(x => x.id === id);
+  if (item) item.prepared_qty = qty;
+}
+
+async function dwDeleteItem(id) {
+  await sb.from('daily_withdrawals').delete().eq('id', id);
+  dwItems = dwItems.filter(x => x.id !== id);
+  renderDailyWithdrawPage();
+}
+
+async function dwReceive(id) {
+  const item = dwItems.find(x => x.id === id);
+  if (!item) return;
+  const prepQty = item.prepared_qty ?? item.suggested_qty ?? 0;
+  const m = masterDB.find(x => x.code === item.item_code);
+  if (m) {
+    const newStock = m.stock + prepQty;
+    await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
+    m.stock = newStock;
+  }
+  await sb.from('daily_withdrawals').update({ status:'received', received_at: new Date().toISOString() }).eq('id', id);
+  item.status = 'received';
+  renderDailyWithdrawPage();
+}
+
+async function dwReceiveAllSection(pg) {
+  const readyItems = dwItems.filter(x => x.status === 'ready' && x.pg === pg);
+  if (!readyItems.length) { showToast('ไม่มีรายการที่จัดเตรียมแล้ว', 'err'); return; }
+  for (const item of readyItems) await dwReceive(item.id);
+}
+
+async function dwReceiveAll() {
+  const readyItems = dwItems.filter(x => x.status === 'ready');
+  if (!readyItems.length) { showToast('ไม่มีรายการที่จัดเตรียมแล้ว', 'err'); return; }
+  for (const item of readyItems) await dwReceive(item.id);
 }
 
 async function renderDailyWithdrawPage() {
   const div = document.getElementById('page-daily-withdraw');
   if (!div) return;
-  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
-  await dwLoadOrders();
-  dwRender();
-}
+  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i><br><span style="font-size:12px;margin-top:8px;display:block">กำลังโหลด...</span></div>`;
 
-function dwRender() {
-  const div = document.getElementById('page-daily-withdraw');
-  if (!div) return;
+  await dbGenerateDailyList();
+  await dbLoadDailyWithdrawals();
 
-  const searchLower = dwSearchText.toLowerCase();
-  const filtered = searchLower
-    ? dwOrders.filter(o => (o.note||'').toLowerCase().includes(searchLower))
-    : dwOrders;
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('th-TH', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
 
-  const cards = filtered.map(order => {
-    const finishItems = (order.dw_order_items||[]).filter(i=>i.section==='finish');
-    const store2Items  = (order.dw_order_items||[]).filter(i=>i.section==='store2');
-    const dateStr = order.borrow_date
-      ? new Date(order.borrow_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'})
-      : new Date(order.created_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'});
-    const isFullyDone = order.status === 'received';
-    const statusLabel = {pending:'รอดำเนินการ', withdrawing:'กำลังเบิก', received:'รับเข้าครบแล้ว'}[order.status] || order.status;
-    const statusColor = {pending:'#7a5900', withdrawing:'#013c58', received:'#2d4a0f'}[order.status] || 'var(--ink4)';
-    const statusBg    = {pending:'#fff8e8', withdrawing:'#e8f0f5', received:'#f0f5ec'}[order.status] || 'var(--s2)';
-    const statusBorder= {pending:'#c8960a', withdrawing:'#013c58', received:'#4a6b1a'}[order.status] || 'var(--line)';
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
+  const yStr = yesterday.toISOString().split('T')[0];
+  const { data: carriedOver } = await sb.from('daily_withdrawals')
+    .select('item_code').eq('date', yStr).neq('status','received');
+  const carriedCodes = new Set((carriedOver||[]).map(x => x.item_code));
 
-    // การ์ดย่อเมื่อคืนครบ
-    if (isFullyDone) {
-      const allItems = order.dw_order_items||[];
-      return `<div class="card" style="margin-bottom:8px;opacity:.65">
-        <div style="padding:10px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer"
-          onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
-          <div>
-            <div style="font-size:12px;font-weight:500">${dateStr}${order.note?' · '+order.note:''}</div>
-            <div style="font-size:10px;color:var(--ink4);margin-top:2px">โดย ${order.created_by||'—'} · ${finishItems.length} สินค้า / ${store2Items.length} Store 2</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:9px;padding:2px 8px;border-radius:10px;background:${statusBg};color:${statusColor};border:0.5px solid ${statusBorder}">${statusLabel}</span>
-            <button onclick="event.stopPropagation();dwDeleteOrder(${order.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:12px"><i class="ti ti-trash"></i></button>
-          </div>
-        </div>
-        <div style="display:none;padding:0 16px 10px;font-size:11px;color:var(--ink4)">
-          ${allItems.map(i=>`<div style="padding:2px 0">${i.item_name} · เบิก ${i.qty_withdraw||0} / เตรียม ${i.qty_prepare||0}</div>`).join('')}
-        </div>
-      </div>`;
-    }
+  const received = dwItems.filter(x => x.status === 'received').length;
+  const ready    = dwItems.filter(x => x.status === 'ready').length;
+  const pending  = dwItems.filter(x => ['pending','preparing'].includes(x.status)).length;
 
-    function buildSection(items, section, label) {
-      if (!items.length && section !== 'finish' && section !== 'store2') return '';
+  function buildSection(pg, label) {
+    const items = dwItems.filter(m => m.pg === pg);
+    if (!items.length) return '';
 
-      const finishRecv = items[0]?.receiver_name || '';
-      const finishNote = items[0]?.note || '';
+    const secReceived = items.filter(x => x.status === 'received').length;
+    const secReady    = items.filter(x => x.status === 'ready').length;
 
-      const rows = items.map(i => {
-        const bal = (i.qty_withdraw||0) - (i.qty_prepare||0);
-        const balColor = bal > 0 ? 'var(--warn)' : '#2d4a0f';
-        return `<div style="display:grid;grid-template-columns:1fr 68px 68px 28px;padding:8px 12px;border-bottom:0.5px solid var(--line);align-items:center;gap:4px">
-          <div style="font-size:12px;font-weight:500">${i.item_name}</div>
-          <input type="number" value="${i.qty_withdraw||''}" min="0" placeholder="—"
-            style="padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;text-align:right;background:var(--surface);width:100%;outline:none;font-family:inherit"
-            onchange="dwUpdateItem(${i.id},'qty_withdraw',this.value)">
-          <input type="number" value="${i.qty_prepare||''}" min="0" placeholder="—"
-            style="padding:3px 6px;border:0.5px solid #4a6b1a;border-radius:5px;font-size:11px;text-align:right;background:#f0f5ec;width:100%;outline:none;font-family:inherit"
-            onchange="dwUpdateItem(${i.id},'qty_prepare',this.value)">
-          <button onclick="dwDeleteItem(${i.id},${order.id})"
-            style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:13px">✕</button>
-        </div>`;
-      }).join('');
+    const rows = items.map(item => {
+      const isDone = item.status === 'received';
+      const loc = locationDB[item.item_code] || '—';
+      const isCarried = carriedCodes.has(item.item_code);
+      const statusOpts = Object.entries(DW_STATUS).filter(([v])=>v!=='received').map(([v,o]) =>
+        `<option value="${v}" ${item.status===v?'selected':''}>${o.label}</option>`).join('');
+      const statusColor = DW_STATUS[item.status]?.color || 'var(--ink4)';
 
-      return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden">
-        <div style="padding:7px 12px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
-          <span style="font-size:11px;font-weight:500">${label}</span>
-          <span style="font-size:10px;color:var(--ink4)">${items.length} รายการ</span>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 68px 68px 28px;padding:5px 12px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
-          <span>รายการเบิก</span>
-          <span style="text-align:right">จำนวนเบิก</span>
-          <span style="text-align:right">จำนวนเตรียม</span>
-          <span></span>
-        </div>
-        ${rows || '<div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">ยังไม่มีรายการ</div>'}
-        <div style="padding:8px 12px;border-top:0.5px solid var(--line);background:var(--s2);display:flex;flex-direction:column;gap:6px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <button onclick="dwAddItemModal(${order.id},'${section}')"
-              style="font-size:11px;padding:4px 10px;border-radius:7px;border:0.5px dashed var(--line);background:transparent;color:var(--ink3);cursor:pointer">+ เพิ่มรายการ</button>
-            <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
-              <span style="font-size:10px;color:var(--ink4);white-space:nowrap">ผู้รับ</span>
-              <input style="padding:3px 8px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;background:var(--surface);width:120px;font-family:inherit"
-                placeholder="ชื่อผู้รับ" value="${finishRecv}"
-                onchange="dwUpdateSectionMeta(${order.id},'${section}','receiver_name',this.value)">
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="font-size:10px;color:var(--ink4);white-space:nowrap">หมายเหตุ</span>
-            <input style="padding:3px 8px;border:0.5px solid var(--line);border-radius:5px;font-size:11px;background:var(--surface);flex:1;font-family:inherit"
-              placeholder="หมายเหตุ..." value="${finishNote}"
-              onchange="dwUpdateSectionMeta(${order.id},'${section}','note',this.value)">
-          </div>
-          <div style="display:flex;gap:6px;justify-content:flex-end;padding-top:4px;border-top:0.5px solid var(--line)">
-            <button onclick="dwConfirmWithdrawSection(${order.id},'${section}')"
-              class="btn btn-sm" style="font-size:10px;background:var(--ink);color:var(--surface);border-color:var(--ink)">
-              <i class="ti ti-arrow-down-left"></i> ยืนยันเบิก → หักสต็อก
-            </button>
-            <button onclick="dwConfirmReceiveSection(${order.id},'${section}')"
-              class="btn btn-sm" style="font-size:10px;background:#2d4a0f;color:#fff;border-color:#2d4a0f">
-              <i class="ti ti-arrow-up-right"></i> ยืนยันรับเข้า → บวกสต็อก
-            </button>
-          </div>
-        </div>
-      </div>`;
-    }
+      return `<tr style="${isDone?'opacity:.4':''}">
+        <td style="padding:9px 12px;vertical-align:top">
+          <div style="font-size:12px;font-weight:500">${item.item_name}</div>
+          <div style="font-size:10px;color:var(--ink4);margin-top:1px">${loc}</div>
+          ${isCarried && !isDone?`<div style="font-size:9px;color:var(--ink4);margin-top:2px">ค้างจากเมื่อวาน</div>`:''}
+          ${!isDone?`<div style="margin-top:5px;display:flex;align-items:center;gap:5px">
+            <span style="font-size:9px;color:var(--ink4);white-space:nowrap">หมายเหตุ</span>
+            <input style="flex:1;padding:3px 7px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;background:var(--surface);color:var(--ink);outline:none;font-family:inherit"
+              placeholder="หมายเหตุสำหรับพนักงาน..." value="${item.note||''}"
+              onchange="dwSetNote(${item.id},this.value)">
+          </div>`:''}
+          ${isDone && item.note?`<div style="font-size:10px;color:var(--ink4);margin-top:2px;font-style:italic">${item.note}</div>`:''}
+        </td>
+        <td style="text-align:right;padding:9px 12px;font-size:12px;font-weight:500;color:${item.current_stock<=item.max_stock*0.2?'var(--red)':'var(--ink2)'}">
+          ${(item.current_stock||0).toLocaleString()}
+        </td>
+        <td style="text-align:right;padding:9px 12px;font-size:12px;color:var(--ink4)">${(item.max_stock||0).toLocaleString()}</td>
+        <td style="text-align:right;padding:9px 12px;font-size:12px;font-weight:500">${(item.suggested_qty||0).toLocaleString()}</td>
+        <td style="text-align:right;padding:9px 12px">
+          ${isDone
+            ? `<span style="font-size:12px;font-weight:500">${(item.prepared_qty||item.suggested_qty||0).toLocaleString()}</span>`
+            : `<input type="number" min="0" step="1" inputmode="decimal"
+                value="${item.prepared_qty||''}" placeholder="—"
+                style="width:64px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;text-align:right;background:var(--surface);color:var(--ink);outline:none"
+                onchange="dwSetPreparedQty(${item.id},this.value)">`
+          }
+        </td>
+        <td style="padding:9px 12px">
+          ${isDone
+            ? `<span style="font-size:10px;color:var(--ink4)">✓</span>`
+            : `<button class="btn btn-sm"
+                onclick="dwReceive(${item.id})"
+                style="font-size:10px;white-space:nowrap">รับเข้า</button>`
+          }
+        </td>
+      </tr>`;
+    }).join('');
 
-    return `<div class="card" style="margin-bottom:12px">
-      <div style="padding:10px 16px;border-bottom:0.5px solid var(--line);background:var(--s2);display:flex;align-items:center;justify-content:space-between">
-        <div>
-          <div style="font-size:13px;font-weight:500">${dateStr}${order.note?' · '+order.note:''}</div>
-          <div style="font-size:10px;color:var(--ink4);margin-top:2px">โดย ${order.created_by||'—'}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:9px;padding:2px 8px;border-radius:10px;background:${statusBg};color:${statusColor};border:0.5px solid ${statusBorder}">${statusLabel}</span>
-          <button onclick="dwDeleteOrder(${order.id})" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:12px" title="ลบ"><i class="ti ti-trash"></i></button>
-        </div>
+    return `<div style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:500">${label}</div>
+        <div style="font-size:11px;color:var(--ink4)">${items.length} รายการ${secReceived?` · รับแล้ว ${secReceived}`:''}</div>
       </div>
-      <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px">
-        ${buildSection(finishItems,'finish','คลังสินค้าสำเร็จรูป')}
-        ${buildSection(store2Items,'store2','Store 2')}
+      <div class="sc-table-wrap">
+        <table class="sc-table">
+          <thead><tr>
+            <th>รายการ</th>
+            <th style="text-align:right">คงเหลือ</th>
+            <th style="text-align:right">Max</th>
+            <th style="text-align:right">แนะนำ</th>
+            <th style="text-align:right;width:80px">เตรียมจริง</th>
+            <th style="width:70px"></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
       </div>
+      ${secReady>0?`<div style="display:flex;justify-content:flex-end;margin-top:8px">
+        <button class="btn btn-primary" onclick="dwReceiveAllSection('${pg}')" style="font-size:11px">
+          <i class="ti ti-checks"></i> ยืนยันรับเข้าที่จัดเตรียมแล้ว (${secReady})
+        </button>
+      </div>`:''}
     </div>`;
-  }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4)">
-    <i class="ti ti-calendar-check" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>
-    ${dwSearchText?'ไม่พบรายการที่ค้นหา':'ยังไม่มีรายการเบิก'}
-  </div>`;
+  }
 
   div.innerHTML = `
     <div class="page-header">
       <div><div class="page-title">เบิกประจำวัน</div>
-        <div class="page-sub">จัดการรายการเบิกสินค้าประจำวัน</div></div>
-      <button class="btn btn-primary btn-sm" onclick="dwOpenNewForm()">
-        <i class="ti ti-plus"></i> สร้างรายการเบิก
-      </button>
-    </div>
-    <div style="margin-bottom:12px">
-      <input class="fi" placeholder="ค้นหาหมายเหตุ..." value="${dwSearchText}"
-        oninput="dwSearchText=this.value;dwRender()" style="max-width:280px">
-    </div>
-    <div id="dw-new-form"></div>
-    ${cards}`;
-
-  if (dwShowForm) dwRenderNewForm();
-}
-
-function dwOpenNewForm() {
-  dwShowForm = true;
-  dwRender();
-  document.getElementById('dw-new-form')?.scrollIntoView({behavior:'smooth'});
-}
-
-function dwRenderNewForm() {
-  const el = document.getElementById('dw-new-form');
-  if (!el) return;
-  const today = new Date().toISOString().split('T')[0];
-  el.innerHTML = `<div class="card" style="margin-bottom:12px;border:1.5px solid var(--acc)">
-    <div style="padding:10px 16px;border-bottom:0.5px solid var(--line);background:var(--s2);font-size:13px;font-weight:500">สร้างรายการเบิกใหม่</div>
-    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div style="display:flex;flex-direction:column;gap:3px">
-          <label style="font-size:10px;color:var(--ink4)">วันที่</label>
-          <input class="fi" id="dw-date" type="date" value="${today}">
-        </div>
-        <div style="display:flex;flex-direction:column;gap:3px">
-          <label style="font-size:10px;color:var(--ink4)">ผู้เบิก</label>
-          <input class="fi" id="dw-creator" placeholder="ชื่อผู้เบิก" value="${window._operatorName||''}">
-        </div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:3px">
-        <label style="font-size:10px;color:var(--ink4)">หมายเหตุ</label>
-        <input class="fi" id="dw-note" placeholder="เช่น เช้า / บ่าย / กะ 1">
+        <div class="page-sub">${dateStr}</div></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-primary" onclick="dwOpenAddModal('')" style="font-size:11px">
+          <i class="ti ti-plus"></i> เพิ่มรายการ
+        </button>
+        <button class="btn btn-sm" onclick="(async()=>{
+          const today=new Date().toISOString().split('T')[0];
+          await sb.from('daily_withdrawals').delete().eq('date',today).neq('status','received');
+          dwItems=[];
+          await dbGenerateDailyList();
+          renderDailyWithdrawPage();
+        })()" style="font-size:11px">
+          <i class="ti ti-refresh"></i> รีเฟรช
+        </button>
       </div>
     </div>
-    <div style="padding:10px 16px;border-top:0.5px solid var(--line);display:flex;gap:8px;justify-content:flex-end;background:var(--s2)">
-      <button class="btn btn-sm" onclick="dwShowForm=false;dwRender()">ยกเลิก</button>
-      <button class="btn btn-primary btn-sm" onclick="dwSaveNew()"><i class="ti ti-check"></i> สร้าง</button>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <div class="card" style="flex:1;padding:10px 14px;text-align:center">
+        <div style="font-size:18px;font-weight:600">${dwItems.length}</div>
+        <div style="font-size:10px;color:var(--ink4)">ทั้งหมด</div>
+      </div>
+      <div class="card" style="flex:1;padding:10px 14px;text-align:center">
+        <div style="font-size:18px;font-weight:600;color:#2d4a0f">${received}</div>
+        <div style="font-size:10px;color:var(--ink4)">รับแล้ว</div>
+      </div>
+      <div class="card" style="flex:1;padding:10px 14px;text-align:center">
+        <div style="font-size:18px;font-weight:600;color:var(--ink4)">${pending}</div>
+        <div style="font-size:10px;color:var(--ink4)">ยังไม่ดำเนินการ</div>
+      </div>
     </div>
-  </div>`;
+    ${buildSection('finish','คลังสินค้าสำเร็จรูป')}
+    <div style="height:1px;background:var(--line);margin:4px 0 20px"></div>
+    ${buildSection('store2','Store 2')}`;
 }
 
-async function dwSaveNew() {
-  const date    = document.getElementById('dw-date')?.value;
-  const creator = document.getElementById('dw-creator')?.value.trim();
-  const note    = document.getElementById('dw-note')?.value.trim();
-  const { data, error } = await sb.from('dw_orders').insert({
-    borrow_date: date||null, created_by: creator||null, note: note||null, status:'pending'
-  }).select().single();
-  if (error) { showToast('สร้างไม่สำเร็จ','err'); return; }
-  showToast('สร้างรายการเบิกแล้วค่ะ');
-  dwShowForm = false;
-  await dwLoadOrders(); dwRender();
-}
+let dwAddTab = 'finish';
 
-function dwAddItemModal(orderId, section) {
-  const sectionLabel = section==='finish' ? 'สินค้าสำเร็จรูป' : 'Store 2';
-  document.getElementById('dw-item-modal')?.remove();
+function dwOpenAddModal(pg) {
+  dwAddTab = pg || 'finish';
+  document.getElementById('dw-add-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-wrap show';
-  modal.id = 'dw-item-modal';
+  modal.id = 'dw-add-modal';
   modal.innerHTML = `<div class="modal" style="max-width:400px;width:95%">
     <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
-      <div class="card-title-left">เพิ่มรายการ ${sectionLabel}</div>
-      <button class="btn btn-sm" onclick="document.getElementById('dw-item-modal').remove()">ยกเลิก</button>
+      <div class="card-title-left"><i class="ti ti-plus"></i> เพิ่มรายการ</div>
+      <button class="btn btn-sm" onclick="document.getElementById('dw-add-modal').remove()">ยกเลิก</button>
+    </div>
+    <div style="display:flex;gap:0;border-bottom:0.5px solid var(--line);margin-bottom:12px">
+      <button onclick="dwSetAddTab('finish',this)" id="dw-tab-finish"
+        style="font-size:12px;padding:6px 16px;border:none;background:transparent;cursor:pointer;font-family:inherit;border-bottom:2px solid var(--ink);color:var(--ink);font-weight:500">
+        สินค้าสำเร็จรูป
+      </button>
+      <button onclick="dwSetAddTab('store2',this)" id="dw-tab-store2"
+        style="font-size:12px;padding:6px 16px;border:none;background:transparent;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;color:var(--ink4)">
+        Store 2
+      </button>
     </div>
     <div style="position:relative;margin-bottom:8px">
-      <input class="fi" id="dw-item-search" placeholder="พิมพ์ชื่อสินค้า..." autocomplete="off"
-        oninput="dwFilterModal('${section}')" onfocus="dwFilterModal('${section}')">
+      <input class="fi" id="dw-add-search" placeholder="พิมพ์ชื่อสินค้า..." autocomplete="off"
+        oninput="dwFilterItems()" onfocus="dwFilterItems()">
     </div>
-    <div id="dw-item-dd" style="border:0.5px solid var(--line);border-radius:8px;overflow:hidden;max-height:200px;overflow-y:auto;margin-bottom:10px">
-      <div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">พิมพ์เพื่อค้นหา</div>
-    </div>
-    <div id="dw-item-sel-box" style="display:none;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;padding:8px 12px;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div id="dw-add-dd" style="border:0.5px solid var(--line);border-radius:8px;overflow:hidden;max-height:200px;overflow-y:auto;margin-bottom:10px"></div>
+    <div id="dw-add-selected" style="display:none;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;padding:8px 12px;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div>
-        <div style="font-size:12px;font-weight:500" id="dw-item-sel-name">—</div>
-        <div style="font-size:10px;color:var(--ink4)" id="dw-item-sel-stock">—</div>
+        <div style="font-size:12px;font-weight:500" id="dw-sel-name">—</div>
+        <div style="font-size:10px;color:var(--ink4)" id="dw-sel-stock">—</div>
       </div>
-      <button onclick="dwClearItemSel()" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px">✕</button>
+      <button onclick="dwClearSel()" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px">✕</button>
     </div>
-    <input type="hidden" id="dw-item-sel-code">
+    <input type="hidden" id="dw-sel-code">
+    <input type="hidden" id="dw-sel-pg">
     <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:10px;border-top:0.5px solid var(--line)">
-      <button class="btn btn-sm" onclick="document.getElementById('dw-item-modal').remove()">ยกเลิก</button>
-      <button class="btn btn-primary btn-sm" onclick="dwSaveItem(${orderId},'${section}')"><i class="ti ti-plus"></i> เพิ่ม</button>
+      <button class="btn btn-sm" onclick="document.getElementById('dw-add-modal').remove()">ยกเลิก</button>
+      <button class="btn btn-primary btn-sm" onclick="dwAddManualItem()"><i class="ti ti-plus"></i> เพิ่มในรายการวันนี้</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
-  setTimeout(()=>{
-    dwFilterModal(section);
-    document.getElementById('dw-item-search')?.focus();
-  }, 50);
+  setTimeout(() => dwFilterItems(), 50);
 }
 
-function dwFilterModal(section) {
-  const q = (document.getElementById('dw-item-search')?.value||'').toLowerCase();
-  const dd = document.getElementById('dw-item-dd');
+function dwSetAddTab(pg, el) {
+  dwAddTab = pg;
+  ['finish','store2'].forEach(t => {
+    const btn = document.getElementById('dw-tab-'+t);
+    if (btn) {
+      btn.style.borderBottom = t===pg ? '2px solid var(--ink)' : '2px solid transparent';
+      btn.style.color = t===pg ? 'var(--ink)' : 'var(--ink4)';
+      btn.style.fontWeight = t===pg ? '500' : 'normal';
+    }
+  });
+  document.getElementById('dw-add-search').value = '';
+  dwClearSel();
+  dwFilterItems();
+}
+
+function dwFilterItems() {
+  const q = (document.getElementById('dw-add-search')?.value||'').toLowerCase();
+  const dd = document.getElementById('dw-add-dd');
   if (!dd) return;
   const items = masterDB.filter(m => {
-    if (section==='finish' && m.pg!=='finish') return false;
-    if (section==='store2' && m.pg!=='store2') return false;
+    if (m.pg !== dwAddTab) return false;
     if (q && !m.name.toLowerCase().includes(q)) return false;
     return true;
   });
   if (!items.length) { dd.innerHTML=`<div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">ไม่พบรายการ</div>`; return; }
   dd.innerHTML = items.map(m=>`
-    <div onclick="dwSelectModal('${m.code}','${m.name.replace(/'/g,"\'")}',${m.stock})"
+    <div onclick="dwSelectItem('${m.code}','${m.name.replace(/'/g,"\'")}',${m.stock},'${m.pg}')"
       style="padding:8px 12px;cursor:pointer;border-bottom:0.5px solid var(--line);display:flex;justify-content:space-between;align-items:center"
       onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
       <span style="font-size:12px;font-weight:500">${m.name}</span>
@@ -3984,94 +4036,43 @@ function dwFilterModal(section) {
     </div>`).join('');
 }
 
-function dwSelectModal(code, name, stock) {
-  document.getElementById('dw-item-sel-code').value = code;
-  document.getElementById('dw-item-sel-name').textContent = name;
-  document.getElementById('dw-item-sel-stock').textContent = `คงเหลือ ${stock}`;
-  document.getElementById('dw-item-search').value = name;
-  document.getElementById('dw-item-sel-box').style.display = 'flex';
-  document.getElementById('dw-item-dd').style.display = 'none';
+function dwSelectItem(code, name, stock, pg) {
+  document.getElementById('dw-add-search').value = name;
+  document.getElementById('dw-sel-code').value = code;
+  document.getElementById('dw-sel-pg').value = pg;
+  document.getElementById('dw-sel-name').textContent = name;
+  document.getElementById('dw-sel-stock').textContent = `คงเหลือ ${stock}`;
+  document.getElementById('dw-add-selected').style.display = 'flex';
+  document.getElementById('dw-add-dd').style.display = 'none';
 }
 
-function dwClearItemSel() {
-  document.getElementById('dw-item-sel-code').value = '';
-  document.getElementById('dw-item-sel-box').style.display = 'none';
-  document.getElementById('dw-item-dd').style.display = 'block';
-  document.getElementById('dw-item-search').value = '';
+function dwClearSel() {
+  document.getElementById('dw-sel-code').value = '';
+  document.getElementById('dw-sel-pg').value = '';
+  document.getElementById('dw-add-selected').style.display = 'none';
+  document.getElementById('dw-add-dd').style.display = 'block';
 }
 
-async function dwSaveItem(orderId, section) {
-  const code = document.getElementById('dw-item-sel-code')?.value;
-  const name = document.getElementById('dw-item-sel-name')?.textContent;
-  if (!code || name==='—') { showToast('กรุณาเลือกรายการก่อน','err'); return; }
-  const { error } = await sb.from('dw_order_items').insert({
-    order_id: orderId, section, item_code: code, item_name: name, qty_withdraw:0, qty_prepare:0
+async function dwAddManualItem() {
+  const code = document.getElementById('dw-sel-code')?.value;
+  const pg   = document.getElementById('dw-sel-pg')?.value;
+  const name = document.getElementById('dw-sel-name')?.textContent;
+  if (!code || !name || name==='—') { showToast('กรุณาเลือกรายการก่อน','err'); return; }
+  const m = masterDB.find(x=>x.code===code);
+  const today = new Date().toISOString().split('T')[0];
+  const exists = dwItems.find(x=>x.item_code===code);
+  if (exists) { showToast('รายการนี้มีอยู่แล้ว','err'); return; }
+  const { error } = await sb.from('daily_withdrawals').insert({
+    date: today, item_code: code, item_name: name, pg,
+    current_stock: m?.stock||0, max_stock: m?.max||0,
+    suggested_qty: m?.max>0 ? Math.max(0,(m.max||0)-(m.stock||0)) : null,
+    status: 'pending',
   });
   if (error) { showToast('เพิ่มไม่สำเร็จ','err'); return; }
-  document.getElementById('dw-item-modal')?.remove();
-  await dwLoadOrders(); dwRender();
-}
-
-async function dwUpdateItem(itemId, field, value) {
-  const v = parseFloat(value)||0;
-  await sb.from('dw_order_items').update({ [field]: v, updated_at: new Date().toISOString() }).eq('id', itemId);
-  const order = dwOrders.find(o=>(o.dw_order_items||[]).find(i=>i.id===itemId));
-  if (order) { const item=order.dw_order_items.find(i=>i.id===itemId); if(item) item[field]=v; }
-}
-
-async function dwUpdateSectionMeta(orderId, section, field, value) {
-  await sb.from('dw_order_items').update({ [field]: value||null }).eq('order_id', orderId).eq('section', section);
-}
-
-async function dwDeleteItem(itemId, orderId) {
-  if (!confirm('ลบรายการนี้?')) return;
-  await sb.from('dw_order_items').delete().eq('id', itemId);
-  await dwLoadOrders(); dwRender();
-}
-
-async function dwDeleteOrder(orderId) {
-  if (!confirm('ลบรายการเบิกนี้ทั้งหมด?')) return;
-  await sb.from('dw_orders').delete().eq('id', orderId);
-  await dwLoadOrders(); dwRender();
-}
-
-async function dwConfirmWithdrawSection(orderId, section) {
-  const order = dwOrders.find(o=>o.id===orderId);
-  if (!order) return;
-  const items = (order.dw_order_items||[]).filter(i=>i.section===section && (i.qty_withdraw||0)>0);
-  if (!items.length) { showToast('กรุณากรอกจำนวนเบิกก่อน','err'); return; }
-  if (!confirm(`ยืนยันเบิก ${items.length} รายการ → หักสต็อก?`)) return;
-  for (const item of items) {
-    const m = masterDB.find(x=>x.code===item.item_code);
-    if (!m) continue;
-    const newStock = Math.max(0, m.stock - item.qty_withdraw);
-    await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
-    m.stock = newStock;
-  }
-  await sb.from('dw_orders').update({ status:'withdrawing', updated_at: new Date().toISOString() }).eq('id', orderId);
-  showToast('เบิกสต็อกเรียบร้อยค่ะ');
-  await dwLoadOrders(); dwRender();
-}
-
-async function dwConfirmReceiveSection(orderId, section) {
-  const order = dwOrders.find(o=>o.id===orderId);
-  if (!order) return;
-  const items = (order.dw_order_items||[]).filter(i=>i.section===section && (i.qty_prepare||0)>0);
-  if (!items.length) { showToast('กรุณากรอกจำนวนเตรียมก่อน','err'); return; }
-  if (!confirm(`ยืนยันรับเข้า ${items.length} รายการ → บวกสต็อก?`)) return;
-  for (const item of items) {
-    const m = masterDB.find(x=>x.code===item.item_code);
-    if (!m) continue;
-    const newStock = m.stock + item.qty_prepare;
-    await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
-    m.stock = newStock;
-  }
-  // เช็คว่าครบทั้ง 2 section ไหม
-  const allItems = order.dw_order_items||[];
-  const allDone = allItems.every(i=>(i.qty_prepare||0)>0);
-  await sb.from('dw_orders').update({ status: allDone?'received':'withdrawing', updated_at: new Date().toISOString() }).eq('id', orderId);
-  showToast('รับเข้าสต็อกเรียบร้อยค่ะ');
-  await dwLoadOrders(); dwRender();
+  document.getElementById('dw-add-modal').remove();
+  showToast(`เพิ่ม "${name}" แล้ว`);
+  await dbLoadDailyWithdrawals();
+  renderDailyWithdrawPage();
 }
 
 /* ═══════════════════════════════════════════
@@ -5121,951 +5122,6 @@ function _trackingDropdowns(m) {
         style="color:var(--acc);font-size:14px;line-height:1;text-decoration:none"><i class="ti ti-external-link"></i></a>` : ''}
     </div>
   </div>`;
-}
-
-/* ═══════════════════════════════════════════
-   DAILY WITHDRAWAL MODULE — รายการเบิกประจำวัน
-═══════════════════════════════════════════ */
-
-let dwItems = []; // cache รายการเบิกประจำวัน
-let dwTab = 'finish'; // sell | equip
-
-// กลุ่มสินค้าสำหรับเบิกประจำวัน
-const DW_GROUPS = {
-  finish: { label: 'คลังสินค้าสำเร็จรูป', pgs: ['finish'] },
-  store2: { label: 'Store 2',              pgs: ['store2'] },
-};
-
-const DW_STATUS = {
-  pending:    { label: 'ยังไม่ดำเนินการ', color: 'var(--ink4)' },
-  preparing:  { label: 'กำลังเตรียม',     color: '#7a5900' },
-  ready:      { label: 'จัดเตรียมแล้ว',   color: '#2d4a0f' },
-  received:   { label: 'รับแล้ว',          color: 'var(--ink4)' },
-};
-
-async function dbLoadDailyWithdrawals() {
-  const today = new Date().toISOString().split('T')[0];
-  const { data } = await sb.from('daily_withdrawals')
-    .select('*').eq('date', today).order('item_name');
-  dwItems = data || [];
-}
-
-async function dbGenerateDailyList() {
-  const today = new Date().toISOString().split('T')[0];
-
-  // ลบรายการวันนี้ที่ยังไม่ได้รับ แล้วสร้างใหม่ทุกครั้ง (เพื่อให้ stock ล่าสุด)
-  const { data: existing } = await sb.from('daily_withdrawals')
-    .select('id,status').eq('date', today);
-  if (existing && existing.length > 0) {
-    // ถ้ามีอยู่แล้ว ไม่สร้างใหม่
-    return;
-  }
-
-  // finish — ทุก subcat และ stock < min
-  const finishItems = masterDB.filter(m =>
-    m.pg === 'finish' &&
-    m.is_active !== false &&
-    m.min > 0 &&
-    m.stock < m.min
-  );
-
-  // store2 — ทุก subcat และ stock < min
-  const store2Items = masterDB.filter(m =>
-    m.pg === 'store2' &&
-    m.is_active !== false &&
-    m.min > 0 &&
-    m.stock < m.min
-  );
-
-  const items = [...finishItems, ...store2Items];
-  if (!items.length) return;
-
-  const rows = items.map(m => ({
-    date: today,
-    item_code: m.code,
-    item_name: m.name,
-    pg: m.pg,
-    current_stock: m.stock,
-    max_stock: m.max,
-    suggested_qty: m.max > 0 ? Math.max(0, m.max - m.stock) : null,
-    status: 'pending',
-  }));
-  await sb.from('daily_withdrawals').insert(rows);
-  await dbLoadDailyWithdrawals();
-}
-
-async function dwSetStatus(id, status) {
-  await sb.from('daily_withdrawals').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
-  const item = dwItems.find(x => x.id === id);
-  if (item) item.status = status;
-}
-
-async function dwSetNote(id, note) {
-  await sb.from('daily_withdrawals').update({ note: note||null, updated_at: new Date().toISOString() }).eq('id', id);
-  const item = dwItems.find(x => x.id === id);
-  if (item) item.note = note;
-}
-
-async function dwSetPreparedQty(id, qty) {
-  const v = parseFloat(qty) || null;
-  await sb.from('daily_withdrawals').update({ prepared_qty: v, updated_at: new Date().toISOString() }).eq('id', id);
-  const item = dwItems.find(x => x.id === id);
-  if (item) item.prepared_qty = v;
-}
-
-async function dwReceive(id) {
-  const item = dwItems.find(x => x.id === id);
-  if (!item) return;
-  const qty = item.prepared_qty || item.suggested_qty || 0;
-  if (!qty || qty <= 0) { showToast('กรุณาใส่จำนวนที่เตรียมจริงก่อน', 'err'); return; }
-
-  const m = masterDB.find(x => x.code === item.item_code);
-  if (!m) { showToast('ไม่พบสินค้าในระบบ', 'err'); return; }
-
-  // บวก stock
-  const newStock = m.stock + qty;
-  await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
-  m.stock = newStock;
-
-  // บันทึก transaction
-  await dbInsertTransaction({
-    item_code: item.item_code, item_name: item.item_name, pg: item.pg,
-    action_type: 'receive', quantity: qty,
-    operator_name: window._operatorName || '',
-    note: `เบิกประจำวัน${item.note?' — '+item.note:''}`, via: 'manual'
-  });
-
-  // อัปเดตสถานะ
-  await sb.from('daily_withdrawals').update({
-    status: 'received', received_at: new Date().toISOString(),
-    current_stock: newStock, updated_at: new Date().toISOString()
-  }).eq('id', id);
-  item.status = 'received';
-  item.current_stock = newStock;
-
-  showToast(`รับเข้า "${item.item_name}" +${qty} แล้ว`);
-  renderDailyWithdrawPage();
-}
-
-async function dwReceiveAllSection(pg) {
-  const readyItems = dwItems.filter(x => x.status === 'ready' && x.pg === pg);
-  if (!readyItems.length) { showToast('ไม่มีรายการที่จัดเตรียมแล้ว', 'err'); return; }
-  for (const item of readyItems) await dwReceive(item.id);
-}
-
-async function dwReceiveAll() {
-  const readyItems = dwItems.filter(x =>
-    x.status === 'ready' && dwTab === 'sell' ? ['finish'].includes(x.pg) : ['equip_th'].includes(x.pg)
-  );
-  const allReady = dwItems.filter(x => x.status === 'ready');
-  if (!allReady.length) { showToast('ไม่มีรายการที่จัดเตรียมแล้ว', 'err'); return; }
-  for (const item of allReady) await dwReceive(item.id);
-}
-
-async function renderDailyWithdrawPage() {
-  const div = document.getElementById('page-daily-withdraw');
-  if (!div) return;
-  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
-
-  await dbGenerateDailyList();
-  await dbLoadDailyWithdrawals();
-
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('th-TH', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
-  const todayStr = today.toISOString().split('T')[0];
-
-  // ยอดรับเข้าแล้ว
-  const received = dwItems.filter(x => x.status === 'received').length;
-  const total    = dwItems.length;
-
-  function buildSection(pg, label) {
-    const items = dwItems.filter(m => m.pg === pg);
-    if (!items.length) return '';
-
-    const rows = items.map(item => {
-      const isDone = item.status === 'received';
-      const prepQty = item.prepared_qty !== null && item.prepared_qty !== undefined ? item.prepared_qty : '';
-      const wdQty   = item.suggested_qty !== null && item.suggested_qty !== undefined ? item.suggested_qty : '';
-      return `<div style="display:grid;grid-template-columns:1fr 80px 80px 28px;padding:9px 12px;border-bottom:0.5px solid var(--line);align-items:center;gap:6px;${isDone?'opacity:.5':''}">
-        <div>
-          <div style="font-size:12px;font-weight:500">${item.item_name}</div>
-          ${isDone?'<div style="font-size:10px;color:var(--ink4)">รับเข้าแล้ว</div>':''}
-        </div>
-        <input type="number" min="0" step="1" inputmode="decimal"
-          value="${wdQty}" placeholder="—" ${isDone?'disabled':''}
-          style="padding:4px 6px;border:0.5px solid var(--line);border-radius:6px;font-size:12px;text-align:right;background:var(--surface);width:100%;${isDone?'opacity:.4':''};outline:none;font-family:inherit"
-          onchange="dwSetSuggestedQty(${item.id},this.value)">
-        <input type="number" min="0" step="1" inputmode="decimal"
-          value="${prepQty}" placeholder="—" ${isDone?'disabled':''}
-          style="padding:4px 6px;border:0.5px solid ${isDone?'var(--line)':'#4a6b1a'};border-radius:6px;font-size:12px;text-align:right;background:${isDone?'var(--surface)':'#f0f5ec'};width:100%;${isDone?'opacity:.4':''};outline:none;font-family:inherit"
-          onchange="dwSetPreparedQty(${item.id},this.value)">
-        <button onclick="dwDeleteItem(${item.id})" ${isDone?'disabled':''}
-          style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:13px;${isDone?'opacity:.3':''}">✕</button>
-      </div>`;
-    }).join('');
-
-    const secReceived = items.filter(x=>x.status==='received').length;
-
-    return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:var(--s2);border-bottom:0.5px solid var(--line)">
-        <span style="font-size:11px;font-weight:500">${label}</span>
-        <span style="font-size:10px;color:var(--ink4)">${items.length} รายการ${secReceived?' · รับแล้ว '+secReceived:''}</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 80px 80px 28px;padding:5px 12px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
-        <span>รายการเบิก</span>
-        <span style="text-align:right">จำนวนเบิก</span>
-        <span style="text-align:right">จำนวนเตรียม</span>
-        <span></span>
-      </div>
-      ${rows}
-      <div style="padding:8px 12px;border-top:0.5px solid var(--line);background:var(--s2);display:flex;flex-direction:column;gap:6px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <button onclick="dwOpenAddModal('${pg}')"
-            style="font-size:10px;padding:3px 10px;border-radius:6px;border:0.5px dashed var(--line);background:transparent;color:var(--ink3);cursor:pointer">+ เพิ่มรายการ</button>
-          <div style="display:flex;gap:6px;margin-left:auto">
-            <button onclick="dwConfirmWithdraw('${pg}')"
-              style="font-size:10px;padding:4px 10px;border-radius:6px;background:var(--ink);color:var(--surface);border:none;cursor:pointer">
-              ยืนยันเบิก → หักสต็อก
-            </button>
-            <button onclick="dwConfirmReceive('${pg}')"
-              style="font-size:10px;padding:4px 10px;border-radius:6px;background:#2d4a0f;color:#fff;border:none;cursor:pointer">
-              ยืนยันรับเข้า → บวกสต็อก
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  const statusLabel = received === total && total > 0 ? 'รับเข้าครบแล้ว' : received > 0 ? 'กำลังดำเนินการ' : 'รอดำเนินการ';
-  const statusColor = received === total && total > 0 ? '#2d4a0f' : received > 0 ? '#7a5900' : 'var(--ink4)';
-  const statusBg    = received === total && total > 0 ? '#f0f5ec' : received > 0 ? '#fff8e8' : 'var(--s2)';
-  const statusBorder= received === total && total > 0 ? '#4a6b1a' : received > 0 ? '#c8960a' : 'var(--line)';
-
-  div.innerHTML = `
-    <div class="page-header">
-      <div><div class="page-title">รายการเบิกประจำวัน</div>
-        <div class="page-sub">${dateStr}</div></div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-sm" onclick="dwOpenAddModal('')" style="font-size:11px">
-          <i class="ti ti-plus"></i> เพิ่มรายการ
-        </button>
-        <button class="btn btn-sm" onclick="(async()=>{
-          const t=new Date().toISOString().split('T')[0];
-          await sb.from('daily_withdrawals').delete().eq('date',t).neq('status','received');
-          dwItems=[];await dbGenerateDailyList();renderDailyWithdrawPage();
-        })()" style="font-size:11px">
-          <i class="ti ti-refresh"></i> รีเฟรช
-        </button>
-      </div>
-    </div>
-
-    <div style="background:var(--surface);border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:12px">
-      <div style="padding:10px 16px;border-bottom:0.5px solid var(--line);background:var(--s2);display:flex;align-items:center;justify-content:space-between">
-        <div>
-          <div style="font-size:12px;font-weight:500">รายการเบิกวันนี้</div>
-          <div style="font-size:10px;color:var(--ink4);margin-top:2px">${dateStr}</div>
-        </div>
-        <span style="font-size:9px;padding:2px 8px;border-radius:10px;background:${statusBg};color:${statusColor};border:0.5px solid ${statusBorder}">${statusLabel}</span>
-      </div>
-      <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px">
-        ${buildSection('finish','คลังสินค้าสำเร็จรูป')}
-        ${buildSection('store2','Store 2')}
-      </div>
-    </div>`;
-}
-
-async function dwSetSuggestedQty(id, val) {
-  const qty = val === '' ? null : parseFloat(val);
-  await sb.from('daily_withdrawals').update({ suggested_qty: qty }).eq('id', id);
-  const item = dwItems.find(x=>x.id===id);
-  if (item) item.suggested_qty = qty;
-}
-
-async function dwDeleteItem(id) {
-  await sb.from('daily_withdrawals').delete().eq('id', id);
-  dwItems = dwItems.filter(x=>x.id!==id);
-  renderDailyWithdrawPage();
-}
-
-async function dwConfirmWithdraw(pg) {
-  const items = dwItems.filter(x=>x.pg===pg && x.status!=='received');
-  if (!items.length) { showToast('ไม่มีรายการ','err'); return; }
-  if (!confirm(`ยืนยันเบิก ${items.length} รายการ หักสต็อกคลัง?`)) return;
-  for (const item of items) {
-    const qty = item.suggested_qty || 0;
-    if (!qty) continue;
-    const m = masterDB.find(x=>x.code===item.item_code);
-    if (!m) continue;
-    const newStock = Math.max(0, m.stock - qty);
-    await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
-    m.stock = newStock;
-    await sb.from('daily_withdrawals').update({ status: 'preparing' }).eq('id', item.id);
-    item.status = 'preparing';
-  }
-  showToast('เบิกสต็อกเรียบร้อยค่ะ');
-  renderDailyWithdrawPage();
-}
-
-async function dwConfirmReceive(pg) {
-  const items = dwItems.filter(x=>x.pg===pg && x.status!=='received');
-  if (!items.length) { showToast('ไม่มีรายการ','err'); return; }
-  if (!confirm(`ยืนยันรับเข้า ${items.length} รายการ บวกสต็อกคลัง?`)) return;
-  for (const item of items) {
-    const qty = item.prepared_qty || item.suggested_qty || 0;
-    if (!qty) continue;
-    const m = masterDB.find(x=>x.code===item.item_code);
-    if (!m) continue;
-    const newStock = m.stock + qty;
-    await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
-    m.stock = newStock;
-    await sb.from('daily_withdrawals').update({ status: 'received', received_at: new Date().toISOString() }).eq('id', item.id);
-    item.status = 'received';
-  }
-  showToast('รับเข้าสต็อกเรียบร้อยค่ะ');
-  renderDailyWithdrawPage();
-}
-
-
-async function dwReceive(id) {
-  const item = dwItems.find(x => x.id === id);
-  if (!item) return;
-  const qty = item.prepared_qty || item.suggested_qty || 0;
-  if (!qty || qty <= 0) { showToast('กรุณาใส่จำนวนที่เตรียมจริงก่อน', 'err'); return; }
-
-  const m = masterDB.find(x => x.code === item.item_code);
-  if (!m) { showToast('ไม่พบสินค้าในระบบ', 'err'); return; }
-
-  // บวก stock
-  const newStock = m.stock + qty;
-  await sb.from('items').update({ stock: newStock }).eq('code', item.item_code);
-  m.stock = newStock;
-
-  // บันทึก transaction
-  await dbInsertTransaction({
-    item_code: item.item_code, item_name: item.item_name, pg: item.pg,
-    action_type: 'receive', quantity: qty,
-    operator_name: window._operatorName || '',
-    note: `เบิกประจำวัน${item.note?' — '+item.note:''}`, via: 'manual'
-  });
-
-  // อัปเดตสถานะ
-  await sb.from('daily_withdrawals').update({
-    status: 'received', received_at: new Date().toISOString(),
-    current_stock: newStock, updated_at: new Date().toISOString()
-  }).eq('id', id);
-  item.status = 'received';
-  item.current_stock = newStock;
-
-  showToast(`รับเข้า "${item.item_name}" +${qty} แล้ว`);
-  renderDailyWithdrawPage();
-}
-
-async function dwReceiveAllSection(pg) {
-  const readyItems = dwItems.filter(x => x.status === 'ready' && x.pg === pg);
-  if (!readyItems.length) { showToast('ไม่มีรายการที่จัดเตรียมแล้ว', 'err'); return; }
-  for (const item of readyItems) await dwReceive(item.id);
-}
-
-async function dwReceiveAll() {
-  const readyItems = dwItems.filter(x =>
-    x.status === 'ready' && dwTab === 'sell' ? ['finish'].includes(x.pg) : ['equip_th'].includes(x.pg)
-  );
-  const allReady = dwItems.filter(x => x.status === 'ready');
-  if (!allReady.length) { showToast('ไม่มีรายการที่จัดเตรียมแล้ว', 'err'); return; }
-  for (const item of allReady) await dwReceive(item.id);
-}
-
-async function renderDailyWithdrawPage() {
-  const div = document.getElementById('page-daily-withdraw');
-  if (!div) return;
-  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i><br><span style="font-size:12px;margin-top:8px;display:block">กำลังโหลด...</span></div>`;
-
-  await dbGenerateDailyList();
-  await dbLoadDailyWithdrawals();
-
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('th-TH', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
-
-  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate()-1);
-  const yStr = yesterday.toISOString().split('T')[0];
-  const { data: carriedOver } = await sb.from('daily_withdrawals')
-    .select('item_code').eq('date', yStr).neq('status','received');
-  const carriedCodes = new Set((carriedOver||[]).map(x => x.item_code));
-
-  const received = dwItems.filter(x => x.status === 'received').length;
-  const ready    = dwItems.filter(x => x.status === 'ready').length;
-  const pending  = dwItems.filter(x => ['pending','preparing'].includes(x.status)).length;
-
-  function buildSection(pg, label) {
-    const items = dwItems.filter(m => m.pg === pg);
-    if (!items.length) return '';
-
-    const secReceived = items.filter(x => x.status === 'received').length;
-    const secReady    = items.filter(x => x.status === 'ready').length;
-
-    const rows = items.map(item => {
-      const isDone = item.status === 'received';
-      const loc = locationDB[item.item_code] || '—';
-      const isCarried = carriedCodes.has(item.item_code);
-      const statusOpts = Object.entries(DW_STATUS).filter(([v])=>v!=='received').map(([v,o]) =>
-        `<option value="${v}" ${item.status===v?'selected':''}>${o.label}</option>`).join('');
-      const statusColor = DW_STATUS[item.status]?.color || 'var(--ink4)';
-
-      return `<tr style="${isDone?'opacity:.4':''}">
-        <td style="padding:9px 12px;vertical-align:top">
-          <div style="font-size:12px;font-weight:500">${item.item_name}</div>
-          <div style="font-size:10px;color:var(--ink4);margin-top:1px">${loc}</div>
-          ${isCarried && !isDone?`<div style="font-size:9px;color:var(--ink4);margin-top:2px">ค้างจากเมื่อวาน</div>`:''}
-          ${!isDone?`<div style="margin-top:5px;display:flex;align-items:center;gap:5px">
-            <span style="font-size:9px;color:var(--ink4);white-space:nowrap">หมายเหตุ</span>
-            <input style="flex:1;padding:3px 7px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;background:var(--surface);color:var(--ink);outline:none;font-family:inherit"
-              placeholder="หมายเหตุสำหรับพนักงาน..." value="${item.note||''}"
-              onchange="dwSetNote(${item.id},this.value)">
-          </div>`:''}
-          ${isDone && item.note?`<div style="font-size:10px;color:var(--ink4);margin-top:2px;font-style:italic">${item.note}</div>`:''}
-        </td>
-        <td style="text-align:right;padding:9px 12px;font-size:12px;font-weight:500;color:${item.current_stock<=item.max_stock*0.2?'var(--red)':'var(--ink2)'}">
-          ${(item.current_stock||0).toLocaleString()}
-        </td>
-        <td style="text-align:right;padding:9px 12px;font-size:12px;color:var(--ink4)">${(item.max_stock||0).toLocaleString()}</td>
-        <td style="text-align:right;padding:9px 12px;font-size:12px;font-weight:500">${(item.suggested_qty||0).toLocaleString()}</td>
-        <td style="text-align:right;padding:9px 12px">
-          ${isDone
-            ? `<span style="font-size:12px;font-weight:500">${(item.prepared_qty||item.suggested_qty||0).toLocaleString()}</span>`
-            : `<input type="number" min="0" step="1" inputmode="decimal"
-                value="${item.prepared_qty||''}" placeholder="—"
-                style="width:64px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;text-align:right;background:var(--surface);color:var(--ink);outline:none"
-                onchange="dwSetPreparedQty(${item.id},this.value)">`
-          }
-        </td>
-        <td style="padding:9px 12px">
-          ${isDone
-            ? `<span style="font-size:10px;color:var(--ink4)">✓</span>`
-            : `<button class="btn btn-sm btn-primary"
-                onclick="dwReceive(${item.id})"
-                style="font-size:10px;white-space:nowrap">รับเข้า</button>`
-          }
-        </td>
-      </tr>`;
-    }).join('');
-
-    return `<div style="margin-bottom:24px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div style="font-size:13px;font-weight:500">${label}</div>
-        <div style="font-size:11px;color:var(--ink4)">${items.length} รายการ${secReceived?` · รับแล้ว ${secReceived}`:''}</div>
-      </div>
-      <div class="sc-table-wrap">
-        <table class="sc-table">
-          <thead><tr>
-            <th>รายการ</th>
-            <th style="text-align:right">คงเหลือ</th>
-            <th style="text-align:right">Max</th>
-            <th style="text-align:right">แนะนำ</th>
-            <th style="text-align:right;width:80px">เตรียมจริง</th>
-            <th style="width:70px"></th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-      ${secReady>0?`<div style="display:flex;justify-content:flex-end;margin-top:8px">
-        <button class="btn btn-primary" onclick="dwReceiveAllSection('${pg}')" style="font-size:11px">
-          <i class="ti ti-checks"></i> ยืนยันรับเข้าที่จัดเตรียมแล้ว (${secReady})
-        </button>
-      </div>`:''}
-    </div>`;
-  }
-
-  div.innerHTML = `
-    <div class="page-header">
-      <div><div class="page-title">รายการเบิกประจำวัน</div>
-        <div class="page-sub">${dateStr}</div></div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-sm btn-primary" onclick="dwOpenAddModal()" style="font-size:11px">
-          <i class="ti ti-plus"></i> เพิ่มรายการ
-        </button>
-        <button class="btn btn-sm" onclick="(async()=>{
-          const today=new Date().toISOString().split('T')[0];
-          await sb.from('daily_withdrawals').delete().eq('date',today).neq('status','received');
-          dwItems=[];
-          await dbGenerateDailyList();
-          renderDailyWithdrawPage();
-        })()" style="font-size:11px">
-          <i class="ti ti-refresh"></i> รีเฟรช
-        </button>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <div class="card" style="flex:1;padding:10px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:600">${dwItems.length}</div>
-        <div style="font-size:10px;color:var(--ink4)">ทั้งหมด</div>
-      </div>
-      <div class="card" style="flex:1;padding:10px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:600;color:#2d4a0f">${received}</div>
-        <div style="font-size:10px;color:var(--ink4)">รับแล้ว</div>
-      </div>
-      <div class="card" style="flex:1;padding:10px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:600;color:#7a5900">${ready}</div>
-        <div style="font-size:10px;color:var(--ink4)">จัดเตรียมแล้ว</div>
-      </div>
-      <div class="card" style="flex:1;padding:10px 14px;text-align:center">
-        <div style="font-size:18px;font-weight:600;color:var(--ink4)">${pending}</div>
-        <div style="font-size:10px;color:var(--ink4)">ยังไม่ดำเนินการ</div>
-      </div>
-    </div>
-    ${buildSection('finish','คลังสินค้าสำเร็จรูป')}
-    <div style="height:1px;background:var(--line);margin:4px 0 20px"></div>
-    ${buildSection('store2','Store 2')}`;
-}
-
-let dwAddTab = 'finish';
-
-function dwOpenAddModal() {
-  document.getElementById('dw-add-modal')?.remove();
-  const modal = document.createElement('div');
-  modal.className = 'modal-wrap show';
-  modal.id = 'dw-add-modal';
-  modal.innerHTML = `<div class="modal" style="max-width:400px;width:95%">
-    <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
-      <div class="card-title-left"><i class="ti ti-plus"></i> เพิ่มรายการ</div>
-      <button class="btn btn-sm" onclick="document.getElementById('dw-add-modal').remove()">ยกเลิก</button>
-    </div>
-    <div style="display:flex;gap:0;border-bottom:0.5px solid var(--line);margin-bottom:12px">
-      <button onclick="dwSetAddTab('finish',this)" id="dw-tab-finish"
-        style="font-size:12px;padding:6px 16px;border:none;background:transparent;cursor:pointer;font-family:inherit;border-bottom:2px solid var(--ink);color:var(--ink);font-weight:500">
-        สินค้าสำเร็จรูป
-      </button>
-      <button onclick="dwSetAddTab('store2',this)" id="dw-tab-store2"
-        style="font-size:12px;padding:6px 16px;border:none;background:transparent;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;color:var(--ink4)">
-        Store 2
-      </button>
-    </div>
-    <div style="position:relative;margin-bottom:8px">
-      <input class="fi" id="dw-add-search" placeholder="พิมพ์ชื่อสินค้า..." autocomplete="off"
-        oninput="dwFilterItems()" onfocus="dwFilterItems()">
-    </div>
-    <div id="dw-add-dd" style="border:0.5px solid var(--line);border-radius:8px;overflow:hidden;max-height:200px;overflow-y:auto;margin-bottom:10px">
-      <div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">กำลังโหลด...</div>
-    </div>
-    <div id="dw-add-selected" style="display:none;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;padding:8px 12px;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div>
-        <div style="font-size:12px;font-weight:500" id="dw-sel-name">—</div>
-        <div style="font-size:10px;color:var(--ink4)" id="dw-sel-stock">—</div>
-      </div>
-      <button onclick="dwClearSel()" style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px">✕</button>
-    </div>
-    <input type="hidden" id="dw-sel-code">
-    <input type="hidden" id="dw-sel-pg">
-    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:10px;border-top:0.5px solid var(--line)">
-      <button class="btn btn-sm" onclick="document.getElementById('dw-add-modal').remove()">ยกเลิก</button>
-      <button class="btn btn-primary btn-sm" onclick="dwAddManualItem()"><i class="ti ti-plus"></i> เพิ่มในรายการวันนี้</button>
-    </div>
-  </div>`;
-  document.body.appendChild(modal);
-  dwAddTab = 'finish';
-  setTimeout(() => dwFilterItems(), 50);
-
-  document.addEventListener('click', function dwOut(e) {
-    if (!e.target.closest('#dw-add-modal')) return;
-    if (!document.getElementById('dw-add-modal')) document.removeEventListener('click', dwOut);
-  });
-}
-
-function dwSetAddTab(pg, el) {
-  dwAddTab = pg;
-  ['finish','store2'].forEach(t => {
-    const btn = document.getElementById('dw-tab-'+t);
-    if (btn) {
-      btn.style.borderBottom = t===pg ? '2px solid var(--ink)' : '2px solid transparent';
-      btn.style.color = t===pg ? 'var(--ink)' : 'var(--ink4)';
-      btn.style.fontWeight = t===pg ? '500' : 'normal';
-    }
-  });
-  document.getElementById('dw-add-search').value = '';
-  dwClearSel();
-  dwFilterItems();
-}
-
-function dwFilterItems() {
-  const q = (document.getElementById('dw-add-search')?.value||'').toLowerCase();
-  const dd = document.getElementById('dw-add-dd');
-  if (!dd) return;
-  const items = masterDB.filter(m => {
-    if (m.pg !== dwAddTab) return false;
-    // finish — ดึงทุก subcat
-    if (q && !m.name.toLowerCase().includes(q)) return false;
-    return true;
-  });
-  if (!items.length) {
-    dd.innerHTML = `<div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">ไม่พบรายการ</div>`;
-    return;
-  }
-  dd.innerHTML = items.map(m => `
-    <div onclick="dwSelectItem('${m.code}','${m.name.replace(/'/g,"\\'")}',${m.stock},'${m.pg}')"
-      style="padding:8px 12px;cursor:pointer;border-bottom:0.5px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-size:12px"
-      onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
-      <span style="font-weight:500">${m.name}</span>
-      <span style="font-size:10px;color:${m.stock<=0?'var(--red)':'var(--ink4)'}">คงเหลือ ${m.stock}</span>
-    </div>`).join('');
-}
-
-function dwSelectItem(code, name, stock, pg) {
-  document.getElementById('dw-add-search').value = name;
-  document.getElementById('dw-sel-code').value = code;
-  document.getElementById('dw-sel-pg').value = pg;
-  document.getElementById('dw-sel-name').textContent = name;
-  document.getElementById('dw-sel-stock').textContent = `คงเหลือ ${stock}`;
-  document.getElementById('dw-add-selected').style.display = 'flex';
-  document.getElementById('dw-add-dd').style.display = 'none';
-}
-
-function dwClearSel() {
-  document.getElementById('dw-sel-code').value = '';
-  document.getElementById('dw-sel-pg').value = '';
-  document.getElementById('dw-add-selected').style.display = 'none';
-  document.getElementById('dw-add-dd').style.display = 'block';
-}
-
-async function dwAddManualItem() {
-  const code = document.getElementById('dw-sel-code')?.value;
-  const pg   = document.getElementById('dw-sel-pg')?.value;
-  const name = document.getElementById('dw-sel-name')?.textContent;
-  if (!code || !name || name==='—') { showToast('กรุณาเลือกรายการก่อน','err'); return; }
-
-  const m = masterDB.find(x=>x.code===code);
-  const today = new Date().toISOString().split('T')[0];
-
-  // เช็คว่ามีอยู่แล้วไหม
-  const exists = dwItems.find(x=>x.item_code===code);
-  if (exists) { showToast('รายการนี้มีอยู่แล้วในรายการวันนี้','err'); return; }
-
-  const { error } = await sb.from('daily_withdrawals').insert({
-    date: today, item_code: code, item_name: name, pg,
-    current_stock: m?.stock||0, max_stock: m?.max||0,
-    suggested_qty: m?.max>0 ? Math.max(0,(m.max||0)-(m.stock||0)) : null,
-    status: 'pending',
-  });
-  if (error) { showToast('เพิ่มไม่สำเร็จ','err'); return; }
-
-  document.getElementById('dw-add-modal').remove();
-  showToast(`เพิ่ม "${name}" ในรายการวันนี้แล้ว`);
-  await dbLoadDailyWithdrawals();
-  renderDailyWithdrawPage();
-}
-
-function renderAlertGroupPage(group) {
-  const div = document.getElementById('page-alert-'+group);
-  if (!div) return;
-  if (!ALERT_GROUPS || !ALERT_GROUPS[group]) { div.innerHTML = ''; return; }
-
-  const withdrawLabel = _CFG.WITHDRAW_ALERT_LABEL || 'รายการเบิก';
-
-  // ── purchase group ── (เหมือนเดิม)
-  if (group === 'purchase') {
-    const alerts = getAlertItems(null, group);
-    const showSupplier = SUPPLIER_FIELDS;
-    const leadColLabel = SUPPLIER_FIELDS === 'date' ? 'ส่งของรอบถัดไป' : 'Lead time';
-    const rows = alerts.map((m,i) => {
-      const cfg = WAREHOUSE_CONFIG[m.pg];
-      const stockColor = m.stock<=0 ? 'var(--red)' : 'var(--warn)';
-      const leadCell = SUPPLIER_FIELDS === 'date'
-        ? (m.next_delivery_date ? new Date(m.next_delivery_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}) : '—')
-        : (m.lead_time_days!=null ? m.lead_time_days+' วัน' : '—');
-      return `<tr>
-        <td style="color:var(--ink4)">${i+1}</td>
-        <td style="font-weight:500">${m.name}<div style="font-size:10px;color:var(--ink4)">${m.code}</div></td>
-        <td>${cfg?.label||m.pg}</td>
-        <td style="text-align:right;font-weight:600;color:${stockColor}">${m.stock}</td>
-        <td style="text-align:right;color:var(--ink3)">${m.min}</td>
-        ${showSupplier?`<td>${m.supplier_name||'—'}</td><td style="text-align:center">${leadCell}</td>`:''}
-        <td>${_trackingDropdowns(m)}</td>
-        <td style="text-align:center;white-space:nowrap">
-          <button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','${group}')"><i class="ti ti-check"></i> รับเข้า</button>
-          <button class="btn btn-sm" onclick="editMinMax('${m.code}')"><i class="ti ti-pencil"></i></button>
-        </td>
-      </tr>`;
-    }).join('') || `<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--ink4)">ไม่มีรายการ</td></tr>`;
-    div.innerHTML = `
-      <div class="page-header">
-        <div><div class="page-title">รายการจัดซื้อ</div>
-          <div class="page-sub">รายการที่สต็อกต่ำกว่า Min${alerts.length?` · พบ ${alerts.length} รายการ`:''}</div></div>
-      </div>
-      <div class="sc-table-wrap"><table class="sc-table">
-        <thead><tr>
-          <th style="width:28px">#</th><th>รายการ</th><th>คลัง</th>
-          <th style="text-align:right">คงเหลือ</th><th style="text-align:right">Min</th>
-          ${showSupplier?`<th>ผู้จำหน่าย</th><th>${leadColLabel}</th>`:''}
-          <th style="min-width:120px">ติดตาม</th><th></th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div>`;
-    return;
-  }
-
-  // ── withdraw group — แผนการเติมของประจำวัน ──
-  const WH_GROUPS = {
-    finish:   'สินค้าสำเร็จรูป',
-    raw:      'วัตถุดิบ',
-    equip_th: 'อุปกรณ์',
-  };
-
-  const SC_STATUS_OPTS_W = {
-    pending:   { label: 'ยังไม่ได้ดำเนินการ', color: 'var(--ink4)' },
-    preparing: { label: 'กำลังจัดเตรียม',     color: '#e8a23a' },
-    ready:     { label: 'จัดเตรียมเรียบร้อย', color: 'var(--green)' },
-  };
-
-  // แสดงทุกรายการในทุกคลัง ไม่ใช่แค่ที่ต่ำกว่า Min
-  const groupSections = Object.entries(WH_GROUPS).map(([pg, label]) => {
-    const items = masterDB.filter(m => m.pg === pg && m.is_active !== false);
-    if (!items.length) return '';
-
-    const rows = items.map((m,i) => {
-      const isLow = m.min > 0 && m.stock <= m.min;
-      const stockColor = m.stock<=0 ? 'var(--red)' : isLow ? 'var(--warn)' : 'var(--ink2)';
-      const refill = m.max > 0 ? Math.max(0, m.max - m.stock) : '—';
-      const loc = locationDB[m.code] || '—';
-      const status = m.count_status || 'pending';
-      const statusOpts = Object.entries(SC_STATUS_OPTS_W).map(([v,o]) =>
-        `<option value="${v}" ${status===v?'selected':''}>${o.label}</option>`).join('');
-
-      return `<tr style="${isLow?'background:#fef8f8':''}">
-        <td style="color:var(--ink4);font-size:11px">${i+1}</td>
-        <td style="font-weight:500">${m.name}
-          ${isLow?`<span style="font-size:9px;padding:1px 6px;border-radius:10px;background:#fee;color:var(--red);font-weight:500;margin-left:4px">ต่ำกว่า Min</span>`:''}
-        </td>
-        <td style="font-size:11px;color:var(--ink3)">${loc}</td>
-        <td style="text-align:right;font-weight:600;color:${stockColor}">${m.stock.toLocaleString()}</td>
-        <td style="text-align:right;color:var(--ink3)">${m.min||'—'}</td>
-        <td style="text-align:right;color:var(--ink3)">${m.max||'—'}</td>
-        <td style="text-align:right;font-weight:600;color:${refill>0?'var(--acc)':'var(--ink4)'}">
-          ${typeof refill==='number'?refill.toLocaleString():'—'}
-        </td>
-        <td>
-          <select style="font-size:10px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:${SC_STATUS_OPTS_W[status].color};cursor:pointer"
-            onchange="whSetStatus('${m.code}',this.value)">
-            ${statusOpts}
-          </select>
-        </td>
-        <td style="text-align:center;white-space:nowrap">
-          <button class="btn btn-sm btn-primary" onclick="openAlertReceiveModal('${m.code}','${group}')" style="font-size:10px">
-            <i class="ti ti-check"></i> รับเข้า
-          </button>
-        </td>
-      </tr>`;
-    }).join('');
-
-    const lowCount = items.filter(m => m.min>0 && m.stock<=m.min).length;
-
-    return `<div style="margin-bottom:16px">
-      <div style="font-size:11px;font-weight:500;color:var(--ink3);margin-bottom:6px;padding:6px 10px;background:var(--s2);border-radius:var(--r);border:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
-        <span><i class="ti ti-box" style="font-size:11px"></i> ${label} · ${items.length} รายการ</span>
-        ${lowCount?`<span style="font-size:10px;color:var(--red)">⚠ ต่ำกว่า Min ${lowCount} รายการ</span>`:''}
-      </div>
-      <div class="sc-table-wrap">
-        <table class="sc-table">
-          <thead><tr>
-            <th style="width:28px">#</th>
-            <th>รายการ</th>
-            <th>พิกัด</th>
-            <th style="text-align:right">คงเหลือ</th>
-            <th style="text-align:right">Min</th>
-            <th style="text-align:right">Max</th>
-            <th style="text-align:right">ควรเติม</th>
-            <th>สถานะ</th>
-            <th></th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
-  }).join('');
-
-  const totalLow = masterDB.filter(m => ['finish','raw','equip_th'].includes(m.pg) && m.min>0 && m.stock<=m.min).length;
-
-  div.innerHTML = `
-    <div class="page-header">
-      <div><div class="page-title">${withdrawLabel}</div>
-        <div class="page-sub">แผนการเติมของ · ทุกรายการ${totalLow?` · ⚠ ต่ำกว่า Min ${totalLow} รายการ`:''}</div></div>
-    </div>
-    ${groupSections}`;
-}
-
-async function whSetStatus(code, status) {
-  const m = masterDB.find(x => x.code === code);
-  if (!m) return;
-  m.count_status = status;
-  await sb.from('items').update({ count_status: status }).eq('code', code);
-}
-
-
-/* ── ยืนยันรับของจากหน้าแจ้งเตือน (จัดซื้อ/เบิก) — modal เล็ก กรอกจำนวน+วันที่ lot ──
-   ใช้ logic เดียวกับฟอร์มรับเข้าปกติ (dbAdjustStockWithLot action='receive') */
-function openAlertReceiveModal(code, group) {
-  const m = masterDB.find(x => x.code === code);
-  if (!m) return;
-  const cfg = WAREHOUSE_CONFIG[m.pg];
-  document.getElementById('arCode').value = code;
-  document.getElementById('arGroup').value = group;
-  document.getElementById('arName').textContent = m.name;
-  document.getElementById('arSub').textContent = `${cfg?.label||m.pg} · คงเหลือปัจจุบัน ${m.stock} · Min ${m.min}`;
-  document.getElementById('arQty').value = '';
-  document.getElementById('arDate').value = new Date().toISOString().slice(0,10);
-  document.getElementById('arNote').value = '';
-  document.getElementById('alertReceiveModal').classList.add('show');
-  setTimeout(() => document.getElementById('arQty')?.focus(), 50);
-}
-
-async function submitAlertReceiveModal() {
-  const code  = document.getElementById('arCode').value;
-  const qty   = parseFloat(document.getElementById('arQty').value);
-  const lotSW = document.getElementById('arDate').value;
-  const note  = (document.getElementById('arNote').value || '').trim();
-
-  if (isNaN(qty) || qty <= 0) { showToast('กรุณากรอกจำนวนให้ถูกต้อง', 'err'); return; }
-  if (!lotSW) { showToast('กรุณาเลือกวันที่', 'err'); return; }
-
-  const mi = masterDB.find(x => x.code === code);
-  if (!mi) { showToast('ไม่พบรายการสินค้า', 'err'); closeModal('alertReceiveModal'); return; }
-  const cfg = WAREHOUSE_CONFIG[mi.pg];
-
-  setLoading('arSubmitBtn', true);
-  const rpcResult = await dbAdjustStockWithLot(code, 'receive', qty, {
-    lotSW: cfg?.hasLot ? lotSW : null,
-    name: mi.name,
-    note: (mi.pg === 'raw') ? (note || null) : null,
-  });
-  if (!rpcResult.ok) { setLoading('arSubmitBtn', false); return; }
-  if (rpcResult.new_stock !== undefined) mi.stock = rpcResult.new_stock;
-  await dbUpsertItem(mi);
-
-  const rec = {
-    time: dateToday(), timeDetail: timeNow(), type: 'receive', typeLabel: ACTION_LABELS.receive,
-    name: window._operatorName || '', dept: window._operatorDept || 'คลัง', item: mi.name, code, qty,
-    lotSW: cfg?.hasLot ? lotSW : '-', lotSP: '', note, pg: mi.pg, via: 'alert',
-    oldStock: rpcResult.new_stock - qty, newStock: rpcResult.new_stock,
-  };
-  txState[mi.pg].records.unshift(rec);
-  rec.id = await dbInsertTransaction(rec);
-
-  // reset สถานะติดตามเมื่อรับเข้าคลังแล้ว
-  if (mi.pay_status || mi.ship_status || mi.tracking_url) {
-    mi.pay_status   = null;
-    mi.ship_status  = null;
-    mi.tracking_url = null;
-    await sb.from('items').update({ pay_status: null, ship_status: null, tracking_url: null }).eq('code', code);
-  }
-
-  checkAlerts();
-  if (curPage === 'master') renderMasterContent();
-  if (curPage.startsWith('alert-')) renderAlertGroupPage(curPage.replace('alert-',''));
-
-  setLoading('arSubmitBtn', false);
-  closeModal('alertReceiveModal');
-  showToast(`"${mi.name}" รับเข้า ${qty} สำเร็จ`);
-}
-
-
-function dbScrollTo(id) {
-  const el = document.getElementById(id);
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-async function dbExportPNG() {
-  const div = document.getElementById('page-dashboard');
-  if (!div) return;
-  showToast('กำลังสร้างภาพ...');
-  try {
-    // โหลด html2canvas แบบ dynamic
-    if (!window.html2canvas) {
-      await new Promise((res, rej) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-        s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-      });
-    }
-    const date = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
-    const canvas = await window.html2canvas(div, {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: '#f7f7f5',
-      scrollX: 0,
-      scrollY: -window.scrollY,
-      windowWidth: div.scrollWidth,
-      windowHeight: div.scrollHeight,
-    });
-    const a = document.createElement('a');
-    a.href = canvas.toDataURL('image/png');
-    a.download = `Sawanbondin_Dashboard_${date}.png`;
-    a.click();
-    showToast('Export PNG สำเร็จ ✓');
-  } catch(e) {
-    showToast('Export ไม่สำเร็จ: ' + e.message, 'err');
-  }
-}
-
-async function dbExportPDF() {
-  const div = document.getElementById('page-dashboard');
-  if (!div) return;
-  showToast('กำลังสร้าง PDF...');
-  try {
-    if (!window.html2canvas) {
-      await new Promise((res, rej) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-        s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-      });
-    }
-    if (!window.jspdf) {
-      await new Promise((res, rej) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-        s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-      });
-    }
-    const date = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
-    const canvas = await window.html2canvas(div, {
-      scale: 1.5,
-      useCORS: true,
-      backgroundColor: '#f7f7f5',
-      scrollX: 0,
-      scrollY: -window.scrollY,
-      windowWidth: div.scrollWidth,
-      windowHeight: div.scrollHeight,
-    });
-    const { jsPDF } = window.jspdf;
-    const imgW  = canvas.width;
-    const imgH  = canvas.height;
-    const pdfW  = 210; // A4 mm
-    const pdfH  = Math.round(imgH * pdfW / imgW);
-    const pdf   = new jsPDF({ orientation: pdfH > pdfW ? 'p' : 'l', unit: 'mm', format: [pdfW, pdfH] });
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, pdfH);
-    pdf.save(`Sawanbondin_Dashboard_${date}.pdf`);
-    showToast('Export PDF สำเร็จ ✓');
-  } catch(e) {
-    showToast('Export ไม่สำเร็จ: ' + e.message, 'err');
-  }
-}
-
-function dbToggleWh(id, forceOpen) {
-  const body = document.getElementById(id);
-  const chev = document.getElementById(id.replace('dbwh-','dbwh-chev-'));
-  if (!body) return;
-  const open = forceOpen !== undefined ? forceOpen : body.style.display === 'none';
-  body.style.display = open ? 'block' : 'none';
-  if (chev) chev.style.transform = open ? 'rotate(90deg)' : '';
-}
-
-function dbExpandAll(expand) {
-  document.querySelectorAll('[id^="dbwh-"]:not([id^="dbwh-chev"])').forEach(el => {
-    if (el.id.startsWith('dbwh-chev')) return;
-    el.style.display = expand ? 'block' : 'none';
-    const chev = document.getElementById(el.id.replace('dbwh-','dbwh-chev-'));
-    if (chev) chev.style.transform = expand ? 'rotate(90deg)' : '';
-  });
 }
 
 /* ── Override switchPage เพิ่ม dashboard ── */
