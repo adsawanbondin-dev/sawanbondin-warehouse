@@ -4211,11 +4211,9 @@ function dscRender() {
   const subcats = [...new Set(finishItems.map(m => m.subcat||'ไม่มีหมวดหมู่'))].sort();
   if (!dscCat || !subcats.includes(dscCat)) dscCat = subcats[0] || '';
 
-  // สถิติ
   const allCounted = Object.keys(dscData).length;
-  const allNeed = finishItems.filter(m => dscData[m.code] !== undefined && dscData[m.code].actual < (m.min||0)).length;
 
-  // หมวดหมู่ tabs
+  // tabs หมวดหมู่
   const catTabs = subcats.map(sub => {
     const subItems = finishItems.filter(m=>(m.subcat||'ไม่มีหมวดหมู่')===sub);
     const counted  = subItems.filter(m=>dscData[m.code]!==undefined).length;
@@ -4228,7 +4226,7 @@ function dscRender() {
       color:${isActive?'var(--surface)':'var(--ink3)'};
       display:inline-flex;align-items:center;gap:5px">
       ${sub}
-      ${allDone?'<span style="font-size:9px;background:#edf5ec;color:#2d6a0f;padding:1px 5px;border-radius:8px">✓</span>':
+      ${allDone?`<span style="font-size:9px;background:#edf5ec;color:#2d6a0f;padding:1px 5px;border-radius:8px">✓</span>`:
         counted?`<span style="font-size:9px;background:var(--s2);color:var(--ink4);padding:1px 5px;border-radius:8px">${counted}</span>`:''}
     </button>`;
   }).join('');
@@ -4248,63 +4246,43 @@ function dscRender() {
     const actual = hasVal ? entry.actual : '';
     const note   = hasVal ? (entry.note||'') : '';
     const isLow  = hasVal && actual < (m.min||0);
-    const isOk   = hasVal && actual >= (m.max||0);
-    const isMid  = hasVal && !isLow && !isOk;
-    const need   = hasVal ? Math.max(0,(m.max||0)-actual) : null;
-
-    const rowBg = !hasVal ? '' : isLow ? 'background:#fdf4f4' : 'background:#f4f9f0';
+    const spec   = m.spec || '';
+    const rowBg  = !hasVal ? '' : isLow ? 'background:#fdf4f4' : 'background:#f4f9f0';
     const inpBorder = !hasVal ? 'var(--line)' : isLow ? '#d04040' : '#4a9a2a';
     const inpBg = !hasVal ? 'var(--surface)' : isLow ? '#fdf0f0' : '#f0f7ec';
-
-    const stockColor = m.stock <= (m.min||0) ? 'color:#b03030;font-weight:500' : 'color:var(--ink4)';
+    const stockColor = m.stock < (m.min||0) ? '#b03030' : 'var(--ink4)';
     const badge = m.stock < (m.min||0)
       ? `<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:#fde8e8;color:#b03030;font-weight:500;margin-left:5px">ต่ำกว่า Min</span>`
-      : m.stock >= (m.max||0)
+      : m.stock >= (m.max||0) && m.max > 0
       ? `<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:#edf5e8;color:#2d6a0f;font-weight:500;margin-left:5px">เต็ม Max</span>`
       : '';
 
-    const autoTxt = need === null ? '—'
-      : need > 0 ? `+${need}`
-      : '0';
-    const autoColor = need === null ? 'var(--ink4)'
-      : need > 0 ? '#b03030'
-      : '#2d6a0f';
-    const autoNote = need === null ? ''
-      : need > 0 ? `เบิกเพิ่ม ${need} ชิ้น`
-      : 'เต็ม Max แล้ว ✓';
-
-    return `<div style="display:grid;grid-template-columns:1fr 110px 90px 28px;padding:12px 16px;border-bottom:0.5px solid var(--line);align-items:start;gap:12px;${rowBg}">
+    return `<div style="display:grid;grid-template-columns:1fr 110px 28px;padding:12px 16px;border-bottom:0.5px solid var(--line);align-items:start;gap:12px;${rowBg}">
       <div>
-        <div style="font-size:13px;font-weight:500;margin-bottom:3px">${m.name}${badge}</div>
-        <div style="font-size:10px;color:var(--ink4);line-height:1.7;margin-bottom:4px">
-          <span style="${stockColor}">ระบบ ${m.stock}</span>
-          <span style="margin:0 6px;opacity:.3">·</span>
-          Min <b>${m.min||0}</b>
-          <span style="margin:0 6px;opacity:.3">·</span>
-          Max <b>${m.max||0}</b>
+        <div style="font-size:13px;font-weight:500;margin-bottom:2px">${m.name}${badge}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-bottom:${spec?'4px':'0px'}">
+          <span style="color:${stockColor};${isLow?'font-weight:500':''}">ระบบ ${m.stock}</span>
+          <span style="margin:0 5px;opacity:.3">·</span>Min <b>${m.min||0}</b>
+          <span style="margin:0 5px;opacity:.3">·</span>Max <b>${m.max||0}</b>
         </div>
-        <input type="text" placeholder="หมายเหตุ..." value="${note}"
+        ${spec?`<div style="font-size:10px;color:var(--ink3);background:var(--s2);border-left:2px solid var(--line);padding:3px 8px;border-radius:0 4px 4px 0;margin-bottom:5px;line-height:1.5">${spec}</div>`:''}
+        <input type="text" placeholder="หมายเหตุถึงผู้เบิก..." value="${note}"
           style="padding:4px 8px;border:0.5px solid var(--line);border-radius:6px;font-size:10px;width:100%;background:var(--surface);color:var(--ink3);outline:none;font-family:inherit"
           onchange="dscSetNote('${m.code}',this.value)">
       </div>
-      <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;flex-direction:column;gap:3px">
         <input type="number" min="0" step="0.01" inputmode="decimal" placeholder="กรอกจำนวน"
-          value="${actual}"
-          id="inp-${m.code}"
-          style="padding:7px 10px;border:0.5px solid ${inpBorder};border-radius:8px;font-size:13px;text-align:right;width:100%;background:${inpBg};color:var(--ink);outline:none;font-family:inherit;transition:.15s"
+          value="${actual}" id="inp-${m.code}"
+          style="padding:7px 10px;border:0.5px solid ${inpBorder};border-radius:8px;font-size:13px;text-align:right;width:100%;background:${inpBg};color:var(--ink);outline:none;font-family:inherit"
           oninput="dscCalc('${m.code}',this.value)"
           onkeydown="dscNav(event,'${m.code}','${catItems.map(i=>i.code).join(',')}')"
           onfocus="this.select()">
-        <div id="inp-note-${m.code}" style="font-size:10px;color:${autoColor};text-align:right;min-height:14px">
-          ${hasVal ? autoNote : ''}
+        <div id="inp-note-${m.code}" style="font-size:9px;text-align:right;min-height:12px;color:var(--ink4)">
+          ${hasVal ? (actual < (m.min||0) ? `ต่ำกว่า Min` : actual >= (m.max||0) && m.max > 0 ? 'ครบ Max ✓' : '') : ''}
         </div>
       </div>
-      <div style="padding-top:9px">
-        <div style="font-size:15px;font-weight:500;text-align:right;color:${autoColor}">${autoTxt}</div>
-        <div style="font-size:9px;color:var(--ink4);text-align:right;margin-top:2px">ต้องเบิก</div>
-      </div>
       <button onclick="dscClearRow('${m.code}')"
-        style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px;padding:0;margin-top:10px;${!hasVal?'opacity:.3':''}">✕</button>
+        style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px;padding:0;margin-top:10px;${!hasVal?'opacity:.2':''}">✕</button>
     </div>`;
   }).join('') || `<div style="padding:32px;text-align:center;color:var(--ink4)">ไม่พบรายการ</div>`;
 
@@ -4332,40 +4310,34 @@ function dscRender() {
         <div style="font-size:10px;color:var(--ink4);margin-top:2px">นับแล้ว</div>
       </div>
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:20px;font-weight:500;color:${allNeed>0?'var(--red)':'var(--ink)'}">${allNeed}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-top:2px">ต้องเบิก</div>
+        <div style="font-size:20px;font-weight:500">${finishItems.length - allCounted}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:2px">ยังไม่นับ</div>
       </div>
     </div>
 
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-      ${catTabs}
-    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${catTabs}</div>
 
     <div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden">
       <div style="padding:8px 16px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:12px;font-weight:500">${dscCat} · ${countedInCat}/${catItems.length}</span>
         <input class="fi" placeholder="ค้นหา..." value="${dscSearch}"
-          oninput="dscSearch=this.value;dscRender()" style="width:140px;font-size:11px;padding:4px 8px">
+          oninput="dscSearch=this.value;dscRender()" style="width:130px;font-size:11px;padding:4px 8px">
       </div>
-      <div style="display:grid;grid-template-columns:1fr 110px 90px 28px;padding:5px 16px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
-        <span>รายการ</span>
-        <span style="text-align:right">นับจริง</span>
-        <span style="text-align:right">ต้องเบิก</span>
-        <span></span>
+      <div style="display:grid;grid-template-columns:1fr 110px 28px;padding:5px 16px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
+        <span>รายการ</span><span style="text-align:right">นับจริง</span><span></span>
       </div>
       ${rows}
     </div>
 
-    <div style="margin-top:14px;padding:12px 16px;background:var(--s2);border:0.5px solid var(--line);border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="margin-top:12px;padding:12px 16px;background:var(--s2);border:0.5px solid var(--line);border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div style="font-size:10px;color:var(--ink4)">
-        กด <kbd style="padding:1px 5px;border:0.5px solid var(--line);border-radius:4px;font-size:10px">Enter</kbd> เพื่อเลื่อนรายการถัดไป
+        กด <kbd style="padding:1px 5px;border:0.5px solid var(--line);border-radius:4px;font-size:10px">Enter</kbd> เลื่อนรายการถัดไป
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-sm" onclick="dscFillCat('${dscCat.replace(/'/g,"\'")}')" style="font-size:11px">
-          นับเท่าระบบทั้งหมด
+          นับเท่าระบบ
         </button>
-        <button class="btn btn-sm" onclick="dscSaveCat('${dscCat.replace(/'/g,"\'")}')"
-          style="font-size:11px;background:var(--s3);border-color:var(--line)">
+        <button class="btn btn-sm" onclick="dscSaveCat('${dscCat.replace(/'/g,"\'")}')" style="font-size:11px">
           <i class="ti ti-check"></i> บันทึกหมวดนี้ (${countedInCat})
         </button>
         <button class="btn btn-sm btn-primary" onclick="dscSaveAll()" style="font-size:11px">
@@ -4377,43 +4349,22 @@ function dscRender() {
 
 function dscCalc(code, val) {
   const v = val === '' ? undefined : parseFloat(val);
-  if (v === undefined) {
-    delete dscData[code];
-  } else {
-    if (!dscData[code]) dscData[code] = {};
-    dscData[code].actual = v;
-  }
-
+  if (v === undefined) { delete dscData[code]; }
+  else { if (!dscData[code]) dscData[code] = {}; dscData[code].actual = v; }
   const m = masterDB.find(x=>x.code===code);
   if (!m) return;
-
   const noteEl = document.getElementById('inp-note-'+code);
   const inp    = document.getElementById('inp-'+code);
   if (!noteEl || !inp) return;
-
   if (v === undefined) {
-    noteEl.textContent = '';
-    inp.style.borderColor = 'var(--line)';
-    inp.style.background  = 'var(--surface)';
-    return;
+    noteEl.textContent=''; inp.style.borderColor='var(--line)'; inp.style.background='var(--surface)'; return;
   }
-
-  const need = Math.max(0, (m.max||0) - v);
   const isLow = v < (m.min||0);
-  noteEl.style.color = need > 0 ? '#b03030' : '#2d6a0f';
-  noteEl.textContent = need > 0 ? `เบิกเพิ่ม ${need} ชิ้น` : 'เต็ม Max ✓';
+  const isFull = m.max > 0 && v >= m.max;
+  noteEl.style.color = isLow ? '#b03030' : isFull ? '#2d6a0f' : 'var(--ink4)';
+  noteEl.textContent = isLow ? 'ต่ำกว่า Min' : isFull ? 'ครบ Max ✓' : '';
   inp.style.borderColor = isLow ? '#d04040' : '#4a9a2a';
   inp.style.background  = isLow ? '#fdf0f0' : '#f0f7ec';
-
-  updateStats();
-}
-
-function updateStats() {
-  const finishItems = masterDB.filter(m=>m.pg==='finish');
-  const allCounted = Object.keys(dscData).length;
-  const allNeed = finishItems.filter(m=>dscData[m.code]!==undefined && dscData[m.code].actual<(m.min||0)).length;
-  const cEl = document.querySelector('#page-daily-stockcount .card:nth-child(2) div:first-child');
-  const nEl = document.querySelector('#page-daily-stockcount .card:nth-child(3) div:first-child');
 }
 
 function dscNav(e, code, codesStr) {
@@ -4421,9 +4372,7 @@ function dscNav(e, code, codesStr) {
   e.preventDefault();
   const codes = codesStr.split(',');
   const i = codes.indexOf(code);
-  if (i < codes.length-1) {
-    document.getElementById('inp-'+codes[i+1])?.focus();
-  }
+  if (i < codes.length-1) document.getElementById('inp-'+codes[i+1])?.focus();
 }
 
 function dscSetNote(code, note) {
@@ -4459,7 +4408,12 @@ function dscCopy() {
   subcats.forEach(sub=>{
     const items = finishItems.filter(m=>(m.subcat||'ไม่มีหมวดหมู่')===sub);
     lines.push(`── ${sub} ──`);
-    items.forEach((m,i)=>lines.push(`${i+1}. ${m.name}  (ระบบ ${m.stock}  Min ${m.min||0}  Max ${m.max||0})  นับจริง: ___`));
+    items.forEach((m,i)=>{
+      let row = `${i+1}. ${m.name}  (ระบบ ${m.stock}  Min ${m.min||0}  Max ${m.max||0})`;
+      if (m.spec) row += `  [${m.spec}]`;
+      row += `  นับจริง: ___`;
+      lines.push(row);
+    });
     lines.push('');
   });
   navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกรายการแล้วค่ะ'));
@@ -4494,20 +4448,26 @@ async function dscDoSave(items) {
 
   for (const m of items) {
     const actual = dscData[m.code].actual;
+    const note   = dscData[m.code].note || null;
     await sb.from('items').update({ stock: actual }).eq('code', m.code);
     m.stock = actual;
     if (actual < (m.min||0) && !existingCodes.has(m.code)) {
       newWithdraw.push({
         date: today, item_code: m.code, item_name: m.name, pg: m.pg,
         current_stock: actual, max_stock: m.max||0,
-        suggested_qty: Math.max(0,(m.max||0)-actual), status:'pending',
+        suggested_qty: Math.max(0,(m.max||0)-actual),
+        note: note,   // บันทึกหมายเหตุไปด้วย
+        status: 'pending',
       });
+    } else if (actual < (m.min||0) && existingCodes.has(m.code) && note) {
+      // อัปเดต note ถ้ามีอยู่แล้ว
+      await sb.from('daily_withdrawals').update({ note }).eq('item_code', m.code).eq('date', today);
     }
   }
 
   if (newWithdraw.length) {
     await sb.from('daily_withdrawals').insert(newWithdraw);
-    showToast(`เพิ่ม ${newWithdraw.length} รายการเข้าใบเบิกประจำวันแล้วค่ะ`);
+    showToast(`เพิ่ม ${newWithdraw.length} รายการเข้าใบเบิกแล้วค่ะ`);
   }
 }
 
