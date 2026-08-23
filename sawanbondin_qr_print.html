@@ -137,8 +137,106 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 @media(max-width:768px){.workspace{grid-template-columns:1fr;grid-template-rows:auto 1fr}.sidebar{height:auto;position:static;border-right:none;border-bottom:1px solid var(--line)}}
 </style>
 
+<body>
+<div class="topbar">
+  <div style="display:flex;align-items:center">
+    <span class="topbar-title">Sawanbondin</span>
+    <span class="topbar-sub">พิมพ์สติ๊กเกอร์ QR / Barcode</span>
+  </div>
+  <button class="print-btn" onclick="doPrint()"><i class="ti ti-printer"></i> พิมพ์สติ๊กเกอร์</button>
+</div>
+<div class="workspace">
+  <div class="sidebar">
+    <!-- Tab: Items / Lots -->
+    <div class="sb-sec">
+      <div class="tab-row">
+        <button class="tab-btn active" id="tab-items" onclick="switchTab('items')">รายการสินค้า</button>
+        <button class="tab-btn" id="tab-lots" onclick="switchTab('lots')">Lot QR</button>
+      </div>
+    </div>
+
+    <!-- Items tab -->
+    <div id="items-tab">
+      <div class="sb-sec">
+        <div class="sb-label">ค้นหา</div>
+        <input class="search-input" id="searchInput" placeholder="ชื่อหรือรหัส..." oninput="filterItems()">
+      </div>
+      <div class="sb-sec">
+        <div class="sb-label">หมวดหมู่</div>
+        <div class="cat-pills" id="catPills"></div>
+      </div>
+      <div class="sb-sec">
+        <div class="sb-label">รายการ</div>
+        <div class="sel-bar" id="selBar"><span id="selCount">เลือก 0</span><span style="cursor:pointer;font-size:11px" onclick="clearAll()">ล้าง</span></div>
+        <div class="sel-actions">
+          <button class="sel-btn" onclick="selectAll()">เลือกทั้งหมด</button>
+          <button class="sel-btn" onclick="clearAll()">ยกเลิก</button>
+        </div>
+        <div id="itemListSb"></div>
+      </div>
+    </div>
+
+    <!-- Lots tab -->
+    <div id="lots-tab" style="display:none">
+      <div class="sb-sec">
+        <div class="sb-label">Lot QR (สแกนเข้า/ออก)</div>
+        <button class="lot-load-btn" id="loadLotsBtn" onclick="loadLots()">
+          <i class="ti ti-cloud-download"></i> โหลด Lot จากระบบ
+        </button>
+        <input class="search-input" id="lotSearch" placeholder="ค้นหา Lot..." oninput="filterLots()" style="margin-bottom:6px;display:none">
+        <div id="lotListSb"></div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="sb-sec">
+      <div class="sb-label">ตั้งค่าสติ๊กเกอร์</div>
+      <div class="opt-row"><span class="opt-label">รูปแบบ</span><select class="opt-sel" id="styleOpt" onchange="renderPreview()"><option value="classic">Classic</option><option value="modern">Modern</option><option value="minimal">Minimal</option><option value="branded">Branded</option></select></div>
+      <div class="opt-row"><span class="opt-label">QR Code</span><div class="opt-ctrl"><button class="opt-btn active" id="qrOn" onclick="toggle('showQR',true,'qrOn','qrOff')">แสดง</button><button class="opt-btn" id="qrOff" onclick="toggle('showQR',false,'qrOn','qrOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">Barcode เส้น</span><div class="opt-ctrl"><button class="opt-btn" id="bcOn" onclick="toggle('showBC',true,'bcOn','bcOff')">แสดง</button><button class="opt-btn active" id="bcOff" onclick="toggle('showBC',false,'bcOn','bcOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">ชื่อ</span><div class="opt-ctrl"><button class="opt-btn active" id="nmOn" onclick="toggle('showName',true,'nmOn','nmOff')">แสดง</button><button class="opt-btn" id="nmOff" onclick="toggle('showName',false,'nmOn','nmOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">หน่วยงาน</span><div class="opt-ctrl"><button class="opt-btn active" id="brOn" onclick="toggle('showBrand',true,'brOn','brOff')">แสดง</button><button class="opt-btn" id="brOff" onclick="toggle('showBrand',false,'brOn','brOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">พิกัด</span><div class="opt-ctrl"><button class="opt-btn active" id="locOn" onclick="toggle('showLoc',true,'locOn','locOff')">แสดง</button><button class="opt-btn" id="locOff" onclick="toggle('showLoc',false,'locOn','locOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">ชื่อ EN/TH แยกบรรทัด</span><div class="opt-ctrl"><button class="opt-btn active" id="biOn" onclick="toggle('showBilingual',true,'biOn','biOff')">แสดง</button><button class="opt-btn" id="biOff" onclick="toggle('showBilingual',false,'biOn','biOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">แบ่งถุง (lot)</span><div class="opt-ctrl"><button class="opt-btn active" id="bagOn" onclick="toggle('showBag',true,'bagOn','bagOff')">แสดง</button><button class="opt-btn" id="bagOff" onclick="toggle('showBag',false,'bagOn','bagOff')">ซ่อน</button></div></div>
+      <div class="opt-row" id="bagCountRow"><span class="opt-label">จำนวนถุงต่อ Lot</span><input class="opt-num" id="bagCount" type="number" value="1" min="1" max="50" onchange="renderPreview()"></div>
+      <div class="opt-row"><span class="opt-label">สเปก</span><div class="opt-ctrl"><button class="opt-btn" id="spOn" onclick="toggle('showSpec',true,'spOn','spOff')">แสดง</button><button class="opt-btn active" id="spOff" onclick="toggle('showSpec',false,'spOn','spOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">หมายเหตุ</span><div class="opt-ctrl"><button class="opt-btn" id="ntOn" onclick="toggle('showNote',true,'ntOn','ntOff')">แสดง</button><button class="opt-btn active" id="ntOff" onclick="toggle('showNote',false,'ntOn','ntOff')">ซ่อน</button></div></div>
+      <div class="opt-row"><span class="opt-label">คอลัมน์</span><div class="opt-ctrl"><button class="opt-btn" id="c2" onclick="setCols(2)">2</button><button class="opt-btn active" id="c3" onclick="setCols(3)">3</button><button class="opt-btn" id="c4" onclick="setCols(4)">4</button><button class="opt-btn" id="c5" onclick="setCols(5)">5</button></div></div>
+      <div class="opt-row"><span class="opt-label">ขนาด QR (px)</span><input class="opt-num" id="qrSize" type="number" value="80" min="48" max="160" step="8" onchange="renderPreview()"></div>
+      <div class="opt-row"><span class="opt-label">จำนวนชุด</span><input class="opt-num" id="copies" type="number" value="1" min="1" max="20" onchange="renderPreview()"></div>
+      <div class="opt-row" style="border-top:1px solid var(--line);padding-top:8px;margin-top:4px">
+        <span class="opt-label" style="font-weight:500">ตารางบันทึก</span>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px">
+          <input type="checkbox" id="showForm" style="width:14px;height:14px;cursor:pointer"> แสดง
+        </label>
+      </div>
+      <div id="formOpts" style="display:none;background:var(--s2);border-radius:var(--r);padding:8px;margin-top:4px;border:1px solid var(--line)">
+        <div style="font-size:10px;font-weight:600;color:var(--ink3);letter-spacing:.4px;margin-bottom:6px">ตั้งค่าตาราง</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+          <span style="font-size:12px;color:var(--ink2)">จำนวนแถว</span>
+          <input type="number" id="logRows" value="15" min="5" max="50" style="width:52px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;font-size:12px;text-align:center;outline:none">
+        </div>
+        <div style="font-size:10px;font-weight:600;color:var(--ink3);letter-spacing:.4px;margin:7px 0 5px">คอลัมน์</div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-date" checked> วันที่</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-action" checked> ประเภท (รับ/เบิก/คืน)</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-name" checked> ชื่อผู้ทำรายการ</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-qty" checked> จำนวน</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-balance" checked> ยอดคงเหลือ</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-lot"> Lot SW</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ff-note"> หมายเหตุ</label>
+      </div>
+    </div><!-- end sb-sec options -->
+  </div><!-- end sidebar -->
+
+  <div class="preview-area">
+    <div class="preview-header"><span class="preview-title">ตัวอย่างสติ๊กเกอร์</span><span style="font-size:11px;color:var(--ink3)" id="stickerCount"></span></div>
+    <div id="previewArea"><div class="preview-empty"><i class="ti ti-qrcode preview-empty-icon"></i><div class="preview-empty-text">เลือกรายการจากแถบซ้ายเพื่อดูตัวอย่าง</div></div></div>
+  </div>
+</div>
+
+
 <script>
-document.addEventListener("DOMContentLoaded", function() {
 const SB_URL = 'https://rsmcrshvcbtcxvvhdmnk.supabase.co';
 const SB_KEY = 'sb_publishable__RK27ReptMhtMdc8EdA-KQ_K4zfhMwJ';
 const sb = window.supabase.createClient(SB_URL, SB_KEY);
@@ -563,106 +661,6 @@ window.doPrint = doPrint;
 window.addBagRow = addBagRow;
 window.setCols = setCols;
 
-}); // end DOMContentLoaded
 </script>
-</head>
-<body>
-<div class="topbar">
-  <div style="display:flex;align-items:center">
-    <span class="topbar-title">Sawanbondin</span>
-    <span class="topbar-sub">พิมพ์สติ๊กเกอร์ QR / Barcode</span>
-  </div>
-  <button class="print-btn" onclick="doPrint()"><i class="ti ti-printer"></i> พิมพ์สติ๊กเกอร์</button>
-</div>
-<div class="workspace">
-  <div class="sidebar">
-    <!-- Tab: Items / Lots -->
-    <div class="sb-sec">
-      <div class="tab-row">
-        <button class="tab-btn active" id="tab-items" onclick="switchTab('items')">รายการสินค้า</button>
-        <button class="tab-btn" id="tab-lots" onclick="switchTab('lots')">Lot QR</button>
-      </div>
-    </div>
-
-    <!-- Items tab -->
-    <div id="items-tab">
-      <div class="sb-sec">
-        <div class="sb-label">ค้นหา</div>
-        <input class="search-input" id="searchInput" placeholder="ชื่อหรือรหัส..." oninput="filterItems()">
-      </div>
-      <div class="sb-sec">
-        <div class="sb-label">หมวดหมู่</div>
-        <div class="cat-pills" id="catPills"></div>
-      </div>
-      <div class="sb-sec">
-        <div class="sb-label">รายการ</div>
-        <div class="sel-bar" id="selBar"><span id="selCount">เลือก 0</span><span style="cursor:pointer;font-size:11px" onclick="clearAll()">ล้าง</span></div>
-        <div class="sel-actions">
-          <button class="sel-btn" onclick="selectAll()">เลือกทั้งหมด</button>
-          <button class="sel-btn" onclick="clearAll()">ยกเลิก</button>
-        </div>
-        <div id="itemListSb"></div>
-      </div>
-    </div>
-
-    <!-- Lots tab -->
-    <div id="lots-tab" style="display:none">
-      <div class="sb-sec">
-        <div class="sb-label">Lot QR (สแกนเข้า/ออก)</div>
-        <button class="lot-load-btn" id="loadLotsBtn" onclick="loadLots()">
-          <i class="ti ti-cloud-download"></i> โหลด Lot จากระบบ
-        </button>
-        <input class="search-input" id="lotSearch" placeholder="ค้นหา Lot..." oninput="filterLots()" style="margin-bottom:6px;display:none">
-        <div id="lotListSb"></div>
-      </div>
-    </div>
-
-    <!-- Settings -->
-    <div class="sb-sec">
-      <div class="sb-label">ตั้งค่าสติ๊กเกอร์</div>
-      <div class="opt-row"><span class="opt-label">รูปแบบ</span><select class="opt-sel" id="styleOpt" onchange="renderPreview()"><option value="classic">Classic</option><option value="modern">Modern</option><option value="minimal">Minimal</option><option value="branded">Branded</option></select></div>
-      <div class="opt-row"><span class="opt-label">QR Code</span><div class="opt-ctrl"><button class="opt-btn active" id="qrOn" onclick="toggle('showQR',true,'qrOn','qrOff')">แสดง</button><button class="opt-btn" id="qrOff" onclick="toggle('showQR',false,'qrOn','qrOff')">ซ่อน</button></div></div>
-      <div class="opt-row"><span class="opt-label">Barcode เส้น</span><div class="opt-ctrl"><button class="opt-btn" id="bcOn" onclick="toggle('showBC',true,'bcOn','bcOff')">แสดง</button><button class="opt-btn active" id="bcOff" onclick="toggle('showBC',false,'bcOn','bcOff')">ซ่อน</button></div></div>
-      <div class="opt-row"><span class="opt-label">ชื่อ</span><div class="opt-ctrl"><button class="opt-btn active" id="nmOn" onclick="toggle('showName',true,'nmOn','nmOff')">แสดง</button><button class="opt-btn" id="nmOff" onclick="toggle('showName',false,'nmOn','nmOff')">ซ่อน</button></div></div>
-      <div class="opt-row"><span class="opt-label">หน่วยงาน</span><div class="opt-ctrl"><button class="opt-btn active" id="brOn" onclick="toggle('showBrand',true,'brOn','brOff')">แสดง</button><button class="opt-btn" id="brOff" onclick="toggle('showBrand',false,'brOn','brOff')">ซ่อน</button></div></div>
-      <div class="opt-row"><span class="opt-label">พิกัด</span><div class="opt-ctrl"><button class="opt-btn active" id="locOn" onclick="toggle('showLoc',true,'locOn','locOff')">แสดง</button><button class="opt-btn" id="locOff" onclick="toggle('showLoc',false,'locOn','locOff')">ซ่อน</button></div></div>
-      <div class="opt-row"><span class="opt-label">ชื่อ EN/TH แยกบรรทัด</span><div class="opt-ctrl"><button class="opt-btn active" id="biOn" onclick="toggle('showBilingual',true,'biOn','biOff')">แสดง</button><button class="opt-btn" id="biOff" onclick="toggle('showBilingual',false,'biOn','biOff')">ซ่อน</button></div></div>
-      <div class="opt-row"><span class="opt-label">แบ่งถุง (lot)</span><div class="opt-ctrl"><button class="opt-btn active" id="bagOn" onclick="toggle('showBag',true,'bagOn','bagOff')">แสดง</button><button class="opt-btn" id="bagOff" onclick="toggle('showBag',false,'bagOn','bagOff')">ซ่อน</button></div></div>
-      <div class="opt-row" id="bagCountRow"><span class="opt-label">จำนวนถุงต่อ Lot</span><input class="opt-num" id="bagCount" type="number" value="1" min="1" max="50" onchange="renderPreview()"></div>
-      <div class="opt-row"><span class="opt-label">สเปก</span><div class="opt-ctrl"><button class="opt-btn" id="spOn" onclick="toggle('showSpec',true,'spOn','spOff')">แสดง</button><button class="opt-btn active" id="spOff" onclick="toggle('showSpec',false,'spOn','spOff')">ซ่อน</button></div></div>
-      <div class="opt-row"><span class="opt-label">หมายเหตุ</span><div class="opt-ctrl"><button class="opt-btn" id="ntOn" onclick="toggle('showNote',true,'ntOn','ntOff')">แสดง</button><button class="opt-btn active" id="ntOff" onclick="toggle('showNote',false,'ntOn','ntOff')">ซ่อน</button></div></div>
-      <div class="opt-row"><span class="opt-label">คอลัมน์</span><div class="opt-ctrl"><button class="opt-btn" id="c2" onclick="setCols(2)">2</button><button class="opt-btn active" id="c3" onclick="setCols(3)">3</button><button class="opt-btn" id="c4" onclick="setCols(4)">4</button><button class="opt-btn" id="c5" onclick="setCols(5)">5</button></div></div>
-      <div class="opt-row"><span class="opt-label">ขนาด QR (px)</span><input class="opt-num" id="qrSize" type="number" value="80" min="48" max="160" step="8" onchange="renderPreview()"></div>
-      <div class="opt-row"><span class="opt-label">จำนวนชุด</span><input class="opt-num" id="copies" type="number" value="1" min="1" max="20" onchange="renderPreview()"></div>
-      <div class="opt-row" style="border-top:1px solid var(--line);padding-top:8px;margin-top:4px">
-        <span class="opt-label" style="font-weight:500">ตารางบันทึก</span>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px">
-          <input type="checkbox" id="showForm" style="width:14px;height:14px;cursor:pointer"> แสดง
-        </label>
-      </div>
-      <div id="formOpts" style="display:none;background:var(--s2);border-radius:var(--r);padding:8px;margin-top:4px;border:1px solid var(--line)">
-        <div style="font-size:10px;font-weight:600;color:var(--ink3);letter-spacing:.4px;margin-bottom:6px">ตั้งค่าตาราง</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-          <span style="font-size:12px;color:var(--ink2)">จำนวนแถว</span>
-          <input type="number" id="logRows" value="15" min="5" max="50" style="width:52px;padding:3px 6px;border:1px solid var(--line);border-radius:5px;font-size:12px;text-align:center;outline:none">
-        </div>
-        <div style="font-size:10px;font-weight:600;color:var(--ink3);letter-spacing:.4px;margin:7px 0 5px">คอลัมน์</div>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-date" checked> วันที่</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-action" checked> ประเภท (รับ/เบิก/คืน)</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-name" checked> ชื่อผู้ทำรายการ</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-qty" checked> จำนวน</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-balance" checked> ยอดคงเหลือ</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;cursor:pointer"><input type="checkbox" id="ff-lot"> Lot SW</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="ff-note"> หมายเหตุ</label>
-      </div>
-    </div><!-- end sb-sec options -->
-  </div><!-- end sidebar -->
-
-  <div class="preview-area">
-    <div class="preview-header"><span class="preview-title">ตัวอย่างสติ๊กเกอร์</span><span style="font-size:11px;color:var(--ink3)" id="stickerCount"></span></div>
-    <div id="previewArea"><div class="preview-empty"><i class="ti ti-qrcode preview-empty-icon"></i><div class="preview-empty-text">เลือกรายการจากแถบซ้ายเพื่อดูตัวอย่าง</div></div></div>
-  </div>
-</div>
-
 </body>
 </html>
