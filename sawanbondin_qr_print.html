@@ -640,6 +640,19 @@ style.textContent='@keyframes spin{to{transform:rotate(360deg)}}';
 document.head.appendChild(style);
 
 init();
+
+// Expose functions to global scope for inline handlers
+window.switchTab = switchTab;
+window.filterItems = filterItems;
+window.filterLots = filterLots;
+window.loadLots = loadLots;
+window.toggle = toggle;
+window.clearAll = clearAll;
+window.clearLots = clearLots;
+window.selectAll = selectAll;
+window.renderPreview = renderPreview;
+window.doPrint = doPrint;
+window.addBagRow = addBagRow;
 </script>
 </body>
 </html>
