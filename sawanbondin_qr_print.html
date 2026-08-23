@@ -534,6 +534,12 @@ function bindFormControls(){
   });
 }
 
+function clearLots(){
+  lotSelected.clear();
+  document.querySelectorAll('.item-entry').forEach(el=>el.classList.remove('sel'));
+  document.getElementById('lotSelCount').textContent='เลือก 0';
+}
+
 function doPrint(){if(!selected.size&&!lotSelected.size){alert('กรุณาเลือกรายการหรือ Lot ก่อนพิมพ์');return;}window.print();}
 
 // CSS animation for loader
@@ -555,6 +561,7 @@ window.selectAll = selectAll;
 window.renderPreview = renderPreview;
 window.doPrint = doPrint;
 window.addBagRow = addBagRow;
+window.setCols = setCols;
 
 }); // end DOMContentLoaded
 </script>
