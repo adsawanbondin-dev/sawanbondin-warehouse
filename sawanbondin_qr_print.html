@@ -301,7 +301,7 @@ async function loadLots(){
   const btn=document.getElementById('loadLotsBtn');
   btn.disabled=true; btn.innerHTML='<i class="ti ti-loader" style="animation:spin 1s linear infinite"></i> กำลังโหลด...';
   try{
-    const{data,error}=await sb.from('lots').select('id,item_code,item_name,lot_sw,lot_supplier,stock,qr_payload').gt('stock',0).order('item_code').order('lot_sw');
+    const{data,error}=await sb.from('lots').select('id,item_code,item_name,lot_sw,lot_supplier,stock,weight_kg,bag_number,bag_total,note,qr_payload').gt('stock',0).order('item_code').order('lot_sw').order('bag_number');
     if(error)throw error;
     lotCatalog=data.map(r=>({
       id:r.id,
@@ -309,6 +309,10 @@ async function loadLots(){
       lotSW:r.lot_sw||'',
       lotSP:r.lot_supplier||'',
       stock:parseFloat(r.stock)||0,
+      weight_kg: r.weight_kg ? parseFloat(r.weight_kg) : null,
+      bag_number: r.bag_number || null,
+      bag_total:  r.bag_total  || null,
+      note: r.note || '',
       code:r.qr_payload||(r.item_code+'__LOT__'+r.lot_sw),
       itemCode:r.item_code,
       cat:'Lot',
@@ -439,10 +443,9 @@ function renderPreview(){
   allItems.forEach(it=>{
     for(let c=0;c<copies;c++){
       if(showBag && it.type==='lot' && bagCount>1){
-        // แยกเป็นถุงๆ คำนวณน้ำหนักต่อถุง
-        const weightPerBag = it.weight_kg ? it.weight_kg / bagCount : null;
+        // แยกเป็นถุงๆ — ไม่หารน้ำหนัก เพราะแต่ละถุงมี weight_kg ของตัวเองแล้ว
         for(let b=1;b<=bagCount;b++){
-          expanded.push({...it, bagNum:b, bagTotal:bagCount, weight_kg: weightPerBag});
+          expanded.push({...it, bagNum:b, bagTotal:bagCount});
         }
         }
       } else {
@@ -505,10 +508,12 @@ function renderPreview(){
     // divider
     const dvd=document.createElement('div'); dvd.className='sticker-divider'; div.appendChild(dvd);
 
-    // Lot + bag info
-    if(item.bagNum){
+    // Lot + bag info — ใช้ bag_number จาก DB ก่อน ถ้าไม่มีค่อยใช้ bagNum ที่คำนวณ
+    const bagNum   = item.bag_number || item.bagNum;
+    const bagTotal = item.bag_total  || item.bagTotal;
+    if(bagNum){
       const badge=document.createElement('div');badge.className='sticker-bag-badge';
-      badge.textContent=`ถุงที่ ${item.bagNum} / ${item.bagTotal}`;
+      badge.textContent=`ถุงที่ ${bagNum} / ${bagTotal}`;
       div.insertBefore(badge, div.firstChild);
     }
     if(item.type==='lot'&&item.lotSW){
