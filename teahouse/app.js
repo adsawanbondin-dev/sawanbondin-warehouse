@@ -3809,22 +3809,19 @@ async function dwReceive(id) {
   if (!recvQty) { showToast('กรุณากรอกจำนวนรับเข้าก่อนค่ะ','err'); return; }
 
   if (item.pg === 'finish' && item.factory_code) {
-    // หัก stock Factory
     const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', item.factory_code).single();
-    if (fItem) {
-      await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', item.factory_code);
-    }
-    // บวก stock Tea House
+    if (fItem) await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', item.factory_code);
     const m = masterDB.find(x=>x.code===item.item_code);
     if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
   } else {
-    // Store 2
     const m = masterDB.find(x=>x.code===item.item_code);
     if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
   }
 
   await sb.from('daily_withdrawals').update({
-    status: 'received', received_qty: recvQty, received_at: new Date().toISOString()
+    status: 'received', received_qty: recvQty,
+    factory_withdraw_status: 'received',
+    received_at: new Date().toISOString()
   }).eq('id', id);
   item.status = 'received'; item.received_qty = recvQty;
   await dbLoadDailyWithdrawals();
@@ -3832,32 +3829,25 @@ async function dwReceive(id) {
 }
 
 async function dwReceiveAll() {
-  const items = dwItems.filter(x => x.status !== 'received');
+  const items = dwItems.filter(x=>x.status!=='received');
   for (const item of items) { if (!item._recvQty) item._recvQty = item.suggested_qty||0; await dwReceive(item.id); }
 }
 
 async function dwReceiveAllSection(pg) {
-  const items = dwItems.filter(x => x.pg === pg && x.status !== 'received');
+  const items = dwItems.filter(x=>x.pg===pg && x.status!=='received');
   if (!items.length) { showToast('ไม่มีรายการที่รอรับ','err'); return; }
   if (!confirm(`ยืนยันรับเข้า ${items.length} รายการ?`)) return;
   for (const item of items) { if (!item._recvQty) item._recvQty = item.suggested_qty||0; await dwReceive(item.id); }
 }
 
-async function dwConfirmAllSection(pg) {
-  await dwReceiveAllSection(pg);
-}
-
-function dwSetRecvQty(id, val) {
-  const item = dwItems.find(x=>x.id===id);
-  if (item) item._recvQty = parseFloat(val)||0;
-}
+async function dwConfirmAllSection(pg) { await dwReceiveAllSection(pg); }
+function dwSetRecvQty(id, val) { const item=dwItems.find(x=>x.id===id); if(item) item._recvQty=parseFloat(val)||0; }
 
 function dwFilterCat(btn, pg, cat) {
-  const allBtns = document.querySelectorAll(`.dw-cat-${pg}`);
-  allBtns.forEach(b=>{ b.style.background='transparent'; b.style.color='var(--ink3)'; });
-  btn.style.background = 'var(--ink)'; btn.style.color = 'var(--surface)';
+  document.querySelectorAll(`.dw-cat-${pg}`).forEach(b=>{ b.style.background='transparent'; b.style.color='var(--ink3)'; });
+  btn.style.background='var(--ink)'; btn.style.color='var(--surface)';
   document.querySelectorAll(`.dw-row-${pg}`).forEach(row=>{
-    row.style.display = (cat==='ทั้งหมด'||row.dataset.cat===cat) ? 'flex' : 'none';
+    row.style.display=(cat==='ทั้งหมด'||row.dataset.cat===cat)?'flex':'none';
   });
 }
 
@@ -3874,8 +3864,15 @@ async function renderDailyWithdrawPage() {
   const received = dwItems.filter(x=>x.status==='received').length;
   const total    = dwItems.length;
 
+  const statusConfig = {
+    pending:  { label:'รอ Factory', color:'#7a5900', bg:'#fff8e8', border:'#c8960a' },
+    cutting:  { label:'Factory กำลังตัดสต็อก', color:'#013c58', bg:'#e8f0f5', border:'#013c58' },
+    shipping: { label:'กำลังจัดส่ง', color:'#2d4a0f', bg:'#edf5ec', border:'#4a6b1a' },
+    received: { label:'รับเข้าแล้ว', color:'#2d4a0f', bg:'#edf5ec', border:'#4a6b1a' },
+  };
+
   function buildSection(pg, label, icon) {
-    const items = dwItems.filter(m => m.pg === pg);
+    const items = dwItems.filter(m=>m.pg===pg);
     if (!items.length) return `<div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:12px">
       <div style="padding:9px 16px;background:var(--s2);display:flex;align-items:center;gap:8px">
         <i class="ti ${icon}" style="font-size:13px;color:var(--ink4)"></i>
@@ -3886,30 +3883,27 @@ async function renderDailyWithdrawPage() {
 
     const secReceived = items.filter(x=>x.status==='received').length;
     const secPending  = items.filter(x=>x.status!=='received').length;
+    const subcatSet = [...new Set(items.map(i=>{const m=masterDB.find(x=>x.code===i.item_code);return m?.subcat||'อื่นๆ';}))];
+    const subcats = subcatSet.length>1 ? ['ทั้งหมด',...subcatSet] : [];
 
-    // หมวดหมู่ย่อย
-    const subcatSet = [...new Set(items.map(i => {
-      const m = masterDB.find(x=>x.code===i.item_code);
-      return m?.subcat||'อื่นๆ';
-    }))];
-    const subcats = subcatSet.length > 1 ? ['ทั้งหมด', ...subcatSet] : [];
-
-    const catTabsHtml = subcats.map((sub,idx) => `
+    const catTabsHtml = subcats.map((sub,idx)=>`
       <button onclick="dwFilterCat(this,'${pg}','${sub.replace(/'/g,"\'")}') " class="dw-cat-${pg}"
         style="padding:3px 12px;border-radius:12px;border:0.5px solid var(--line);font-size:10px;cursor:pointer;font-family:inherit;
         background:${idx===0?'var(--ink)':'transparent'};color:${idx===0?'var(--surface)':'var(--ink3)'}">
         ${sub}
       </button>`).join('');
 
-    const rows = items.map(item => {
-      const isDone = item.status === 'received';
+    const rows = items.map(item=>{
+      const isDone = item.status==='received';
       const m = masterDB.find(x=>x.code===item.item_code);
       const subcat = m?.subcat||'อื่นๆ';
-      const isCarried = item.date && item.date !== todayStr;
+      const isCarried = item.date && item.date!==todayStr;
+      const fwStatus = item.factory_withdraw_status||'pending';
+      const sc = statusConfig[fwStatus]||statusConfig.pending;
 
       if (isDone) return `<div class="dw-row-${pg}" data-cat="${subcat}"
         style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:0.5px solid var(--line);opacity:.4">
-        <div style="flex:1;min-width:0;font-size:12px;font-weight:500">${item.item_name}
+        <div style="flex:1;font-size:12px;font-weight:500">${item.item_name}
           <span style="font-size:9px;color:#2d6a0f;margin-left:4px">✓ รับแล้ว ${item.received_qty||0}</span>
         </div>
         <div style="font-size:11px;color:var(--ink4)">แนะนำ ${item.suggested_qty||0}</div>
@@ -3919,10 +3913,13 @@ async function renderDailyWithdrawPage() {
       return `<div class="dw-row-${pg}" data-cat="${subcat}"
         style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:0.5px solid var(--line)" id="dwrow-${item.id}">
         <div style="flex:1;min-width:0">
-          <div style="font-size:12px;font-weight:500">${item.item_name}
+          <div style="font-size:12px;font-weight:500;margin-bottom:${item.note?'3px':'0'}">${item.item_name}
             ${isCarried?`<span style="font-size:9px;color:var(--ink4);margin-left:4px">ค้างมา</span>`:''}
           </div>
-          ${item.note?`<div style="font-size:10px;color:#7a5900;background:#fff8e8;padding:1px 6px;border-radius:4px;display:inline-block;margin-top:2px">${item.note}</div>`:''}
+          ${item.note?`<div style="font-size:10px;color:#7a5900;background:#fff8e8;padding:1px 6px;border-radius:4px;display:inline-block">${item.note}</div>`:''}
+          ${pg==='finish'?`<div style="margin-top:3px">
+            <span style="font-size:9px;padding:2px 7px;border-radius:8px;background:${sc.bg};color:${sc.color};border:0.5px solid ${sc.border}">${sc.label}</span>
+          </div>`:''}
         </div>
         <div style="text-align:right;flex-shrink:0;min-width:44px">
           <div style="font-size:9px;color:var(--ink4)">แนะนำ</div>
@@ -3947,6 +3944,10 @@ async function renderDailyWithdrawPage() {
           <span style="font-size:12px;font-weight:500">${label}</span>
           <span style="font-size:10px;color:var(--ink4)">${items.length} รายการ${secReceived?` · รับแล้ว ${secReceived}`:''}</span>
         </div>
+        <button onclick="dwCopySectionText('${pg}')"
+          style="font-size:10px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--line);background:transparent;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px">
+          <i class="ti ti-copy" style="font-size:11px"></i> คัดลอก
+        </button>
       </div>
       ${subcats.length?`<div style="display:flex;gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--line);flex-wrap:wrap;background:var(--s2)">${catTabsHtml}</div>`:''}
       <div style="display:grid;grid-template-columns:1fr 48px 68px 56px;padding:5px 16px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
@@ -3994,6 +3995,20 @@ async function renderDailyWithdrawPage() {
     </div>
     ${buildSection('finish','สินค้าสำเร็จรูป (จาก Factory)','ti-package')}
     ${buildSection('store2','Store 2','ti-building-store')}`;
+}
+
+function dwCopySectionText(pg) {
+  const label = pg==='finish'?'สินค้าสำเร็จรูป':'Store 2';
+  const items = dwItems.filter(x=>x.pg===pg && x.status!=='received');
+  if (!items.length) { showToast(`ไม่มีรายการ${label}`,'err'); return; }
+  const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+  const lines = [`รายการเบิก${label} — ${today}`, ''];
+  items.forEach((item,i)=>{
+    const isCarried = item.date && item.date!==new Date().toISOString().split('T')[0];
+    lines.push(`${i+1}. ${item.item_name}${isCarried?' [ค้างมา]':''} — เบิก ${item.suggested_qty||0}`);
+    if (item.note) lines.push(`   หมายเหตุ: ${item.note}`);
+  });
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast(`คัดลอก${label} ${items.length} รายการแล้วค่ะ`));
 }
 
 
