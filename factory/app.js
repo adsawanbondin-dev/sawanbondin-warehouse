@@ -4171,19 +4171,160 @@ switchPage = async function(p) {
   if (p === 'stockcount') {
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.querySelector('[data-page="stockcount"]')?.classList.add('active');
-    // ซ่อนทุกหน้ารวมถึง dashboard
     const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
-    const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', ...alertGroupPages];
+    const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'th-withdraw', ...alertGroupPages];
     allPages.forEach(pg => {
       const el = document.getElementById('page-' + pg);
       if (el) el.className = pg === p ? 'page-visible' : 'page-hidden';
     });
     curPage = p;
     await renderStockCountPage();
+  } else if (p === 'th-withdraw') {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelector('[data-page="th-withdraw"]')?.classList.add('active');
+    const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
+    const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'th-withdraw', ...alertGroupPages];
+    allPages.forEach(pg => {
+      const el = document.getElementById('page-' + pg);
+      if (el) el.className = pg === p ? 'page-visible' : 'page-hidden';
+    });
+    curPage = p;
+    await renderThWithdrawPage();
   } else {
     _scOrigSwitch(p);
   }
 };
+
+/* ═══════════════════════════════════════════
+   TEA HOUSE WITHDRAW MODULE — รายการเบิก Tea House
+═══════════════════════════════════════════ */
+
+const sbTH = window.supabase.createClient(
+  'https://zdeasnvrntcakyccwlsq.supabase.co',
+  'sb_publishable_TlOb9MhP5wJKlQVIZ7PHSQ_sVXMdIGW',
+);
+
+async function renderThWithdrawPage() {
+  const div = document.getElementById('page-th-withdraw');
+  if (!div) return;
+  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
+
+  // ดึงรายการ finish จาก Tea House daily_withdrawals ที่ยังไม่ received
+  const { data, error } = await sbTH.from('daily_withdrawals')
+    .select('*')
+    .eq('pg','finish')
+    .neq('status','received')
+    .order('created_at', { ascending: false });
+
+  if (error) { div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--red)">โหลดไม่สำเร็จ: ${error.message}</div>`; return; }
+
+  const items = data || [];
+  const shipping = items.filter(x=>x.factory_withdraw_status==='shipping').length;
+  const pending  = items.filter(x=>x.factory_withdraw_status==='pending'||!x.factory_withdraw_status).length;
+
+  const rows = items.map(item => {
+    const fwStatus = item.factory_withdraw_status||'pending';
+    const isShipping = fwStatus==='shipping';
+    const statusLabel = {pending:'รอตัดสต็อก', cutting:'กำลังตัดสต็อก', shipping:'จัดส่งแล้ว'}[fwStatus]||fwStatus;
+    const statusColor = {pending:'#7a5900', cutting:'#013c58', shipping:'#2d4a0f'}[fwStatus]||'var(--ink4)';
+    const statusBg    = {pending:'#fff8e8', cutting:'#e8f0f5', shipping:'#edf5ec'}[fwStatus]||'var(--s2)';
+
+    // หา item ใน Factory finish
+    const fItem = masterDB.find(x => x.code===item.item_code || x.name===item.item_name);
+    const fStock = fItem?.stock ?? '?';
+
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:0.5px solid var(--line);${isShipping?'opacity:.6':''}">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:500;margin-bottom:2px">${item.item_name}</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:9px;padding:1px 7px;border-radius:8px;background:${statusBg};color:${statusColor};border:0.5px solid ${statusColor}">${statusLabel}</span>
+          <span style="font-size:10px;color:var(--ink4)">Stock Factory: <b>${fStock}</b></span>
+          ${item.note?`<span style="font-size:10px;color:#7a5900;background:#fff8e8;padding:1px 6px;border-radius:4px">${item.note}</span>`:''}
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:9px;color:var(--ink4)">ขอเบิก</div>
+        <div style="font-size:15px;font-weight:500">${item.suggested_qty||0}</div>
+      </div>
+      ${!isShipping?`<button onclick="thCutStock(${item.id},'${item.item_code}','${item.item_name}',${item.suggested_qty||0})"
+        style="padding:5px 12px;border-radius:7px;border:none;background:var(--ink);color:var(--surface);font-size:10px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">
+        ตัดสต็อก
+      </button>`:`<div style="font-size:10px;color:#2d6a0f;flex-shrink:0;padding:5px 8px">จัดส่งแล้ว ✓</div>`}
+    </div>`;
+  }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4)">
+    <i class="ti ti-checks" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>
+    ไม่มีรายการเบิกที่รอดำเนินการ
+  </div>`;
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">รายการเบิก Tea House</div>
+        <div class="page-sub">สินค้าสำเร็จรูปที่ Tea House ขอเบิก</div></div>
+      <button class="btn btn-sm" onclick="renderThWithdrawPage()" style="font-size:11px">
+        <i class="ti ti-refresh"></i> รีเฟรช
+      </button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <div class="card" style="flex:1;padding:8px 12px;text-align:center">
+        <div style="font-size:20px;font-weight:500">${items.length}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:2px">ทั้งหมด</div>
+      </div>
+      <div class="card" style="flex:1;padding:8px 12px;text-align:center">
+        <div style="font-size:20px;font-weight:500;color:#7a5900">${pending}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:2px">รอตัดสต็อก</div>
+      </div>
+      <div class="card" style="flex:1;padding:8px 12px;text-align:center">
+        <div style="font-size:20px;font-weight:500;color:#2d6a0f">${shipping}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:2px">จัดส่งแล้ว</div>
+      </div>
+    </div>
+    <div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden">
+      <div style="padding:9px 16px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;font-weight:500">รายการทั้งหมด</span>
+        ${pending>0?`<button onclick="thCutAll()"
+          style="font-size:10px;padding:4px 12px;border-radius:7px;background:var(--ink);color:var(--surface);border:none;cursor:pointer;font-family:inherit">
+          ตัดสต็อกทั้งหมด (${pending})
+        </button>`:''}
+      </div>
+      ${rows}
+    </div>`;
+}
+
+async function thCutStock(thId, itemCode, itemName, qty) {
+  // หา item ใน Factory
+  const fItem = masterDB.find(x => x.code===itemCode || x.name===itemName);
+  if (!fItem) {
+    showToast(`ไม่พบ "${itemName}" ใน Factory ค่ะ`, 'err');
+    return;
+  }
+  if (!confirm(`ยืนยันตัดสต็อก "${itemName}" จำนวน ${qty} จาก Factory?`)) return;
+
+  // หัก stock Factory
+  const newStock = Math.max(0, fItem.stock - qty);
+  const { error: fErr } = await sb.from('items').update({ stock: newStock }).eq('code', fItem.code);
+  if (fErr) { showToast('ตัดสต็อก Factory ไม่สำเร็จ: '+fErr.message,'err'); return; }
+  fItem.stock = newStock;
+
+  // อัปเดตสถานะใน Tea House → shipping
+  await sbTH.from('daily_withdrawals').update({
+    factory_withdraw_status: 'shipping',
+    updated_at: new Date().toISOString()
+  }).eq('id', thId);
+
+  showToast(`ตัดสต็อก "${itemName}" ${qty} เรียบร้อย → สถานะ "กำลังจัดส่ง"ค่ะ`);
+  await renderThWithdrawPage();
+}
+
+async function thCutAll() {
+  const div = document.getElementById('page-th-withdraw');
+  const { data: items } = await sbTH.from('daily_withdrawals')
+    .select('*').eq('pg','finish').eq('factory_withdraw_status','pending');
+  if (!items?.length) { showToast('ไม่มีรายการที่รอตัดสต็อก','err'); return; }
+  if (!confirm(`ยืนยันตัดสต็อกทั้งหมด ${items.length} รายการ?`)) return;
+  for (const item of items) {
+    await thCutStock(item.id, item.item_code, item.item_name, item.suggested_qty||0);
+  }
+}
 
 /* ═══════════════════════════════════════════
    DASHBOARD MODULE — สำหรับผู้บริหาร (อ่านอย่างเดียว)
