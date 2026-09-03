@@ -4277,18 +4277,21 @@ function dscRender() {
 
   const today = new Date().toLocaleDateString('th-TH',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   const finishItems = masterDB.filter(m => m.pg === 'finish');
+  const store2Items = masterDB.filter(m => m.pg === 'store2');
+  const allItems    = [...finishItems, ...store2Items];
+
   const subcats = [...new Set(finishItems.map(m => m.subcat||'ไม่มีหมวดหมู่'))].sort();
   if (!dscCat || !subcats.includes(dscCat)) dscCat = subcats[0] || '';
 
   const allCounted = Object.keys(dscData).length;
 
-  // tabs หมวดหมู่
+  // tabs หมวดหมู่ finish
   const catTabs = subcats.map(sub => {
     const subItems = finishItems.filter(m=>(m.subcat||'ไม่มีหมวดหมู่')===sub);
     const counted  = subItems.filter(m=>dscData[m.code]!==undefined).length;
     const isActive = sub === dscCat;
     const allDone  = counted === subItems.length && subItems.length > 0;
-    return `<button onclick="dscCat='${sub.replace(/'/g,"\'")}';dscRender()"
+    return `<button onclick="dscCat='${sub.replace(/'/g,"\\'")}';dscRender()"
       style="padding:5px 14px;border-radius:20px;border:0.5px solid ${isActive?'var(--ink)':'var(--line)'};
       font-size:11px;cursor:pointer;font-family:inherit;
       background:${isActive?'var(--ink)':'transparent'};
@@ -4300,60 +4303,70 @@ function dscRender() {
     </button>`;
   }).join('');
 
-  // รายการในหมวด
+  // รายการ finish ในหมวด
   const catItems = finishItems.filter(m => {
     if ((m.subcat||'ไม่มีหมวดหมู่') !== dscCat) return false;
     if (dscSearch && !m.name.toLowerCase().includes(dscSearch.toLowerCase())) return false;
     return true;
   });
-
   const countedInCat = catItems.filter(m=>dscData[m.code]!==undefined).length;
 
-  const rows = catItems.map(m => {
-    const entry  = dscData[m.code];
-    const hasVal = entry !== undefined;
-    const actual = hasVal ? entry.actual : '';
-    const note   = hasVal ? (entry.note||'') : '';
-    const isLow  = hasVal && actual < (m.min||0);
-    const spec   = m.spec || '';
-    const rowBg  = !hasVal ? '' : isLow ? 'background:#fdf4f4' : 'background:#f4f9f0';
-    const inpBorder = !hasVal ? 'var(--line)' : isLow ? '#d04040' : '#4a9a2a';
-    const inpBg = !hasVal ? 'var(--surface)' : isLow ? '#fdf0f0' : '#f0f7ec';
-    const stockColor = m.stock < (m.min||0) ? '#b03030' : 'var(--ink4)';
-    const badge = m.stock < (m.min||0)
-      ? `<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:#fde8e8;color:#b03030;font-weight:500;margin-left:5px">ต่ำกว่า Min</span>`
-      : m.stock >= (m.max||0) && m.max > 0
-      ? `<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:#edf5e8;color:#2d6a0f;font-weight:500;margin-left:5px">เต็ม Max</span>`
-      : '';
+  // รายการ store2
+  const store2Filtered = store2Items.filter(m =>
+    !dscSearch || m.name.toLowerCase().includes(dscSearch.toLowerCase())
+  );
+  const countedStore2 = store2Filtered.filter(m=>dscData[m.code]!==undefined).length;
 
-    return `<div style="display:grid;grid-template-columns:1fr 110px 28px;padding:12px 16px;border-bottom:0.5px solid var(--line);align-items:start;gap:12px;${rowBg}">
-      <div>
-        <div style="font-size:13px;font-weight:500;margin-bottom:2px">${m.name}${badge}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-bottom:${spec?'4px':'0px'}">
-          <span style="color:${stockColor};${isLow?'font-weight:500':''}">ระบบ ${m.stock}</span>
-          <span style="margin:0 5px;opacity:.3">·</span>Min <b>${m.min||0}</b>
-          <span style="margin:0 5px;opacity:.3">·</span>Max <b>${m.max||0}</b>
+  function buildRows(items) {
+    return items.map(m => {
+      const entry  = dscData[m.code];
+      const hasVal = entry !== undefined;
+      const actual = hasVal ? entry.actual : '';
+      const note   = hasVal ? (entry.note||'') : '';
+      const isLow  = hasVal && actual < (m.min||0);
+      const spec   = m.spec || '';
+      const rowBg  = !hasVal ? '' : isLow ? 'background:#fdf4f4' : 'background:#f4f9f0';
+      const inpBorder = !hasVal ? 'var(--line)' : isLow ? '#d04040' : '#4a9a2a';
+      const inpBg = !hasVal ? 'var(--surface)' : isLow ? '#fdf0f0' : '#f0f7ec';
+      const stockColor = m.stock < (m.min||0) ? '#b03030' : 'var(--ink4)';
+      const badge = m.stock < (m.min||0)
+        ? `<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:#fde8e8;color:#b03030;font-weight:500;margin-left:5px">ต่ำกว่า Min</span>`
+        : m.stock >= (m.max||0) && m.max > 0
+        ? `<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:#edf5e8;color:#2d6a0f;font-weight:500;margin-left:5px">เต็ม Max</span>`
+        : '';
+      return `<div style="display:grid;grid-template-columns:1fr 110px 28px;padding:12px 16px;border-bottom:0.5px solid var(--line);align-items:start;gap:12px;${rowBg}">
+        <div>
+          <div style="font-size:13px;font-weight:500;margin-bottom:2px">${m.name}${badge}</div>
+          <div style="font-size:10px;color:var(--ink4);margin-bottom:${spec?'4px':'0px'}">
+            <span style="color:${stockColor};${isLow?'font-weight:500':''}">ระบบ ${m.stock}</span>
+            <span style="margin:0 5px;opacity:.3">·</span>Min <b>${m.min||0}</b>
+            <span style="margin:0 5px;opacity:.3">·</span>Max <b>${m.max||0}</b>
+          </div>
+          ${spec?`<div style="font-size:10px;color:var(--ink3);background:var(--s2);border-left:2px solid var(--line);padding:3px 8px;border-radius:0 4px 4px 0;margin-bottom:5px;line-height:1.5">${spec}</div>`:''}
+          <input type="text" placeholder="หมายเหตุถึงผู้เบิก..." value="${note}"
+            style="padding:4px 8px;border:0.5px solid var(--line);border-radius:6px;font-size:10px;width:100%;background:var(--surface);color:var(--ink3);outline:none;font-family:inherit"
+            onchange="dscSetNote('${m.code}',this.value)">
         </div>
-        ${spec?`<div style="font-size:10px;color:var(--ink3);background:var(--s2);border-left:2px solid var(--line);padding:3px 8px;border-radius:0 4px 4px 0;margin-bottom:5px;line-height:1.5">${spec}</div>`:''}
-        <input type="text" placeholder="หมายเหตุถึงผู้เบิก..." value="${note}"
-          style="padding:4px 8px;border:0.5px solid var(--line);border-radius:6px;font-size:10px;width:100%;background:var(--surface);color:var(--ink3);outline:none;font-family:inherit"
-          onchange="dscSetNote('${m.code}',this.value)">
-      </div>
-      <div style="display:flex;flex-direction:column;gap:3px">
-        <input type="number" min="0" step="0.01" inputmode="decimal" placeholder="กรอกจำนวน"
-          value="${actual}" id="inp-${m.code}"
-          style="padding:7px 10px;border:0.5px solid ${inpBorder};border-radius:8px;font-size:13px;text-align:right;width:100%;background:${inpBg};color:var(--ink);outline:none;font-family:inherit"
-          oninput="dscCalc('${m.code}',this.value)"
-          onkeydown="dscNav(event,'${m.code}','${catItems.map(i=>i.code).join(',')}')"
-          onfocus="this.select()">
-        <div id="inp-note-${m.code}" style="font-size:9px;text-align:right;min-height:12px;color:var(--ink4)">
-          ${hasVal ? (actual < (m.min||0) ? `ต่ำกว่า Min` : actual >= (m.max||0) && m.max > 0 ? 'ครบ Max ✓' : '') : ''}
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <input type="number" min="0" step="0.01" inputmode="decimal" placeholder="กรอกจำนวน"
+            value="${actual}" id="inp-${m.code}"
+            style="padding:7px 10px;border:0.5px solid ${inpBorder};border-radius:8px;font-size:13px;text-align:right;width:100%;background:${inpBg};color:var(--ink);outline:none;font-family:inherit"
+            oninput="dscCalc('${m.code}',this.value)"
+            onkeydown="dscNav(event,'${m.code}','${items.map(i=>i.code).join(',')}')"
+            onfocus="this.select()">
+          <div id="inp-note-${m.code}" style="font-size:9px;text-align:right;min-height:12px;color:var(--ink4)">
+            ${hasVal ? (actual < (m.min||0) ? `ต่ำกว่า Min` : actual >= (m.max||0) && m.max > 0 ? 'ครบ Max ✓' : '') : ''}
+          </div>
         </div>
-      </div>
-      <button onclick="dscClearRow('${m.code}')"
-        style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px;padding:0;margin-top:10px;${!hasVal?'opacity:.2':''}">✕</button>
-    </div>`;
-  }).join('') || `<div style="padding:32px;text-align:center;color:var(--ink4)">ไม่พบรายการ</div>`;
+        <button onclick="dscClearRow('${m.code}')"
+          style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px;padding:0;margin-top:10px;${!hasVal?'opacity:.2':''}">✕</button>
+      </div>`;
+    }).join('') || `<div style="padding:32px;text-align:center;color:var(--ink4)">ไม่พบรายการ</div>`;
+  }
+
+  const rows        = buildRows(catItems);
+  const store2Rows  = buildRows(store2Filtered);
+  const store2Counted = store2Items.filter(m=>dscData[m.code]!==undefined).length;
 
   div.innerHTML = `
     <div class="page-header">
@@ -4371,7 +4384,7 @@ function dscRender() {
 
     <div style="display:flex;gap:8px;margin-bottom:14px">
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:20px;font-weight:500">${finishItems.length}</div>
+        <div style="font-size:20px;font-weight:500">${allItems.length}</div>
         <div style="font-size:10px;color:var(--ink4);margin-top:2px">ทั้งหมด</div>
       </div>
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
@@ -4379,18 +4392,23 @@ function dscRender() {
         <div style="font-size:10px;color:var(--ink4);margin-top:2px">นับแล้ว</div>
       </div>
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:20px;font-weight:500">${finishItems.length - allCounted}</div>
+        <div style="font-size:20px;font-weight:500">${allItems.length - allCounted}</div>
         <div style="font-size:10px;color:var(--ink4);margin-top:2px">ยังไม่นับ</div>
       </div>
     </div>
 
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${catTabs}</div>
+    <div style="margin-bottom:12px">
+      <input class="fi" placeholder="ค้นหาทุกคลัง..." value="${dscSearch}"
+        oninput="dscSearch=this.value;dscRender()" style="max-width:260px;font-size:11px">
+    </div>
 
-    <div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden">
-      <div style="padding:8px 16px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+    <div style="font-size:11px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px">
+      <i class="ti ti-package" style="font-size:12px"></i> สินค้าสำเร็จรูป
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${catTabs}</div>
+    <div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:20px">
+      <div style="padding:8px 16px;background:var(--s2);border-bottom:0.5px solid var(--line)">
         <span style="font-size:12px;font-weight:500">${dscCat} · ${countedInCat}/${catItems.length}</span>
-        <input class="fi" placeholder="ค้นหา..." value="${dscSearch}"
-          oninput="dscSearch=this.value;dscRender()" style="width:130px;font-size:11px;padding:4px 8px">
       </div>
       <div style="display:grid;grid-template-columns:1fr 110px 28px;padding:5px 16px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
         <span>รายการ</span><span style="text-align:right">นับจริง</span><span></span>
@@ -4398,16 +4416,32 @@ function dscRender() {
       ${rows}
     </div>
 
-    <div style="margin-top:12px;padding:12px 16px;background:var(--s2);border:0.5px solid var(--line);border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="font-size:11px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.3px;margin-bottom:10px">
+      <i class="ti ti-building-store" style="font-size:12px"></i> Store 2
+    </div>
+    <div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:20px">
+      <div style="padding:8px 16px;background:var(--s2);border-bottom:0.5px solid var(--line)">
+        <span style="font-size:12px;font-weight:500">Store 2 · ${store2Counted}/${store2Items.length}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 110px 28px;padding:5px 16px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
+        <span>รายการ</span><span style="text-align:right">นับจริง</span><span></span>
+      </div>
+      ${store2Rows}
+    </div>
+
+    <div style="padding:12px 16px;background:var(--s2);border:0.5px solid var(--line);border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div style="font-size:10px;color:var(--ink4)">
         กด <kbd style="padding:1px 5px;border:0.5px solid var(--line);border-radius:4px;font-size:10px">Enter</kbd> เลื่อนรายการถัดไป
       </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-sm" onclick="dscFillCat('${dscCat.replace(/'/g,"\'")}')" style="font-size:11px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="dscFillCat('${dscCat.replace(/'/g,"\\'")}',false)" style="font-size:11px">
           นับเท่าระบบ
         </button>
-        <button class="btn btn-sm" onclick="dscSaveCat('${dscCat.replace(/'/g,"\'")}')" style="font-size:11px">
+        <button class="btn btn-sm" onclick="dscSaveCat('${dscCat.replace(/'/g,"\\'")}',false)" style="font-size:11px">
           <i class="ti ti-check"></i> บันทึกหมวดนี้ (${countedInCat})
+        </button>
+        <button class="btn btn-sm" onclick="dscSaveCat('',true)" style="font-size:11px">
+          <i class="ti ti-check"></i> บันทึก Store 2 (${store2Counted})
         </button>
         <button class="btn btn-sm btn-primary" onclick="dscSaveAll()" style="font-size:11px">
           <i class="ti ti-checks"></i> บันทึกทั้งหมด (${allCounted})
@@ -4415,7 +4449,6 @@ function dscRender() {
       </div>
     </div>`;
 }
-
 function dscCalc(code, val) {
   const v = val === '' ? undefined : parseFloat(val);
   if (v === undefined) { delete dscData[code]; }
@@ -4488,19 +4521,27 @@ function dscCopy() {
   navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกรายการแล้วค่ะ'));
 }
 
-async function dscSaveCat(cat) {
-  const catItems = masterDB.filter(m=>m.pg==='finish'&&(m.subcat||'ไม่มีหมวดหมู่')===cat);
+async function dscSaveCat(cat, isStore2=false) {
+  let catItems;
+  if (isStore2) {
+    catItems = masterDB.filter(m=>m.pg==='store2');
+  } else {
+    catItems = masterDB.filter(m=>m.pg==='finish'&&(m.subcat||'ไม่มีหมวดหมู่')===cat);
+  }
   const toUpdate = catItems.filter(m=>dscData[m.code]?.actual!==undefined);
   if(!toUpdate.length){showToast('กรุณากรอกยอดนับก่อนนะคะ','err');return;}
-  if(!confirm(`ยืนยันบันทึกหมวด "${cat}" จำนวน ${toUpdate.length} รายการ?`)) return;
+  const label = isStore2 ? 'Store 2' : `"${cat}"`;
+  if(!confirm(`ยืนยันบันทึกหมวด ${label} จำนวน ${toUpdate.length} รายการ?`)) return;
   await dscDoSave(toUpdate);
   catItems.forEach(m=>delete dscData[m.code]);
-  showToast(`บันทึกหมวด "${cat}" เรียบร้อยค่ะ`);
+  showToast(`บันทึกหมวด ${label} เรียบร้อยค่ะ`);
   dscRender();
 }
 
 async function dscSaveAll() {
-  const toUpdate = masterDB.filter(m=>m.pg==='finish'&&dscData[m.code]?.actual!==undefined);
+  const toUpdate = masterDB.filter(m=>
+    (m.pg==='finish'||m.pg==='store2') && dscData[m.code]?.actual!==undefined
+  );
   if(!toUpdate.length){showToast('กรุณากรอกยอดนับก่อนนะคะ','err');return;}
   if(!confirm(`ยืนยันบันทึกทั้งหมด ${toUpdate.length} รายการและสร้างใบเบิก?`)) return;
   await dscDoSave(toUpdate);
