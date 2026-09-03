@@ -3912,7 +3912,7 @@ async function renderDailyWithdrawPage() {
     const subcatSet = pg==='finish'
       ? FINISH_CATS
       : [...new Set(items.map(i=>{const m=masterDB.find(x=>x.code===i.item_code);return m?.subcat||'อื่นๆ';}))];
-    const subcats = subcatSet.length>0 ? ['ทั้งหมด',...subcatSet] : [];
+    const subcats = pg==='finish' ? subcatSet : (subcatSet.length>1 ? ['ทั้งหมด',...subcatSet] : []);
 
     const catTabsHtml = subcats.map((sub,idx)=>`
       <button onclick="dwFilterCat(this,'${pg}','${sub.replace(/'/g,"\'")}') " class="dw-cat-${pg}"
@@ -3920,6 +3920,8 @@ async function renderDailyWithdrawPage() {
         background:${idx===0?'var(--ink)':'transparent'};color:${idx===0?'var(--surface)':'var(--ink3)'}">
         ${sub}
       </button>`).join('');
+
+    const defaultCat = subcats.length > 0 ? subcats[0] : '';
 
     const rows = items.map(item=>{
       const isDone = item.status==='received';
@@ -3929,8 +3931,9 @@ async function renderDailyWithdrawPage() {
       const fwStatus = item.factory_withdraw_status||'pending';
       const sc = statusConfig[fwStatus]||statusConfig.pending;
 
+      const initDisplay = pg==='finish' ? (subcat===defaultCat?'flex':'none') : 'flex';
       if (isDone) return `<div class="dw-row-${pg}" data-cat="${subcat}"
-        style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:0.5px solid var(--line);opacity:.4">
+        style="display:${initDisplay};align-items:center;gap:10px;padding:9px 16px;border-bottom:0.5px solid var(--line);opacity:.4">
         <div style="flex:1;font-size:12px;font-weight:500">${item.item_name}
           <span style="font-size:9px;color:#2d6a0f;margin-left:4px">✓ รับแล้ว ${item.received_qty||0}</span>
         </div>
@@ -3939,7 +3942,7 @@ async function renderDailyWithdrawPage() {
       </div>`;
 
       return `<div class="dw-row-${pg}" data-cat="${subcat}"
-        style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:0.5px solid var(--line)" id="dwrow-${item.id}">
+        style="display:${initDisplay};align-items:center;gap:10px;padding:9px 16px;border-bottom:0.5px solid var(--line)" id="dwrow-${item.id}">
         <div style="flex:1;min-width:0">
           <div style="font-size:12px;font-weight:500;margin-bottom:${item.note?'3px':'0'}">${item.item_name}
             ${isCarried?`<span style="font-size:9px;color:var(--ink4);margin-left:4px">ค้างมา</span>`:''}
