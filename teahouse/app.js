@@ -3838,12 +3838,121 @@ async function dwReceive(id) {
   const recvQty = item._recvQty !== undefined ? item._recvQty : (item.suggested_qty||0);
   if (!recvQty) { showToast('กรุณากรอกจำนวนรับเข้าก่อนค่ะ','err'); return; }
 
-  if (item.pg === 'finish' && item.factory_code) {
-    const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', item.factory_code).single();
-    if (fItem) await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', item.factory_code);
+  // finish → ต้องเลือก Lot จาก Factory
+  if (item.pg === 'finish') {
+    await dwShowLotPicker(id, item, recvQty);
+    return;
+  }
+
+  // store2 → บวก Tea House อย่างเดียว
+  await dwDoReceive(id, item, recvQty, null, null);
+}
+
+async function dwShowLotPicker(id, item, recvQty) {
+  document.getElementById('dw-lot-modal')?.remove();
+
+  // ดึง lots จาก Factory ที่ตรง item_code และมี stock > 0
+  const { data: lots } = await sbFactory.from('lots')
+    .select('id, lot_sw, lot_supplier, stock, weight_kg, bag_number, bag_total')
+    .eq('item_code', item.item_code)
+    .gt('stock', 0)
+    .order('lot_sw', { ascending: true });
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-wrap show';
+  modal.id = 'dw-lot-modal';
+
+  const lotRows = lots?.length ? lots.map(lot => {
+    const bagInfo = lot.bag_number ? ` · ถุง ${lot.bag_number}/${lot.bag_total}` : '';
+    const weightInfo = lot.weight_kg ? ` · ${lot.weight_kg} กก.` : '';
+    return `<div onclick="dwSelectLot(${lot.id},'${lot.lot_sw}',${lot.stock},this)"
+      style="padding:10px 14px;cursor:pointer;border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between"
+      onmouseover="this.style.background='var(--s2)'" onmouseout="if(!this.classList.contains('sel'))this.style.background=''">
+      <div>
+        <div style="font-size:12px;font-weight:500">Lot ${lot.lot_sw}${bagInfo}</div>
+        <div style="font-size:10px;color:var(--ink4)">${lot.lot_supplier||''}${weightInfo}</div>
+      </div>
+      <div style="text-align:right;font-size:13px;font-weight:500;color:var(--acc)">${lot.stock.toLocaleString()}</div>
+    </div>`;
+  }).join('') : `<div style="padding:20px;text-align:center;color:var(--ink4)">ไม่พบ Lot ใน Factory</div>`;
+
+  modal.innerHTML = `<div class="modal" style="max-width:440px;width:95%">
+    <div class="card-title" style="margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+      <div class="card-title-left">
+        <div style="font-size:13px;font-weight:500">เลือก Lot จาก Factory</div>
+        <div style="font-size:11px;color:var(--ink4);margin-top:2px">${item.item_name} · รับเข้า ${recvQty}</div>
+      </div>
+      <button class="btn btn-sm" onclick="document.getElementById('dw-lot-modal').remove()">ยกเลิก</button>
+    </div>
+    <div style="border:0.5px solid var(--line);border-radius:8px;overflow:hidden;max-height:280px;overflow-y:auto;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr auto;padding:5px 14px;font-size:10px;color:var(--ink4);background:var(--s2);border-bottom:0.5px solid var(--line)">
+        <span>Lot / ซัพพลายเออร์</span><span>Stock Factory</span>
+      </div>
+      ${lotRows}
+    </div>
+    <div id="dw-lot-selected" style="display:none;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--ink4)">Lot ที่เลือก</div>
+      <div style="font-size:13px;font-weight:500" id="dw-lot-sel-label">—</div>
+    </div>
+    <input type="hidden" id="dw-lot-sel-id">
+    <input type="hidden" id="dw-lot-sel-sw">
+    <input type="hidden" id="dw-lot-sel-stock">
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:10px;border-top:0.5px solid var(--line)">
+      <button class="btn btn-sm" onclick="document.getElementById('dw-lot-modal').remove()">ยกเลิก</button>
+      <button class="btn btn-primary btn-sm" onclick="dwConfirmLotReceive(${id},${recvQty})">
+        <i class="ti ti-check"></i> ยืนยันรับเข้า
+      </button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+function dwSelectLot(lotId, lotSw, lotStock, el) {
+  document.querySelectorAll('#dw-lot-modal [onclick^="dwSelectLot"]').forEach(e => {
+    e.style.background = '';
+    e.classList.remove('sel');
+  });
+  el.style.background = 'var(--s2)';
+  el.classList.add('sel');
+  document.getElementById('dw-lot-sel-id').value = lotId;
+  document.getElementById('dw-lot-sel-sw').value = lotSw;
+  document.getElementById('dw-lot-sel-stock').value = lotStock;
+  document.getElementById('dw-lot-sel-label').textContent = `Lot ${lotSw} (Stock ${lotStock.toLocaleString()})`;
+  document.getElementById('dw-lot-selected').style.display = 'block';
+}
+
+async function dwConfirmLotReceive(id, recvQty) {
+  const lotId    = parseInt(document.getElementById('dw-lot-sel-id')?.value);
+  const lotSw    = document.getElementById('dw-lot-sel-sw')?.value;
+  const lotStock = parseFloat(document.getElementById('dw-lot-sel-stock')?.value||'0');
+  if (!lotId) { showToast('กรุณาเลือก Lot ก่อนค่ะ','err'); return; }
+  if (recvQty > lotStock) {
+    if (!confirm(`จำนวนรับ (${recvQty}) มากกว่า stock Lot นี้ (${lotStock}) ยืนยันต่อไหมคะ?`)) return;
+  }
+  document.getElementById('dw-lot-modal')?.remove();
+  const item = dwItems.find(x=>x.id===id);
+  if (!item) return;
+  await dwDoReceive(id, item, recvQty, lotId, lotSw);
+}
+
+async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
+  if (item.pg === 'finish') {
+    if (lotId) {
+      // หัก stock Lot ใน Factory
+      const { data: lot } = await sbFactory.from('lots').select('id,stock').eq('id', lotId).single();
+      if (lot) {
+        const newLotStock = Math.max(0, lot.stock - recvQty);
+        await sbFactory.from('lots').update({ stock: newLotStock }).eq('id', lotId);
+        // หัก item stock Factory ด้วย
+        const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', item.item_code).single();
+        if (fItem) await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', fItem.code);
+      }
+    }
+    // บวก Tea House
     const m = masterDB.find(x=>x.code===item.item_code);
     if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
   } else {
+    // store2
     const m = masterDB.find(x=>x.code===item.item_code);
     if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
   }
@@ -3851,6 +3960,8 @@ async function dwReceive(id) {
   await sb.from('daily_withdrawals').update({
     status: 'received', received_qty: recvQty,
     factory_withdraw_status: 'received',
+    factory_lot_id: lotId || null,
+    factory_lot_sw: lotSw || null,
     received_at: new Date().toISOString()
   }).eq('id', id);
   item.status = 'received'; item.received_qty = recvQty;
