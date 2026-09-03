@@ -3862,15 +3862,37 @@ let dwFactoryLots = {}; // { item_code: [{id, lot_sw, stock, ...}] }
 
 async function dwLoadFactoryLots(itemCodes) {
   if (!itemCodes.length) return;
-  const { data } = await sbFactory.from('lots')
+  // ดึงชื่อสินค้าจาก Tea House masterDB
+  const names = itemCodes.map(code => {
+    const m = masterDB.find(x=>x.code===code);
+    return m?.name || null;
+  }).filter(Boolean);
+  if (!names.length) return;
+
+  // ดึง factory items ที่ชื่อตรงกัน
+  const { data: fItems } = await sbFactory.from('items')
+    .select('code, name')
+    .eq('pg', 'finish')
+    .in('name', names);
+  if (!fItems?.length) return;
+
+  const fCodes = fItems.map(x=>x.code);
+  const { data: lots } = await sbFactory.from('lots')
     .select('id, item_code, lot_sw, lot_supplier, stock, weight_kg, bag_number, bag_total')
-    .in('item_code', itemCodes)
+    .in('item_code', fCodes)
     .gt('stock', 0)
     .order('lot_sw', { ascending: true });
+
+  // map กลับโดยใช้ชื่อ — dwFactoryLots[th_item_code] = [lots...]
   dwFactoryLots = {};
-  (data||[]).forEach(lot => {
-    if (!dwFactoryLots[lot.item_code]) dwFactoryLots[lot.item_code] = [];
-    dwFactoryLots[lot.item_code].push(lot);
+  (lots||[]).forEach(lot => {
+    const fItem = fItems.find(x=>x.code===lot.item_code);
+    if (!fItem) return;
+    // หา TH item_code จากชื่อ
+    const thItem = masterDB.find(x=>x.pg==='finish' && x.name===fItem.name);
+    if (!thItem) return;
+    if (!dwFactoryLots[thItem.code]) dwFactoryLots[thItem.code] = [];
+    dwFactoryLots[thItem.code].push({ ...lot, factory_code: fItem.code });
   });
 }
 
@@ -3970,12 +3992,12 @@ async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
   if (item.pg === 'finish') {
     if (lotId) {
       // หัก stock Lot ใน Factory
-      const { data: lot } = await sbFactory.from('lots').select('id,stock').eq('id', lotId).single();
+      const { data: lot } = await sbFactory.from('lots').select('id,stock,item_code').eq('id', lotId).single();
       if (lot) {
         const newLotStock = Math.max(0, lot.stock - recvQty);
         await sbFactory.from('lots').update({ stock: newLotStock }).eq('id', lotId);
         // หัก item stock Factory ด้วย
-        const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', item.item_code).single();
+        const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', lot.item_code).single();
         if (fItem) await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', fItem.code);
       }
     }
