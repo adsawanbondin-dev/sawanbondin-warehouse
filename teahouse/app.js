@@ -4435,7 +4435,10 @@ function dscRender() {
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-sm" onclick="dscFillCat('${dscCat.replace(/'/g,"\\'")}',false)" style="font-size:11px">
-          นับเท่าระบบ
+          นับเท่าระบบ (สินค้า)
+        </button>
+        <button class="btn btn-sm" onclick="dscFillCat('',true)" style="font-size:11px">
+          นับเท่าระบบ (Store 2)
         </button>
         <button class="btn btn-sm" onclick="dscSaveCat('${dscCat.replace(/'/g,"\\'")}',false)" style="font-size:11px">
           <i class="ti ti-check"></i> บันทึกหมวดนี้ (${countedInCat})
@@ -4490,8 +4493,10 @@ function dscClearRow(code) {
   if (noteEl) noteEl.textContent='';
 }
 
-function dscFillCat(cat) {
-  const items = masterDB.filter(m=>m.pg==='finish'&&(m.subcat||'ไม่มีหมวดหมู่')===cat);
+function dscFillCat(cat, isStore2=false) {
+  const items = isStore2
+    ? masterDB.filter(m=>m.pg==='store2')
+    : masterDB.filter(m=>m.pg==='finish'&&(m.subcat||'ไม่มีหมวดหมู่')===cat);
   items.forEach(m=>{
     if(!dscData[m.code]) dscData[m.code]={};
     dscData[m.code].actual = m.stock;
