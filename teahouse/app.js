@@ -3883,8 +3883,12 @@ async function renderDailyWithdrawPage() {
 
     const secReceived = items.filter(x=>x.status==='received').length;
     const secPending  = items.filter(x=>x.status!=='received').length;
-    const subcatSet = [...new Set(items.map(i=>{const m=masterDB.find(x=>x.code===i.item_code);return m?.subcat||'อื่นๆ';}))];
-    const subcats = subcatSet.length>1 ? ['ทั้งหมด',...subcatSet] : [];
+    // หมวดหมู่ตายตัวสำหรับ finish, ดึง dynamic สำหรับ store2
+    const FINISH_CATS = ['สินค้า','ชาตกแต่ง','ชาใบแบบชง'];
+    const subcatSet = pg==='finish'
+      ? FINISH_CATS
+      : [...new Set(items.map(i=>{const m=masterDB.find(x=>x.code===i.item_code);return m?.subcat||'อื่นๆ';}))];
+    const subcats = subcatSet.length>0 ? ['ทั้งหมด',...subcatSet] : [];
 
     const catTabsHtml = subcats.map((sub,idx)=>`
       <button onclick="dwFilterCat(this,'${pg}','${sub.replace(/'/g,"\'")}') " class="dw-cat-${pg}"
