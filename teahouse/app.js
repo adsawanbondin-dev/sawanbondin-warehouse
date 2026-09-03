@@ -4429,7 +4429,7 @@ function dscRender() {
       <i class="ti ti-package" style="font-size:12px"></i> สินค้าสำเร็จรูป
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${catTabs}</div>
-    <div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:20px">
+    <div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:8px">
       <div style="padding:8px 16px;background:var(--s2);border-bottom:0.5px solid var(--line)">
         <span style="font-size:12px;font-weight:500">${dscCat} · ${countedInCat}/${catItems.length}</span>
       </div>
@@ -4438,12 +4438,20 @@ function dscRender() {
       </div>
       ${rows}
     </div>
+    <div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:20px">
+      <button class="btn btn-sm" onclick="dscFillCat('${dscCat.replace(/'/g,"\\'")}',false)" style="font-size:11px">
+        นับเท่าระบบ
+      </button>
+      <button class="btn btn-sm" onclick="dscSaveCat('${dscCat.replace(/'/g,"\\'")}',false)" style="font-size:11px">
+        <i class="ti ti-check"></i> บันทึกหมวดนี้ (${countedInCat})
+      </button>
+    </div>
 
     <div style="font-size:11px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.3px;margin-bottom:10px">
       <i class="ti ti-building-store" style="font-size:12px"></i> Store 2
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${store2CatTabs}</div>
-    <div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:20px">
+    <div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:8px">
       <div style="padding:8px 16px;background:var(--s2);border-bottom:0.5px solid var(--line)">
         <span style="font-size:12px;font-weight:500">${dscStore2Cat} · ${countedStore2Cat}/${store2Filtered.length}</span>
       </div>
@@ -4452,28 +4460,22 @@ function dscRender() {
       </div>
       ${store2Rows}
     </div>
+    <div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:20px">
+      <button class="btn btn-sm" onclick="dscFillCat('${dscStore2Cat.replace(/'/g,"\\'")}',true)" style="font-size:11px">
+        นับเท่าระบบ
+      </button>
+      <button class="btn btn-sm" onclick="dscSaveCat('${dscStore2Cat.replace(/'/g,"\\'")}',true)" style="font-size:11px">
+        <i class="ti ti-check"></i> บันทึกหมวดนี้ (${countedStore2Cat})
+      </button>
+    </div>
 
-    <div style="padding:12px 16px;background:var(--s2);border:0.5px solid var(--line);border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="padding:10px 16px;background:var(--s2);border:0.5px solid var(--line);border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div style="font-size:10px;color:var(--ink4)">
         กด <kbd style="padding:1px 5px;border:0.5px solid var(--line);border-radius:4px;font-size:10px">Enter</kbd> เลื่อนรายการถัดไป
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-sm" onclick="dscFillCat('${dscCat.replace(/'/g,"\\'")}',false)" style="font-size:11px">
-          นับเท่าระบบ (สินค้า)
-        </button>
-        <button class="btn btn-sm" onclick="dscFillCat('${dscStore2Cat.replace(/'/g,"\\'")}',true)" style="font-size:11px">
-          นับเท่าระบบ (Store 2)
-        </button>
-        <button class="btn btn-sm" onclick="dscSaveCat('${dscCat.replace(/'/g,"\\'")}',false)" style="font-size:11px">
-          <i class="ti ti-check"></i> บันทึกหมวดสินค้า (${countedInCat})
-        </button>
-        <button class="btn btn-sm" onclick="dscSaveCat('${dscStore2Cat.replace(/'/g,"\\'")}',true)" style="font-size:11px">
-          <i class="ti ti-check"></i> บันทึกหมวด Store 2 (${countedStore2Cat})
-        </button>
-        <button class="btn btn-sm btn-primary" onclick="dscSaveAll()" style="font-size:11px">
-          <i class="ti ti-checks"></i> บันทึกทั้งหมด (${allCounted})
-        </button>
-      </div>
+      <button class="btn btn-sm btn-primary" onclick="dscSaveAll()" style="font-size:11px">
+        <i class="ti ti-checks"></i> บันทึกทั้งหมด (${allCounted})
+      </button>
     </div>`;
 }
 function dscCalc(code, val) {
