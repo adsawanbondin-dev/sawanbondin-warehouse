@@ -3951,33 +3951,32 @@ async function renderDailyWithdrawPage() {
       </div>`;
 
       return `<div class="dw-row-${pg}" data-cat="${subcat}"
-        style="display:${initDisplay};align-items:center;gap:10px;padding:9px 16px;border-bottom:0.5px solid var(--line)" id="dwrow-${item.id}">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:12px;font-weight:500;margin-bottom:${item.note?'3px':'0'}">${item.item_name}
-            ${isCarried?`<span style="font-size:9px;color:var(--ink4);margin-left:4px">ค้างมา</span>`:''}
+        style="display:${initDisplay};flex-direction:column;padding:10px 16px;border-bottom:0.5px solid var(--line);gap:6px" id="dwrow-${item.id}">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:500;margin-bottom:${item.note?'3px':'0'}">${item.item_name}
+              ${isCarried?`<span style="font-size:9px;color:var(--ink4);margin-left:4px">ค้างมา</span>`:''}
+            </div>
+            ${item.note?`<div style="font-size:10px;color:#7a5900;background:#fff8e8;padding:1px 6px;border-radius:4px;display:inline-block">${item.note}</div>`:''}
+            ${pg==='finish' && fwStatus==='shipping'?`<div style="margin-top:3px"><span style="font-size:9px;padding:2px 7px;border-radius:8px;background:#edf5ec;color:#2d4a0f;border:0.5px solid #4a6b1a">กำลังจัดส่ง</span></div>`:''}
           </div>
-          ${item.note?`<div style="font-size:10px;color:#7a5900;background:#fff8e8;padding:1px 6px;border-radius:4px;display:inline-block">${item.note}</div>`:''}
-          ${pg==='finish' && fwStatus==='shipping'?`<div style="margin-top:3px"><span style="font-size:9px;padding:2px 7px;border-radius:8px;background:#edf5ec;color:#2d4a0f;border:0.5px solid #4a6b1a">กำลังจัดส่ง</span></div>`:''}
+          <div style="text-align:right;flex-shrink:0;min-width:44px">
+            <div style="font-size:9px;color:var(--ink4)">แนะนำ</div>
+            <div style="font-size:13px;font-weight:500">${item.suggested_qty||0}</div>
+          </div>
+          <input type="number" min="0" inputmode="decimal" placeholder="${item.suggested_qty||0}"
+            style="width:68px;padding:5px 8px;border:0.5px solid var(--line);border-radius:7px;font-size:13px;text-align:right;background:var(--surface);outline:none;font-family:inherit"
+            oninput="dwSetRecvQty(${item.id},this.value)"
+            onfocus="if(!this.value)this.value='${item.suggested_qty||0}';this.select()"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();dwReceive(${item.id})}">
+          <button onclick="dwReceive(${item.id})"
+            style="padding:5px 10px;border-radius:7px;border:none;background:var(--ink);color:var(--surface);font-size:10px;cursor:pointer;font-family:inherit;white-space:nowrap">
+            รับเข้า
+          </button>
         </div>
-        <div style="text-align:right;flex-shrink:0;min-width:44px">
-          <div style="font-size:9px;color:var(--ink4)">แนะนำ</div>
-          <div style="font-size:13px;font-weight:500">${item.suggested_qty||0}</div>
-        </div>
-        <input type="number" min="0" inputmode="decimal" placeholder="${item.suggested_qty||0}"
-          style="width:68px;padding:5px 8px;border:0.5px solid var(--line);border-radius:7px;font-size:13px;text-align:right;background:var(--surface);outline:none;font-family:inherit"
-          oninput="dwSetRecvQty(${item.id},this.value)"
-          onfocus="if(!this.value)this.value='${item.suggested_qty||0}';this.select()"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();dwReceive(${item.id})}">
-        <button onclick="dwReceive(${item.id})"
-          style="padding:5px 10px;border-radius:7px;border:none;background:var(--ink);color:var(--surface);font-size:10px;cursor:pointer;font-family:inherit;white-space:nowrap">
-          รับเข้า
-        </button>
-      </div>
-      <div style="padding:0 0 4px 0">
-        <input type="text" placeholder="ผู้เตรียม: ระบุสาเหตุถ้าของไม่ครบ เช่น รอผลิต / ของหมด..." value="${item.preparer_note||''}"
+        <input type="text" placeholder="หมายเหตุผู้เตรียม: เช่น รอผลิต / ของหมด..." value="${item.preparer_note||''}"
           style="width:100%;padding:4px 8px;border:0.5px solid ${item.preparer_note?'#013c58':'var(--line)'};border-radius:6px;font-size:10px;background:${item.preparer_note?'#e8f0f5':'var(--surface)'};color:var(--ink3);outline:none;font-family:inherit"
           onchange="dwSetPreparerNote(${item.id},this.value)">
-      </div>
       </div>`;
     }).join('');
 
