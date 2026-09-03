@@ -4024,7 +4024,8 @@ async function renderDailyWithdrawPage() {
         <div style="font-size:10px;color:var(--ink4);margin-top:2px">รอรับ</div>
       </div>
     </div>
-    ${buildSection('finish','สินค้าสำเร็จรูป (จาก Factory)','ti-package')}`;
+    ${buildSection('finish','สินค้าสำเร็จรูป (จาก Factory)','ti-package')}
+    ${buildSection('store2','Store 2','ti-building-store')}`;
 }
 
 function dwCopySectionText(pg) {
