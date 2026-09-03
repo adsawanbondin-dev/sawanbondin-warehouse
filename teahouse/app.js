@@ -4260,7 +4260,8 @@ async function dwAddManualItem() {
    DAILY STOCKCOUNT MODULE — ตรวจนับเบิกประจำวัน
 ═══════════════════════════════════════════ */
 
-let dscCat    = '';
+let dscCat      = '';
+let dscStore2Cat = '';
 let dscData   = {};   // { code: { actual, note } }
 let dscSearch = '';
 
@@ -4278,7 +4279,35 @@ function dscRender() {
   const today = new Date().toLocaleDateString('th-TH',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   const finishItems = masterDB.filter(m => m.pg === 'finish');
   const store2Items = masterDB.filter(m => m.pg === 'store2');
-  const allItems    = [...finishItems, ...store2Items];
+  const store2Subcats = [...new Set(store2Items.map(m => m.subcat||'ไม่มีหมวดหมู่'))].sort();
+  if (!dscStore2Cat || !store2Subcats.includes(dscStore2Cat)) dscStore2Cat = store2Subcats[0] || '';
+
+  // tabs store2
+  const store2CatTabs = store2Subcats.map(sub => {
+    const subItems = store2Items.filter(m=>(m.subcat||'ไม่มีหมวดหมู่')===sub);
+    const counted  = subItems.filter(m=>dscData[m.code]!==undefined).length;
+    const isActive = sub === dscStore2Cat;
+    const allDone  = counted === subItems.length && subItems.length > 0;
+    return `<button onclick="dscStore2Cat='${sub.replace(/'/g,"\\'")}';dscRender()"
+      style="padding:5px 14px;border-radius:20px;border:0.5px solid ${isActive?'var(--ink)':'var(--line)'};
+      font-size:11px;cursor:pointer;font-family:inherit;
+      background:${isActive?'var(--ink)':'transparent'};
+      color:${isActive?'var(--surface)':'var(--ink3)'};
+      display:inline-flex;align-items:center;gap:5px">
+      ${sub}
+      ${allDone?`<span style="font-size:9px;background:#edf5ec;color:#2d6a0f;padding:1px 5px;border-radius:8px">✓</span>`:
+        counted?`<span style="font-size:9px;background:var(--s2);color:var(--ink4);padding:1px 5px;border-radius:8px">${counted}</span>`:''}
+    </button>`;
+  }).join('');
+
+  // รายการ store2 ในหมวดที่เลือก
+  const store2Filtered = store2Items.filter(m => {
+    if ((m.subcat||'ไม่มีหมวดหมู่') !== dscStore2Cat) return false;
+    if (dscSearch && !m.name.toLowerCase().includes(dscSearch.toLowerCase())) return false;
+    return true;
+  });
+  const countedStore2Cat = store2Filtered.filter(m=>dscData[m.code]!==undefined).length;
+  const allItems = [...finishItems, ...store2Items];
 
   const subcats = [...new Set(finishItems.map(m => m.subcat||'ไม่มีหมวดหมู่'))].sort();
   if (!dscCat || !subcats.includes(dscCat)) dscCat = subcats[0] || '';
@@ -4310,12 +4339,6 @@ function dscRender() {
     return true;
   });
   const countedInCat = catItems.filter(m=>dscData[m.code]!==undefined).length;
-
-  // รายการ store2
-  const store2Filtered = store2Items.filter(m =>
-    !dscSearch || m.name.toLowerCase().includes(dscSearch.toLowerCase())
-  );
-  const countedStore2 = store2Filtered.filter(m=>dscData[m.code]!==undefined).length;
 
   function buildRows(items) {
     return items.map(m => {
@@ -4419,9 +4442,10 @@ function dscRender() {
     <div style="font-size:11px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.3px;margin-bottom:10px">
       <i class="ti ti-building-store" style="font-size:12px"></i> Store 2
     </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${store2CatTabs}</div>
     <div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:20px">
       <div style="padding:8px 16px;background:var(--s2);border-bottom:0.5px solid var(--line)">
-        <span style="font-size:12px;font-weight:500">Store 2 · ${store2Counted}/${store2Items.length}</span>
+        <span style="font-size:12px;font-weight:500">${dscStore2Cat} · ${countedStore2Cat}/${store2Filtered.length}</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 110px 28px;padding:5px 16px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
         <span>รายการ</span><span style="text-align:right">นับจริง</span><span></span>
@@ -4437,14 +4461,14 @@ function dscRender() {
         <button class="btn btn-sm" onclick="dscFillCat('${dscCat.replace(/'/g,"\\'")}',false)" style="font-size:11px">
           นับเท่าระบบ (สินค้า)
         </button>
-        <button class="btn btn-sm" onclick="dscFillCat('',true)" style="font-size:11px">
+        <button class="btn btn-sm" onclick="dscFillCat('${dscStore2Cat.replace(/'/g,"\\'")}',true)" style="font-size:11px">
           นับเท่าระบบ (Store 2)
         </button>
         <button class="btn btn-sm" onclick="dscSaveCat('${dscCat.replace(/'/g,"\\'")}',false)" style="font-size:11px">
-          <i class="ti ti-check"></i> บันทึกหมวดนี้ (${countedInCat})
+          <i class="ti ti-check"></i> บันทึกหมวดสินค้า (${countedInCat})
         </button>
-        <button class="btn btn-sm" onclick="dscSaveCat('',true)" style="font-size:11px">
-          <i class="ti ti-check"></i> บันทึก Store 2 (${store2Counted})
+        <button class="btn btn-sm" onclick="dscSaveCat('${dscStore2Cat.replace(/'/g,"\\'")}',true)" style="font-size:11px">
+          <i class="ti ti-check"></i> บันทึกหมวด Store 2 (${countedStore2Cat})
         </button>
         <button class="btn btn-sm btn-primary" onclick="dscSaveAll()" style="font-size:11px">
           <i class="ti ti-checks"></i> บันทึกทั้งหมด (${allCounted})
@@ -4495,7 +4519,7 @@ function dscClearRow(code) {
 
 function dscFillCat(cat, isStore2=false) {
   const items = isStore2
-    ? masterDB.filter(m=>m.pg==='store2')
+    ? masterDB.filter(m=>m.pg==='store2'&&(m.subcat||'ไม่มีหมวดหมู่')===cat)
     : masterDB.filter(m=>m.pg==='finish'&&(m.subcat||'ไม่มีหมวดหมู่')===cat);
   items.forEach(m=>{
     if(!dscData[m.code]) dscData[m.code]={};
@@ -4529,13 +4553,13 @@ function dscCopy() {
 async function dscSaveCat(cat, isStore2=false) {
   let catItems;
   if (isStore2) {
-    catItems = masterDB.filter(m=>m.pg==='store2');
+    catItems = masterDB.filter(m=>m.pg==='store2'&&(m.subcat||'ไม่มีหมวดหมู่')===cat);
   } else {
     catItems = masterDB.filter(m=>m.pg==='finish'&&(m.subcat||'ไม่มีหมวดหมู่')===cat);
   }
   const toUpdate = catItems.filter(m=>dscData[m.code]?.actual!==undefined);
   if(!toUpdate.length){showToast('กรุณากรอกยอดนับก่อนนะคะ','err');return;}
-  const label = isStore2 ? 'Store 2' : `"${cat}"`;
+  const label = `"${cat}"`;
   if(!confirm(`ยืนยันบันทึกหมวด ${label} จำนวน ${toUpdate.length} รายการ?`)) return;
   await dscDoSave(toUpdate);
   catItems.forEach(m=>delete dscData[m.code]);
