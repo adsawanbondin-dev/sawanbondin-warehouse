@@ -3838,14 +3838,39 @@ async function dwReceive(id) {
   const recvQty = item._recvQty !== undefined ? item._recvQty : (item.suggested_qty||0);
   if (!recvQty) { showToast('กรุณากรอกจำนวนรับเข้าก่อนค่ะ','err'); return; }
 
-  // finish → ต้องเลือก Lot จาก Factory
+  // finish → ต้องเลือก Lot ก่อน
   if (item.pg === 'finish') {
-    await dwShowLotPicker(id, item, recvQty);
+    const lotId = item._lotId;
+    const lotSw = item._lotSw;
+    if (!lotId) { showToast('กรุณาเลือก Lot ก่อนกดรับเข้าค่ะ','err'); return; }
+    await dwDoReceive(id, item, recvQty, lotId, lotSw);
     return;
   }
 
   // store2 → บวก Tea House อย่างเดียว
   await dwDoReceive(id, item, recvQty, null, null);
+}
+
+// cache lots จาก Factory แยกตาม item_code
+let dwFactoryLots = {}; // { item_code: [{id, lot_sw, stock, ...}] }
+
+async function dwLoadFactoryLots(itemCodes) {
+  if (!itemCodes.length) return;
+  const { data } = await sbFactory.from('lots')
+    .select('id, item_code, lot_sw, lot_supplier, stock, weight_kg, bag_number, bag_total')
+    .in('item_code', itemCodes)
+    .gt('stock', 0)
+    .order('lot_sw', { ascending: true });
+  dwFactoryLots = {};
+  (data||[]).forEach(lot => {
+    if (!dwFactoryLots[lot.item_code]) dwFactoryLots[lot.item_code] = [];
+    dwFactoryLots[lot.item_code].push(lot);
+  });
+}
+
+function dwSetLot(itemId, lotId, lotSw) {
+  const item = dwItems.find(x=>x.id===itemId);
+  if (item) { item._lotId = parseInt(lotId)||null; item._lotSw = lotSw||null; }
 }
 
 async function dwShowLotPicker(id, item, recvQty) {
@@ -3999,6 +4024,10 @@ async function renderDailyWithdrawPage() {
   await dbGenerateDailyList();
   await dbLoadDailyWithdrawals();
 
+  // โหลด lots จาก Factory สำหรับ finish items
+  const finishCodes = dwItems.filter(x=>x.pg==='finish' && x.status!=='received').map(x=>x.item_code);
+  if (finishCodes.length) await dwLoadFactoryLots(finishCodes);
+
   const today = new Date();
   const dateStr = today.toLocaleDateString('th-TH',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   const todayStr = today.toISOString().split('T')[0];
@@ -4070,6 +4099,20 @@ async function renderDailyWithdrawPage() {
             </div>
             ${item.note?`<div style="font-size:10px;color:#7a5900;background:#fff8e8;padding:1px 6px;border-radius:4px;display:inline-block">${item.note}</div>`:''}
             ${pg==='finish' && fwStatus==='shipping'?`<div style="margin-top:3px"><span style="font-size:9px;padding:2px 7px;border-radius:8px;background:#edf5ec;color:#2d4a0f;border:0.5px solid #4a6b1a">กำลังจัดส่ง</span></div>`:''}
+          ${pg==='finish'?(()=>{
+            const lots = dwFactoryLots[item.item_code]||[];
+            if(!lots.length) return `<div style="font-size:10px;color:var(--red);margin-top:3px">ไม่พบ Lot ใน Factory</div>`;
+            const opts = lots.map(l=>{
+              const bag = l.bag_number?` ถุง${l.bag_number}/${l.bag_total}`:'';
+              const w = l.weight_kg?` ${l.weight_kg}กก.`:'';
+              return `<option value="${l.id}" data-sw="${l.lot_sw}" ${item._lotId===l.id?'selected':''}>Lot ${l.lot_sw}${bag}${w} (${l.stock})</option>`;
+            }).join('');
+            return `<select onchange="dwSetLot(${item.id},this.value,this.options[this.selectedIndex].dataset.sw)"
+              style="margin-top:4px;padding:4px 8px;border:0.5px solid var(--line);border-radius:6px;font-size:11px;background:var(--surface);color:var(--ink);font-family:inherit;width:100%">
+              <option value="">— เลือก Lot —</option>
+              ${opts}
+            </select>`;
+          })():''}
           </div>
           <div style="text-align:right;flex-shrink:0;min-width:44px">
             <div style="font-size:9px;color:var(--ink4)">แนะนำ</div>
