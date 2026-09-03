@@ -3938,7 +3938,7 @@ async function renderDailyWithdrawPage() {
       const sc = statusConfig[fwStatus]||statusConfig.pending;
 
       const initDisplay = subcats.length>0 ? (subcat===defaultCat?'flex':'none') : 'flex';
-      if (isDone) return `<div class="dw-row-${pg}" data-cat="${subcat}"
+      if (isDone) if (isDone) return `<div class="dw-row-${pg}" data-cat="${subcat}"
         style="display:${initDisplay};align-items:center;gap:10px;padding:9px 16px;border-bottom:0.5px solid var(--line);opacity:.4">
         <div style="flex:1;min-width:0">
           <div style="font-size:12px;font-weight:500">${item.item_name}
