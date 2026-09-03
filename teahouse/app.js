@@ -3990,6 +3990,9 @@ async function renderDailyWithdrawPage() {
         <button onclick="dwCopySectionText('${pg}')"
           style="font-size:10px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--line);background:transparent;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px">
           <i class="ti ti-copy" style="font-size:11px"></i> คัดลอก
+        </button>
+      </div>
+      ${subcats.length?`<div style="display:flex;gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--line);flex-wrap:wrap;background:var(--s2)">${catTabsHtml}</div>`:''}
       <div style="display:grid;grid-template-columns:1fr 48px 68px 56px;padding:5px 16px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
         <span>รายการ</span><span style="text-align:right">แนะนำ</span><span style="text-align:right">รับจริง</span><span></span>
       </div>
