@@ -56,6 +56,12 @@ const sb = window.supabase.createClient(SB_URL, SB_KEY, {
   auth: { persistSession: true, autoRefreshToken: true }
 });
 
+// Factory Supabase client สำหรับตัดสต็อก Factory
+const sbFactory = window.supabase.createClient(
+  'https://rsmcrshvcbtcxvvhdmnk.supabase.co',
+  'sb_publishable__RK27ReptMhtMdc8EdA-KQ_K4zfhMwJ'
+);
+
 /* ═══════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════ */
