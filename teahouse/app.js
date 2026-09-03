@@ -3806,6 +3806,12 @@ async function dwSetNote(id, note) {
   if (item) item.note = note;
 }
 
+async function dwSetPreparerNote(id, note) {
+  await sb.from('daily_withdrawals').update({ preparer_note: note||null, updated_at: new Date().toISOString() }).eq('id', id);
+  const item = dwItems.find(x=>x.id===id);
+  if (item) item.preparer_note = note;
+}
+
 async function dwSetSuggestedQty(id, val) {
   const qty = val === '' ? null : parseFloat(val);
   await sb.from('daily_withdrawals').update({ suggested_qty: qty }).eq('id', id);
@@ -3911,8 +3917,8 @@ async function renderDailyWithdrawPage() {
     const FINISH_CATS = ['สินค้า','ชาตกแต่ง','ชาใบแบบชง'];
     const subcatSet = pg==='finish'
       ? FINISH_CATS
-      : [];
-    const subcats = pg==='finish' ? subcatSet : [];
+      : [...new Set(items.map(i=>{const m=masterDB.find(x=>x.code===i.item_code);return m?.subcat||'อื่นๆ';}))].sort();
+    const subcats = subcatSet.length > 0 ? subcatSet : [];
 
     const catTabsHtml = subcats.map((sub,idx)=>`
       <button onclick="dwFilterCat(this,'${pg}','${sub.replace(/'/g,"\'")}') " class="dw-cat-${pg}"
@@ -3931,11 +3937,14 @@ async function renderDailyWithdrawPage() {
       const fwStatus = item.factory_withdraw_status||'pending';
       const sc = statusConfig[fwStatus]||statusConfig.pending;
 
-      const initDisplay = pg==='finish' ? (subcat===defaultCat?'flex':'none') : 'flex';
+      const initDisplay = subcats.length>0 ? (subcat===defaultCat?'flex':'none') : 'flex';
       if (isDone) return `<div class="dw-row-${pg}" data-cat="${subcat}"
         style="display:${initDisplay};align-items:center;gap:10px;padding:9px 16px;border-bottom:0.5px solid var(--line);opacity:.4">
-        <div style="flex:1;font-size:12px;font-weight:500">${item.item_name}
-          <span style="font-size:9px;color:#2d6a0f;margin-left:4px">✓ รับแล้ว ${item.received_qty||0}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:500">${item.item_name}
+            <span style="font-size:9px;color:#2d6a0f;margin-left:4px">✓ รับแล้ว ${item.received_qty||0}</span>
+          </div>
+          ${item.preparer_note?`<div style="font-size:10px;color:#013c58;background:#e8f0f5;padding:1px 6px;border-radius:4px;border-left:2px solid #013c58;margin-top:2px">หมายเหตุผู้เตรียม: ${item.preparer_note}</div>`:''}
         </div>
         <div style="font-size:11px;color:var(--ink4)">แนะนำ ${item.suggested_qty||0}</div>
         <div style="width:70px"></div><div style="width:56px"></div>
@@ -3948,9 +3957,7 @@ async function renderDailyWithdrawPage() {
             ${isCarried?`<span style="font-size:9px;color:var(--ink4);margin-left:4px">ค้างมา</span>`:''}
           </div>
           ${item.note?`<div style="font-size:10px;color:#7a5900;background:#fff8e8;padding:1px 6px;border-radius:4px;display:inline-block">${item.note}</div>`:''}
-          ${pg==='finish'?`<div style="margin-top:3px">
-            <span style="font-size:9px;padding:2px 7px;border-radius:8px;background:${sc.bg};color:${sc.color};border:0.5px solid ${sc.border}">${sc.label}</span>
-          </div>`:''}
+          ${pg==='finish' && fwStatus==='shipping'?`<div style="margin-top:3px"><span style="font-size:9px;padding:2px 7px;border-radius:8px;background:#edf5ec;color:#2d4a0f;border:0.5px solid #4a6b1a">กำลังจัดส่ง</span></div>`:''}
         </div>
         <div style="text-align:right;flex-shrink:0;min-width:44px">
           <div style="font-size:9px;color:var(--ink4)">แนะนำ</div>
@@ -3965,6 +3972,12 @@ async function renderDailyWithdrawPage() {
           style="padding:5px 10px;border-radius:7px;border:none;background:var(--ink);color:var(--surface);font-size:10px;cursor:pointer;font-family:inherit;white-space:nowrap">
           รับเข้า
         </button>
+      </div>
+      <div style="padding:0 0 4px 0">
+        <input type="text" placeholder="ผู้เตรียม: ระบุสาเหตุถ้าของไม่ครบ เช่น รอผลิต / ของหมด..." value="${item.preparer_note||''}"
+          style="width:100%;padding:4px 8px;border:0.5px solid ${item.preparer_note?'#013c58':'var(--line)'};border-radius:6px;font-size:10px;background:${item.preparer_note?'#e8f0f5':'var(--surface)'};color:var(--ink3);outline:none;font-family:inherit"
+          onchange="dwSetPreparerNote(${item.id},this.value)">
+      </div>
       </div>`;
     }).join('');
 
