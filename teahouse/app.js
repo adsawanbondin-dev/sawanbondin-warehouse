@@ -3740,33 +3740,57 @@ async function dbLoadDailyWithdrawals() {
 async function dbGenerateDailyList() {
   const today = new Date().toISOString().split('T')[0];
 
-  // ดึงรายการที่มีอยู่แล้ววันนี้
-  const { data: existing } = await sb.from('daily_withdrawals')
-    .select('item_code').eq('date', today);
-  const existingCodes = new Set((existing||[]).map(x => x.item_code));
+  // ดึงรายการค้างทั้งหมดที่ยังไม่ received (ทุกวัน)
+  const { data: carried } = await sb.from('daily_withdrawals')
+    .select('*').neq('status','received');
+  const carriedByCode = {};
+  (carried||[]).forEach(x => {
+    if (!carriedByCode[x.item_code]) carriedByCode[x.item_code] = [];
+    carriedByCode[x.item_code].push(x);
+  });
 
-  // ดึงรายการที่ stock < min ที่ยังไม่มีในรายการวันนี้
+  // ดึงรายการที่ stock < min จาก masterDB
   const pgs = ['finish', 'store2'];
-  const items = masterDB.filter(m =>
-    pgs.includes(m.pg) &&
-    m.is_active !== false &&
-    m.min > 0 &&
-    m.stock < m.min &&
-    !existingCodes.has(m.code)
+  const needWithdraw = masterDB.filter(m =>
+    pgs.includes(m.pg) && m.is_active !== false && m.min > 0 && m.stock < m.min
   );
-  if (!items.length) return;
 
-  const rows = items.map(m => ({
-    date: today,
-    item_code: m.code,
-    item_name: m.name,
-    pg: m.pg,
-    current_stock: m.stock,
-    max_stock: m.max||0,
-    suggested_qty: Math.max(0, (m.max||0) - m.stock),
-    status: 'pending',
-  }));
-  await sb.from('daily_withdrawals').insert(rows);
+  for (const m of needWithdraw) {
+    const existing = carriedByCode[m.code] || [];
+    const newQty = Math.max(0, (m.max||0) - m.stock);
+
+    if (existing.length === 0) {
+      // ไม่มีรายการเลย สร้างใหม่
+      await sb.from('daily_withdrawals').insert({
+        date: today, item_code: m.code, item_name: m.name, pg: m.pg,
+        current_stock: m.stock, max_stock: m.max||0,
+        suggested_qty: newQty, status: 'pending',
+      });
+    } else {
+      // มีรายการค้างอยู่แล้ว — รวมยอดเข้ากับรายการล่าสุด
+      const latest = existing.sort((a,b) => new Date(b.created_at)-new Date(a.created_at))[0];
+      const currentSuggested = latest.suggested_qty || 0;
+      const mergedQty = currentSuggested + newQty;
+
+      if (latest.date !== today) {
+        // ค้างจากวันก่อน → อัปเดตวันที่และยอดรวม
+        await sb.from('daily_withdrawals').update({
+          date: today,
+          current_stock: m.stock,
+          suggested_qty: mergedQty,
+          updated_at: new Date().toISOString(),
+        }).eq('id', latest.id);
+
+        // ลบรายการค้างอื่นๆ ถ้ามีหลายรายการ
+        if (existing.length > 1) {
+          const oldIds = existing.filter(x=>x.id!==latest.id).map(x=>x.id);
+          await sb.from('daily_withdrawals').delete().in('id', oldIds);
+        }
+      }
+      // ถ้าเป็นวันนี้อยู่แล้ว ไม่ต้องทำอะไร
+    }
+  }
+
   await dbLoadDailyWithdrawals();
 }
 
