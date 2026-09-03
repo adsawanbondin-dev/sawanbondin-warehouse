@@ -4604,7 +4604,7 @@ async function dscDoSave(items) {
     const note   = dscData[m.code].note || null;
     await sb.from('items').update({ stock: actual }).eq('code', m.code);
     m.stock = actual;
-    if (actual < (m.min||0) && !existingCodes.has(m.code)) {
+    if (actual < (m.min||0) && !existingCodes.has(m.code) && ['finish','store2'].includes(m.pg)) {
       newWithdraw.push({
         date: today, item_code: m.code, item_name: m.name, pg: m.pg,
         current_stock: actual, max_stock: m.max||0,
