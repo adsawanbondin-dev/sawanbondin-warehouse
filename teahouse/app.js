@@ -3911,8 +3911,8 @@ async function renderDailyWithdrawPage() {
     const FINISH_CATS = ['สินค้า','ชาตกแต่ง','ชาใบแบบชง'];
     const subcatSet = pg==='finish'
       ? FINISH_CATS
-      : [...new Set(items.map(i=>{const m=masterDB.find(x=>x.code===i.item_code);return m?.subcat||'อื่นๆ';}))];
-    const subcats = pg==='finish' ? subcatSet : (subcatSet.length>1 ? ['ทั้งหมด',...subcatSet] : []);
+      : [];
+    const subcats = pg==='finish' ? subcatSet : [];
 
     const catTabsHtml = subcats.map((sub,idx)=>`
       <button onclick="dwFilterCat(this,'${pg}','${sub.replace(/'/g,"\'")}') " class="dw-cat-${pg}"
