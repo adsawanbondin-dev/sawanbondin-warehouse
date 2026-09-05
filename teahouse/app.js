@@ -4082,7 +4082,7 @@ async function renderDailyWithdrawPage() {
     const secReceived = items.filter(x=>x.status==='received').length;
     const secPending  = items.filter(x=>x.status!=='received').length;
     // หมวดหมู่ตายตัวสำหรับ finish, ดึง dynamic สำหรับ store2
-    const FINISH_CATS = ['สินค้า','ชาตกแต่ง','ชาใบแบบชง'];
+    const FINISH_CATS = ['สินค้า','ชาตกแต่ง','ชาใบแบบชง','ชาบดผงแบบชง'];
     const subcatSet = pg==='finish'
       ? FINISH_CATS
       : [...new Set(items.map(i=>{const m=masterDB.find(x=>x.code===i.item_code);return m?.subcat||'อื่นๆ';}))].sort();
