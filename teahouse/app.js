@@ -3746,7 +3746,7 @@ async function dbLoadDailyWithdrawals() {
 async function dbGenerateDailyList() {
   const today = new Date().toISOString().split('T')[0];
 
-  // ดึงรายการค้างทั้งหมดที่ยังไม่ received (ทุกวัน)
+  // ดึงรายการค้างทั้งหมดที่ยังไม่ received
   const { data: carried } = await sb.from('daily_withdrawals')
     .select('*').neq('status','received');
   const carriedByCode = {};
@@ -3755,7 +3755,6 @@ async function dbGenerateDailyList() {
     carriedByCode[x.item_code].push(x);
   });
 
-  // ดึงรายการที่ stock < min จาก masterDB
   const pgs = ['finish', 'store2'];
   const needWithdraw = masterDB.filter(m =>
     pgs.includes(m.pg) && m.is_active !== false && m.min > 0 && m.stock < m.min
@@ -3763,7 +3762,7 @@ async function dbGenerateDailyList() {
 
   for (const m of needWithdraw) {
     const existing = carriedByCode[m.code] || [];
-    const newQty = Math.max(0, (m.max||0) - m.stock);
+    const newQty = m.max||0;  // แนะนำ = Max เสมอ
 
     if (existing.length === 0) {
       // ไม่มีรายการเลย สร้างใหม่
@@ -3773,27 +3772,21 @@ async function dbGenerateDailyList() {
         suggested_qty: newQty, status: 'pending',
       });
     } else {
-      // มีรายการค้างอยู่แล้ว — รวมยอดเข้ากับรายการล่าสุด
       const latest = existing.sort((a,b) => new Date(b.created_at)-new Date(a.created_at))[0];
-      const currentSuggested = latest.suggested_qty || 0;
-      const mergedQty = currentSuggested + newQty;
-
       if (latest.date !== today) {
-        // ค้างจากวันก่อน → อัปเดตวันที่และยอดรวม
+        // ค้างจากวันก่อน → อัปเดตวันที่ แต่ไม่บวกยอดเพิ่ม คง suggested_qty เดิม
         await sb.from('daily_withdrawals').update({
           date: today,
           current_stock: m.stock,
-          suggested_qty: mergedQty,
           updated_at: new Date().toISOString(),
         }).eq('id', latest.id);
 
-        // ลบรายการค้างอื่นๆ ถ้ามีหลายรายการ
+        // ลบรายการซ้ำถ้ามี
         if (existing.length > 1) {
           const oldIds = existing.filter(x=>x.id!==latest.id).map(x=>x.id);
           await sb.from('daily_withdrawals').delete().in('id', oldIds);
         }
       }
-      // ถ้าเป็นวันนี้อยู่แล้ว ไม่ต้องทำอะไร
     }
   }
 
