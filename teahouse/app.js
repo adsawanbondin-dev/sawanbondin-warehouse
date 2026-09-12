@@ -4812,7 +4812,8 @@ async function dscSaveAll() {
 
 async function dscDoSave(items) {
   const today = new Date().toISOString().split('T')[0];
-  const { data: existing } = await sb.from('daily_withdrawals').select('item_code').eq('date',today);
+  const { data: existing } = await sb.from('daily_withdrawals')
+    .select('item_code').neq('status','received');
   const existingCodes = new Set((existing||[]).map(x=>x.item_code));
   const newWithdraw = [];
 
