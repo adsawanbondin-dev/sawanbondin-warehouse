@@ -4168,10 +4168,10 @@ async function renderDailyWithdrawPage() {
           : `<div style="font-size:10px;color:var(--red);margin-top:3px">ไม่พบ Lot ใน Factory</div>`) : '';
 
         return `<div class="dw-row-${pg}" data-cat="${subcat}"
-          style="display:${initDisplay};flex-direction:column;gap:6px;padding:10px 16px;border-bottom:0.5px solid var(--line);background:#fffdf5" id="dwrow-${item.id}">
+          style="display:${initDisplay};flex-direction:column;gap:6px;padding:10px 16px;border-bottom:0.5px solid var(--line);background:var(--s2)" id="dwrow-${item.id}">
           <div style="display:flex;align-items:center;gap:6px">
-            <i class="ti ti-tools" style="font-size:11px;color:#7a5900"></i>
-            <span style="font-size:10px;font-weight:600;color:#7a5900">ผู้เตรียมของ</span>
+            <i class="ti ti-tools" style="font-size:11px;color:var(--ink4)"></i>
+            <span style="font-size:10px;font-weight:600;color:var(--ink4)">ผู้เตรียมของ</span>
           </div>
           <div style="display:flex;align-items:flex-start;gap:10px">
             <div style="flex:1;min-width:0">
@@ -4192,7 +4192,7 @@ async function renderDailyWithdrawPage() {
                 oninput="dwSetPrepQty(${item.id},this.value)"
                 onfocus="if(!this.value)this.value='${item.suggested_qty||0}';this.select()">
               <button onclick="dwSavePrepared(${item.id})"
-                style="padding:5px 8px;border-radius:7px;border:none;background:#c8960a;color:#fff;font-size:10px;cursor:pointer;font-family:inherit;white-space:nowrap">
+                style="padding:5px 8px;border-radius:7px;border:none;background:var(--ink);color:var(--surface);font-size:10px;cursor:pointer;font-family:inherit;white-space:nowrap">
                 บันทึกเตรียม
               </button>
             </div>
@@ -4205,11 +4205,11 @@ async function renderDailyWithdrawPage() {
 
       // แถว "รับของ" (status = ready)
       return `<div class="dw-row-${pg}" data-cat="${subcat}"
-        style="display:${initDisplay};flex-direction:column;gap:6px;padding:10px 16px;border-bottom:0.5px solid var(--line);background:#f4f9f0" id="dwrow-${item.id}">
+        style="display:${initDisplay};flex-direction:column;gap:6px;padding:10px 16px;border-bottom:0.5px solid var(--line);background:var(--surface)" id="dwrow-${item.id}">
         <div style="display:flex;align-items:center;gap:6px">
-          <i class="ti ti-package-import" style="font-size:11px;color:#2d4a0f"></i>
-          <span style="font-size:10px;font-weight:600;color:#2d4a0f">พนักงานรับของ</span>
-          ${item.prepared_qty?`<span style="font-size:10px;color:#2d4a0f;margin-left:4px">เตรียมแล้ว: <b>${item.prepared_qty}</b></span>`:''}
+          <i class="ti ti-package-import" style="font-size:11px;color:var(--ink4)"></i>
+          <span style="font-size:10px;font-weight:600;color:var(--ink3)">พนักงานรับของ</span>
+          ${item.prepared_qty?`<span style="font-size:10px;color:var(--ink3);margin-left:4px">เตรียมแล้ว: <b>${item.prepared_qty}</b></span>`:''}
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <div style="flex:1;min-width:0">
@@ -4221,7 +4221,7 @@ async function renderDailyWithdrawPage() {
             <div style="font-size:13px;font-weight:500">${item.prepared_qty||item.suggested_qty||0}</div>
           </div>
           <input type="number" min="0" inputmode="decimal" placeholder="${item.prepared_qty||item.suggested_qty||0}"
-            style="width:68px;padding:5px 8px;border:0.5px solid #4a6b1a;border-radius:7px;font-size:13px;text-align:right;background:#f0f7ec;outline:none;font-family:inherit"
+            style="width:68px;padding:5px 8px;border:0.5px solid var(--line);border-radius:7px;font-size:13px;text-align:right;background:var(--surface);outline:none;font-family:inherit"
             oninput="dwSetRecvQty(${item.id},this.value)"
             onfocus="if(!this.value)this.value='${item.prepared_qty||item.suggested_qty||0}';this.select()"
             onkeydown="if(event.key==='Enter'){event.preventDefault();dwReceive(${item.id})}">
@@ -4254,9 +4254,9 @@ async function renderDailyWithdrawPage() {
       </div>
       <div>${pendingRows}</div>
       ${pendingItems.filter(x=>x.status!=='ready').length>0?`
-      <div style="padding:8px 16px;border-top:0.5px solid var(--line);background:#fffdf5;display:flex;justify-content:flex-end">
+      <div style="padding:8px 16px;border-top:0.5px solid var(--line);background:var(--s2);display:flex;justify-content:flex-end;border-top:0.5px solid var(--line)">
         <button onclick="dwSavePreparedAll('${pg}')"
-          style="font-size:11px;padding:5px 14px;border-radius:8px;background:#c8960a;color:#fff;border:none;cursor:pointer;font-family:inherit">
+          style="font-size:11px;padding:5px 14px;border-radius:8px;background:var(--ink);color:var(--surface);border:none;cursor:pointer;font-family:inherit">
           <i class="ti ti-check"></i> บันทึกเตรียมทั้งหมด (${pendingItems.filter(x=>x.status!=='ready').length})
         </button>
       </div>`:''}
@@ -4289,11 +4289,11 @@ async function renderDailyWithdrawPage() {
         <div style="font-size:10px;color:var(--ink4);margin-top:2px">ทั้งหมด</div>
       </div>
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:20px;font-weight:500;color:#c8960a">${pending}</div>
+        <div style="font-size:20px;font-weight:500">${pending}</div>
         <div style="font-size:10px;color:var(--ink4);margin-top:2px">รอเตรียม</div>
       </div>
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:20px;font-weight:500;color:#2d4a0f">${ready}</div>
+        <div style="font-size:20px;font-weight:500">${ready}</div>
         <div style="font-size:10px;color:var(--ink4);margin-top:2px">รอรับเข้า</div>
       </div>
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
@@ -4669,7 +4669,7 @@ function dscRender() {
       const note   = hasVal ? (entry.note||'') : '';
       const isLow  = hasVal && actual < (m.min||0);
       const spec   = m.spec || '';
-      const rowBg  = !hasVal ? '' : isLow ? 'background:#fdf4f4' : 'background:#f4f9f0';
+      const rowBg  = !hasVal ? '' : isLow ? 'background:#fdf4f4' : 'background:var(--surface)';
       const inpBorder = !hasVal ? 'var(--line)' : isLow ? '#d04040' : '#4a9a2a';
       const inpBg = !hasVal ? 'var(--surface)' : isLow ? '#fdf0f0' : '#f0f7ec';
       const stockColor = m.stock < (m.min||0) ? '#b03030' : 'var(--ink4)';
