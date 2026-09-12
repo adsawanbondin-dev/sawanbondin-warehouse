@@ -4275,6 +4275,9 @@ async function renderDailyWithdrawPage() {
         <button class="btn btn-sm" onclick="dwOpenAddModal('')" style="font-size:11px">
           <i class="ti ti-plus"></i> เพิ่ม
         </button>
+        <button class="btn btn-sm" onclick="dwClearAll()" style="font-size:11px;color:#b03030;border-color:#e8a0a0">
+          <i class="ti ti-trash"></i> ล้าง
+        </button>
         <button class="btn btn-sm" onclick="(async()=>{await dbGenerateDailyList();await dbLoadDailyWithdrawals();renderDailyWithdrawPage();})()" style="font-size:11px">
           <i class="ti ti-refresh"></i>
         </button>
@@ -4300,6 +4303,17 @@ async function renderDailyWithdrawPage() {
     </div>
     ${buildSection('finish','สินค้าสำเร็จรูป (จาก Factory)','ti-package')}
     ${buildSection('store2','Stock Tea House','ti-building-store')}`;
+}
+
+async function dwClearAll() {
+  const pending = dwItems.filter(x=>x.status!=='received');
+  if (!pending.length) { showToast('ไม่มีรายการที่จะล้าง','err'); return; }
+  if (!confirm(`ล้างรายการเบิกที่ยังไม่รับเข้า ${pending.length} รายการ?`)) return;
+  const ids = pending.map(x=>x.id);
+  await sb.from('daily_withdrawals').delete().in('id', ids);
+  showToast('ล้างรายการเรียบร้อยค่ะ');
+  await dbLoadDailyWithdrawals();
+  renderDailyWithdrawPage();
 }
 
 async function dwSavePreparedAll(pg) {
@@ -4727,9 +4741,12 @@ function dscRender() {
       </div>
     </div>
 
-    <div style="margin-bottom:12px">
-      <input class="fi" placeholder="ค้นหาทุกคลัง..." value="${dscSearch}"
-        oninput="dscSearch=this.value;dscRender()" style="max-width:260px;font-size:11px">
+    <div style="margin-bottom:12px;display:flex;gap:6px;align-items:center">
+      <input class="fi" placeholder="ค้นหาทุกคลัง..." value="${dscSearch}" id="dsc-search-input"
+        oninput="dscSearch=this.value;dscUpdateContent()" style="max-width:260px;font-size:11px">
+      <button onclick="dscClearAll()" class="btn btn-sm" style="font-size:11px;color:#b03030;border-color:#e8a0a0">
+        <i class="ti ti-trash"></i> ล้างทั้งหมด
+      </button>
     </div>
 
     <div style="font-size:11px;font-weight:600;color:var(--ink4);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px">
@@ -4785,6 +4802,26 @@ function dscRender() {
       </button>
     </div>`;
 }
+function dscUpdateContent() {
+  // อัปเดตเฉพาะ rows ไม่ re-render ทั้งหน้า เพื่อไม่ให้ keyboard หาย
+  const inp = document.getElementById('dsc-search-input');
+  if (inp) dscSearch = inp.value;
+  dscRender();
+  // focus กลับที่ input หลัง render
+  setTimeout(() => {
+    const newInp = document.getElementById('dsc-search-input');
+    if (newInp) { newInp.focus(); newInp.setSelectionRange(newInp.value.length, newInp.value.length); }
+  }, 50);
+}
+
+async function dscClearAll() {
+  if (!confirm('ล้างข้อมูลตรวจนับทั้งหมดใช่ไหมคะ?')) return;
+  dscData = {};
+  dscSearch = '';
+  dscRender();
+  showToast('ล้างข้อมูลเรียบร้อยค่ะ');
+}
+
 function dscCalc(code, val) {
   const v = val === '' ? undefined : parseFloat(val);
   if (v === undefined) { delete dscData[code]; }
