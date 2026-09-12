@@ -3781,7 +3781,7 @@ async function dbGenerateDailyList() {
 
   const pgs = ['finish', 'store2'];
   const needWithdraw = masterDB.filter(m =>
-    pgs.includes(m.pg) && m.is_active !== false && m.min > 0 && m.stock < m.min
+    pgs.includes(m.pg) && m.is_active !== false && m.max > 0 && m.stock < m.max
   );
 
   for (const m of needWithdraw) {
@@ -4821,16 +4821,15 @@ async function dscDoSave(items) {
     const note   = dscData[m.code].note || null;
     await sb.from('items').update({ stock: actual }).eq('code', m.code);
     m.stock = actual;
-    if (actual < (m.min||0) && !existingCodes.has(m.code) && ['finish','store2'].includes(m.pg)) {
+    if (actual < (m.max||0) && (m.max||0) > 0 && !existingCodes.has(m.code) && ['finish','store2'].includes(m.pg)) {
       newWithdraw.push({
         date: today, item_code: m.code, item_name: m.name, pg: m.pg,
         current_stock: actual, max_stock: m.max||0,
         suggested_qty: Math.max(0,(m.max||0)-actual),
-        note: note,   // บันทึกหมายเหตุไปด้วย
+        note: note,
         status: 'pending',
       });
-    } else if (actual < (m.min||0) && existingCodes.has(m.code) && note) {
-      // อัปเดต note ถ้ามีอยู่แล้ว
+    } else if (actual < (m.max||0) && existingCodes.has(m.code) && note) {
       await sb.from('daily_withdrawals').update({ note }).eq('item_code', m.code).eq('date', today);
     }
   }
