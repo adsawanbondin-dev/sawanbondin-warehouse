@@ -4253,6 +4253,13 @@ async function renderDailyWithdrawPage() {
         <span>รายการ</span><span style="text-align:right">แนะนำ</span><span style="text-align:right">จำนวน</span><span></span>
       </div>
       <div>${pendingRows}</div>
+      ${pendingItems.filter(x=>x.status!=='ready').length>0?`
+      <div style="padding:8px 16px;border-top:0.5px solid var(--line);background:#fffdf5;display:flex;justify-content:flex-end">
+        <button onclick="dwSavePreparedAll('${pg}')"
+          style="font-size:11px;padding:5px 14px;border-radius:8px;background:#c8960a;color:#fff;border:none;cursor:pointer;font-family:inherit">
+          <i class="ti ti-check"></i> บันทึกเตรียมทั้งหมด (${pendingItems.filter(x=>x.status!=='ready').length})
+        </button>
+      </div>`:''}
       ${receivedRows?`<div style="background:var(--s2)">${receivedRows}</div>`:''}
     </div>`;
   }
@@ -4293,6 +4300,16 @@ async function renderDailyWithdrawPage() {
     </div>
     ${buildSection('finish','สินค้าสำเร็จรูป (จาก Factory)','ti-package')}
     ${buildSection('store2','Stock Tea House','ti-building-store')}`;
+}
+
+async function dwSavePreparedAll(pg) {
+  const items = dwItems.filter(x=>x.pg===pg && x.status!=='ready' && x.status!=='received');
+  if (!items.length) { showToast('ไม่มีรายการที่รอเตรียม','err'); return; }
+  if (!confirm(`ยืนยันบันทึกเตรียม ${items.length} รายการ ด้วยจำนวนแนะนำ?`)) return;
+  for (const item of items) {
+    if (!item._prepQty) item._prepQty = item.suggested_qty||0;
+    await dwSavePrepared(item.id);
+  }
 }
 
 async function dwSavePrepared(id) {
