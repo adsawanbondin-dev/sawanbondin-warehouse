@@ -4345,7 +4345,7 @@ async function dwSavePrepared(id) {
 
 function dwSetPrepQty(id, val) {
   const item = dwItems.find(x=>x.id===id);
-  if (item) item._prepQty = parseFloat(val)||0;
+  if (item) item._prepQty = val===''?undefined:parseFloat(val);
 }
 
 
