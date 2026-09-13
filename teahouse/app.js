@@ -4211,7 +4211,7 @@ async function renderDailyWithdrawPage() {
         <div style="display:flex;align-items:center;gap:6px">
           <i class="ti ti-package-import" style="font-size:11px;color:var(--ink4)"></i>
           <span style="font-size:10px;font-weight:600;color:var(--ink3)">พนักงานรับของ</span>
-          ${item.prepared_qty?`<span style="font-size:10px;color:var(--ink3);margin-left:4px">เตรียมแล้ว: <b>${item.prepared_qty}</b></span>`:''}
+          ${(item.prepared_qty !== null && item.prepared_qty !== undefined)?`<span style="font-size:10px;color:var(--ink3);margin-left:4px">เตรียมแล้ว: <b>${item.prepared_qty}</b></span>`:''}
         </div>
         <div style="display:flex;align-items:center;gap:10px">
           <div style="flex:1;min-width:0">
@@ -4220,12 +4220,12 @@ async function renderDailyWithdrawPage() {
           </div>
           <div style="text-align:right;flex-shrink:0;min-width:44px">
             <div style="font-size:9px;color:var(--ink4)">เตรียม</div>
-            <div style="font-size:13px;font-weight:500">${item.prepared_qty||item.suggested_qty||0}</div>
+            <div style="font-size:13px;font-weight:500">${(item.prepared_qty !== null && item.prepared_qty !== undefined && item.prepared_qty >= 0 && item.prepared_qty < (item.suggested_qty||0)) ? item.prepared_qty : (item.suggested_qty||0)}</div>
           </div>
-          <input type="number" min="0" inputmode="decimal" placeholder="${item.prepared_qty||item.suggested_qty||0}"
+          <input type="number" min="0" inputmode="decimal" placeholder="${(item.prepared_qty !== null && item.prepared_qty !== undefined && item.prepared_qty >= 0 && item.prepared_qty < (item.suggested_qty||0)) ? item.prepared_qty : (item.suggested_qty||0)}"
             style="width:68px;padding:5px 8px;border:0.5px solid var(--line);border-radius:7px;font-size:13px;text-align:right;background:var(--surface);outline:none;font-family:inherit"
             oninput="dwSetRecvQty(${item.id},this.value)"
-            onfocus="if(!this.value)this.value='${item.prepared_qty||item.suggested_qty||0}';this.select()"
+            onfocus="this.select()"
             onkeydown="if(event.key==='Enter'){event.preventDefault();dwReceive(${item.id})}">
           <button onclick="dwReceive(${item.id})"
             style="padding:5px 10px;border-radius:7px;border:none;background:var(--ink);color:var(--surface);font-size:10px;cursor:pointer;font-family:inherit;white-space:nowrap">
