@@ -4122,10 +4122,9 @@ async function renderDailyWithdrawPage() {
         ${sub}
       </button>`).join('');
 
-    // แบ่ง 2 กลุ่ม: รอรับ (pending/preparing/ready) และ รับแล้ว
+    // แบ่ง 2 กลุ่ม: รอรับ (pending/preparing/ready) เท่านั้น ซ่อนรับแล้ว
     const pendingItems  = items.filter(x=>x.status!=='received');
-    const receivedItems = items.filter(x=>x.status==='received');
-    const secReceived   = receivedItems.length;
+    const secReceived   = items.filter(x=>x.status==='received').length;
 
     const buildRow = (item, isDone) => {
       const m = masterDB.find(x=>x.code===item.item_code);
@@ -4228,7 +4227,6 @@ async function renderDailyWithdrawPage() {
     };
 
     const pendingRows  = pendingItems.map(i=>buildRow(i,false)).join('') || `<div style="padding:16px;text-align:center;font-size:11px;color:var(--ink4)">ไม่มีรายการ</div>`;
-    const receivedRows = receivedItems.map(i=>buildRow(i,true)).join('');
 
     return `<div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:12px">
       <div style="padding:9px 16px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
@@ -4254,7 +4252,7 @@ async function renderDailyWithdrawPage() {
           <i class="ti ti-check"></i> บันทึกเตรียมทั้งหมด (${pendingItems.filter(x=>x.status!=='ready').length})
         </button>
       </div>`:''}
-      ${receivedRows?`<div style="background:var(--s2)">${receivedRows}</div>`:''}
+
     </div>`;
   }
 
