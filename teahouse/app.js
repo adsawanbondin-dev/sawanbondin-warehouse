@@ -4270,6 +4270,9 @@ async function renderDailyWithdrawPage() {
         <button class="btn btn-sm" onclick="dwClearAll()" style="font-size:11px;color:#b03030;border-color:#e8a0a0">
           <i class="ti ti-trash"></i> ล้าง
         </button>
+        <button class="btn btn-sm" onclick="dwManualReset()" style="font-size:11px;color:#7a5900;border-color:#c8960a" title="รีเซ็ตรายการที่เตรียมแล้วกลับเป็นรอเตรียมใหม่">
+          <i class="ti ti-refresh-alert"></i> รีเซ็ต
+        </button>
         <button class="btn btn-sm" onclick="(async()=>{await dbGenerateDailyList();await dbLoadDailyWithdrawals();renderDailyWithdrawPage();})()" style="font-size:11px">
           <i class="ti ti-refresh"></i>
         </button>
@@ -6025,6 +6028,13 @@ switchPage = async function(p) {
    DAILY RESET — รีเซ็ตสถานะเบิกประจำวัน 15.00 น.
 ═══════════════════════════════════════════ */
 
+async function dwManualReset() {
+  const items = dwItems.filter(x=>x.status==='preparing'||x.status==='ready');
+  if (!items.length) { showToast('ไม่มีรายการที่จะรีเซ็ต','err'); return; }
+  if (!confirm(`รีเซ็ต ${items.length} รายการกลับเป็น "รอเตรียม" ใหม่?`)) return;
+  await dwDailyReset();
+}
+
 async function dwDailyReset() {
   // reset รายการที่ยังไม่รับเข้า → pending (คง suggested_qty เดิม)
   const { data: items, error } = await sb.from('daily_withdrawals')
@@ -6044,19 +6054,3 @@ async function dwDailyReset() {
   if (curPage === 'daily-withdraw') renderDailyWithdrawPage();
 }
 
-function dwScheduleDailyReset() {
-  const now = new Date();
-  const target = new Date();
-  target.setHours(15, 0, 0, 0);
-  if (now >= target) target.setDate(target.getDate() + 1);
-  const ms = target - now;
-  console.log(`Daily reset scheduled in ${Math.round(ms/60000)} minutes`);
-  setTimeout(async () => {
-    await dwDailyReset();
-    // ตั้ง timer ซ้ำทุก 24 ชั่วโมง
-    setInterval(dwDailyReset, 24 * 60 * 60 * 1000);
-  }, ms);
-}
-
-// เริ่ม schedule ทันทีที่แอปโหลด
-dwScheduleDailyReset();
