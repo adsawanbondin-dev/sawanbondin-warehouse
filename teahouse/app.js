@@ -4175,12 +4175,12 @@ async function renderDailyWithdrawPage() {
             </div>
             <div style="text-align:right;flex-shrink:0;min-width:44px">
               <div style="font-size:9px;color:var(--ink4)">แนะนำ</div>
-              <div style="font-size:13px;font-weight:500">${(item.prepared_qty !== null && item.prepared_qty !== undefined && item.prepared_qty >= 0 && item.prepared_qty < (item.suggested_qty||0)) ? item.prepared_qty : (item.suggested_qty||0)}</div>
+              <div style="font-size:13px;font-weight:500">${(item._prepQty !== undefined && item._prepQty !== null && item._prepQty >= 0) ? item._prepQty : (item.suggested_qty||0)}</div>
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
               <input type="number" min="0" inputmode="decimal" 
                 placeholder="${item.suggested_qty||0}"
-                value="${(item._prepQty !== undefined && item._prepQty !== null && item._prepQty >= 0 && item._prepQty < (item.suggested_qty||0)) ? item._prepQty : ''}"
+                value="${(item._prepQty !== undefined && item._prepQty !== null && item._prepQty >= 0) ? item._prepQty : ''}"
                 style="width:68px;padding:5px 8px;border:0.5px solid var(--line);border-radius:7px;font-size:13px;text-align:right;background:var(--surface);outline:none;font-family:inherit"
                 oninput="dwSetPrepQty(${item.id},this.value)"
                 onfocus="this.select()">
