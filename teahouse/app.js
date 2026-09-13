@@ -4187,10 +4187,12 @@ async function renderDailyWithdrawPage() {
               <div style="font-size:13px;font-weight:500">${item.suggested_qty||0}</div>
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-              <input type="number" min="0" inputmode="decimal" placeholder="${item.suggested_qty||0}"
+              <input type="number" min="0" inputmode="decimal" 
+                placeholder="${item.suggested_qty||0}"
+                value="${item._prepQty !== undefined && item._prepQty !== null ? item._prepQty : ''}"
                 style="width:68px;padding:5px 8px;border:0.5px solid var(--line);border-radius:7px;font-size:13px;text-align:right;background:var(--surface);outline:none;font-family:inherit"
                 oninput="dwSetPrepQty(${item.id},this.value)"
-                onfocus="if(!this.value)this.value='${item.suggested_qty||0}';this.select()">
+                onfocus="this.select()">
               <button onclick="dwSavePrepared(${item.id})"
                 style="padding:5px 8px;border-radius:7px;border:none;background:var(--ink);color:var(--surface);font-size:10px;cursor:pointer;font-family:inherit;white-space:nowrap">
                 บันทึกเตรียม
