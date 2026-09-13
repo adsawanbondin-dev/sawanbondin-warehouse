@@ -3786,7 +3786,7 @@ async function dbGenerateDailyList() {
 
   for (const m of needWithdraw) {
     const existing = carriedByCode[m.code] || [];
-    const newQty = m.max||0;  // แนะนำ = Max เสมอ
+    const newQty = Math.max(0, (m.max||0) - m.stock);  // แนะนำ = Max - stock
 
     if (existing.length === 0) {
       // ไม่มีรายการเลย สร้างใหม่
