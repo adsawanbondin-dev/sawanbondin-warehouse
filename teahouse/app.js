@@ -4184,7 +4184,7 @@ async function renderDailyWithdrawPage() {
             </div>
             <div style="text-align:right;flex-shrink:0;min-width:44px">
               <div style="font-size:9px;color:var(--ink4)">แนะนำ</div>
-              <div style="font-size:13px;font-weight:500">${item.suggested_qty||0}</div>
+              <div style="font-size:13px;font-weight:500">${(item.prepared_qty !== null && item.prepared_qty !== undefined && item.prepared_qty >= 0 && item.prepared_qty < (item.suggested_qty||0)) ? item.prepared_qty : (item.suggested_qty||0)}</div>
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
               <input type="number" min="0" inputmode="decimal" 
