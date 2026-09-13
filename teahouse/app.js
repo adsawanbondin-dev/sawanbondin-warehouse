@@ -4049,6 +4049,18 @@ async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
   renderDailyWithdrawPage();
 }
 
+async function dwReceiveAllReady(pg) {
+  const items = dwItems.filter(x=>x.pg===pg && x.status==='ready');
+  if (!items.length) { showToast('ไม่มีรายการที่เตรียมแล้ว','err'); return; }
+  if (!confirm(`ยืนยันรับเข้า ${items.length} รายการ?`)) return;
+  for (const item of items) {
+    const recvQty = item._recvQty !== undefined ? item._recvQty
+      : (item.prepared_qty !== null && item.prepared_qty !== undefined ? item.prepared_qty
+      : (item.suggested_qty||0));
+    await dwDoReceive(item.id, item, recvQty, item._lotId||null, item._lotSw||null);
+  }
+}
+
 async function dwReceiveAll() {
   const items = dwItems.filter(x=>x.status!=='received');
   for (const item of items) { if (!item._recvQty) item._recvQty = item.suggested_qty||0; await dwReceive(item.id); }
@@ -4262,8 +4274,12 @@ async function renderDailyWithdrawPage() {
       </div>`:''}
       <!-- เตรียมแล้ว รอรับเข้า -->
       ${readyItems.length>0?`
-      <div style="padding:5px 16px;font-size:10px;font-weight:600;color:#2d4a0f;background:#edf5ec;border-top:1px solid var(--line);border-bottom:0.5px solid var(--line)">
-        เตรียมแล้ว รอรับเข้า (${readyItems.length})
+      <div style="padding:5px 16px;font-size:10px;font-weight:600;color:#2d4a0f;background:#edf5ec;border-top:1px solid var(--line);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+        <span>เตรียมแล้ว รอรับเข้า (${readyItems.length})</span>
+        <button onclick="dwReceiveAllReady('${pg}')"
+          style="font-size:10px;padding:3px 10px;border-radius:6px;background:var(--ink);color:var(--surface);border:none;cursor:pointer;font-family:inherit">
+          <i class="ti ti-package-import"></i> รับเข้าทั้งหมด
+        </button>
       </div>
       <div>${readyRows}</div>`:''}
 
