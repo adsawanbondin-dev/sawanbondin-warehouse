@@ -4123,7 +4123,8 @@ async function renderDailyWithdrawPage() {
       </button>`).join('');
 
     // แบ่ง 2 กลุ่ม: รอรับ (pending/preparing/ready) เท่านั้น ซ่อนรับแล้ว
-    const pendingItems  = items.filter(x=>x.status!=='received');
+    const waitingItems  = items.filter(x=>x.status==='pending'||x.status==='preparing');
+    const readyItems    = items.filter(x=>x.status==='ready');
     const secReceived   = items.filter(x=>x.status==='received').length;
 
     const buildRow = (item, isDone) => {
@@ -4230,7 +4231,8 @@ async function renderDailyWithdrawPage() {
       </div>`;
     };
 
-    const pendingRows  = pendingItems.map(i=>buildRow(i,false)).join('') || `<div style="padding:16px;text-align:center;font-size:11px;color:var(--ink4)">ไม่มีรายการ</div>`;
+    const waitingRows = waitingItems.map(i=>buildRow(i,false)).join('') || `<div style="padding:16px;text-align:center;font-size:11px;color:var(--ink4)">ไม่มีรายการที่รอเตรียม</div>`;
+    const readyRows   = readyItems.map(i=>buildRow(i,false)).join('');
 
     return `<div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:12px">
       <div style="padding:9px 16px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
@@ -4248,14 +4250,22 @@ async function renderDailyWithdrawPage() {
       <div style="display:grid;grid-template-columns:1fr 48px auto 56px;padding:5px 16px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
         <span>รายการ</span><span style="text-align:right">แนะนำ</span><span style="text-align:right">จำนวน</span><span></span>
       </div>
-      <div>${pendingRows}</div>
-      ${pendingItems.filter(x=>x.status!=='ready').length>0?`
-      <div style="padding:8px 16px;border-top:0.5px solid var(--line);background:var(--s2);display:flex;justify-content:flex-end;border-top:0.5px solid var(--line)">
+      <!-- รอเตรียม -->
+      ${waitingItems.length>0?`<div style="padding:5px 16px;font-size:10px;font-weight:600;color:var(--ink4);background:var(--s2);border-bottom:0.5px solid var(--line)">รอเตรียม (${waitingItems.length})</div>`:''}
+      <div>${waitingRows}</div>
+      ${waitingItems.length>0?`
+      <div style="padding:8px 16px;border-top:0.5px solid var(--line);background:var(--s2);display:flex;justify-content:flex-end">
         <button onclick="dwSavePreparedAll('${pg}')"
           style="font-size:11px;padding:5px 14px;border-radius:8px;background:var(--ink);color:var(--surface);border:none;cursor:pointer;font-family:inherit">
-          <i class="ti ti-check"></i> บันทึกเตรียมทั้งหมด (${pendingItems.filter(x=>x.status!=='ready').length})
+          <i class="ti ti-check"></i> บันทึกเตรียมทั้งหมด (${waitingItems.length})
         </button>
       </div>`:''}
+      <!-- เตรียมแล้ว รอรับเข้า -->
+      ${readyItems.length>0?`
+      <div style="padding:5px 16px;font-size:10px;font-weight:600;color:#2d4a0f;background:#edf5ec;border-top:1px solid var(--line);border-bottom:0.5px solid var(--line)">
+        เตรียมแล้ว รอรับเข้า (${readyItems.length})
+      </div>
+      <div>${readyRows}</div>`:''}
 
     </div>`;
   }
@@ -4316,7 +4326,7 @@ async function dwClearAll() {
 }
 
 async function dwSavePreparedAll(pg) {
-  const items = dwItems.filter(x=>x.pg===pg && x.status!=='ready' && x.status!=='received');
+  const items = dwItems.filter(x=>x.pg===pg && (x.status==='pending'||x.status==='preparing'));
   if (!items.length) { showToast('ไม่มีรายการที่รอเตรียม','err'); return; }
   if (!confirm(`ยืนยันบันทึกเตรียม ${items.length} รายการ?`)) return;
   // อ่านค่าจาก input fields ก่อนบันทึก
