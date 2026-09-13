@@ -4189,7 +4189,7 @@ async function renderDailyWithdrawPage() {
             <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
               <input type="number" min="0" inputmode="decimal" 
                 placeholder="${item.suggested_qty||0}"
-                value="${item._prepQty !== undefined && item._prepQty !== null ? item._prepQty : ''}"
+                value="${(item._prepQty !== undefined && item._prepQty !== null && item._prepQty >= 0 && item._prepQty < (item.suggested_qty||0)) ? item._prepQty : ''}"
                 style="width:68px;padding:5px 8px;border:0.5px solid var(--line);border-radius:7px;font-size:13px;text-align:right;background:var(--surface);outline:none;font-family:inherit"
                 oninput="dwSetPrepQty(${item.id},this.value)"
                 onfocus="this.select()">
