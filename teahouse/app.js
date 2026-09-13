@@ -3858,20 +3858,12 @@ async function dwDeleteItem(id) {
 async function dwReceive(id) {
   const item = dwItems.find(x => x.id === id);
   if (!item) return;
-  const recvQty = item._recvQty !== undefined ? item._recvQty : (item.suggested_qty||0);
-  if (!recvQty) { showToast('กรุณากรอกจำนวนรับเข้าก่อนค่ะ','err'); return; }
+  const recvQty = item._recvQty !== undefined ? item._recvQty : (item.prepared_qty !== null && item.prepared_qty !== undefined ? item.prepared_qty : (item.suggested_qty||0));
+  if (recvQty === undefined || recvQty === null) { showToast('กรุณากรอกจำนวนรับเข้าก่อนค่ะ','err'); return; }
 
-  // finish → ต้องเลือก Lot ก่อน
-  if (item.pg === 'finish') {
-    const lotId = item._lotId;
-    const lotSw = item._lotSw;
-    if (!lotId) { showToast('กรุณาเลือก Lot ก่อนกดรับเข้าค่ะ','err'); return; }
-    await dwDoReceive(id, item, recvQty, lotId, lotSw);
-    return;
-  }
-
-  // store2 → บวก Tea House อย่างเดียว
-  await dwDoReceive(id, item, recvQty, null, null);
+  const lotId = item._lotId || null;
+  const lotSw = item._lotSw || null;
+  await dwDoReceive(id, item, recvQty, lotId, lotSw);
 }
 
 // cache lots จาก Factory แยกตาม item_code
