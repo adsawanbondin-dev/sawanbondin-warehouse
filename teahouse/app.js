@@ -4319,9 +4319,14 @@ async function dwClearAll() {
 async function dwSavePreparedAll(pg) {
   const items = dwItems.filter(x=>x.pg===pg && x.status!=='ready' && x.status!=='received');
   if (!items.length) { showToast('ไม่มีรายการที่รอเตรียม','err'); return; }
-  if (!confirm(`ยืนยันบันทึกเตรียม ${items.length} รายการ ด้วยจำนวนแนะนำ?`)) return;
+  if (!confirm(`ยืนยันบันทึกเตรียม ${items.length} รายการ?`)) return;
+  // อ่านค่าจาก input fields ก่อนบันทึก
+  items.forEach(item => {
+    const inp = document.querySelector(`[oninput*="dwSetPrepQty(${item.id}"]`);
+    if (inp && inp.value !== '') item._prepQty = parseFloat(inp.value);
+    else if (item._prepQty === undefined) item._prepQty = item.suggested_qty||0;
+  });
   for (const item of items) {
-    if (!item._prepQty) item._prepQty = item.suggested_qty||0;
     await dwSavePrepared(item.id);
   }
 }
@@ -4329,7 +4334,10 @@ async function dwSavePreparedAll(pg) {
 async function dwSavePrepared(id) {
   const item = dwItems.find(x=>x.id===id);
   if (!item) return;
-  const prepQty = item._prepQty !== undefined ? item._prepQty : (item.suggested_qty||0);
+  // ใช้ _prepQty ถ้ามีการกรอก (รวมถึง 0) ถ้าไม่มีใช้ suggested_qty
+  const prepQty = (item._prepQty !== undefined && item._prepQty !== null)
+    ? item._prepQty
+    : (item.suggested_qty||0);
   await sb.from('daily_withdrawals').update({
     status: 'ready',
     prepared_qty: prepQty,
