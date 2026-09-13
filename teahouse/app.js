@@ -4175,7 +4175,11 @@ async function renderDailyWithdrawPage() {
             </div>
             <div style="text-align:right;flex-shrink:0;min-width:44px">
               <div style="font-size:9px;color:var(--ink4)">แนะนำ</div>
-              <div style="font-size:13px;font-weight:500">${(item._prepQty !== undefined && item._prepQty !== null && item._prepQty >= 0) ? item._prepQty : (item.suggested_qty||0)}</div>
+              <input type="number" min="0" inputmode="decimal"
+                value="${item.suggested_qty||0}"
+                style="width:56px;padding:3px 6px;border:0.5px solid var(--line);border-radius:6px;font-size:13px;text-align:right;background:var(--surface);outline:none;font-family:inherit;font-weight:500"
+                onchange="dwUpdateSuggestedQty(${item.id},this.value)"
+                onfocus="this.select()">
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
               <input type="number" min="0" inputmode="decimal" 
@@ -4350,6 +4354,13 @@ async function dwSavePrepared(id) {
   showToast('บันทึกจำนวนเตรียมแล้วค่ะ');
   await dbLoadDailyWithdrawals();
   renderDailyWithdrawPage();
+}
+
+async function dwUpdateSuggestedQty(id, val) {
+  const qty = parseFloat(val)||0;
+  await sb.from('daily_withdrawals').update({ suggested_qty: qty, updated_at: new Date().toISOString() }).eq('id', id);
+  const item = dwItems.find(x=>x.id===id);
+  if (item) item.suggested_qty = qty;
 }
 
 function dwSetPrepQty(id, val) {
