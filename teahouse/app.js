@@ -4334,10 +4334,15 @@ async function dwSavePreparedAll(pg) {
 async function dwSavePrepared(id) {
   const item = dwItems.find(x=>x.id===id);
   if (!item) return;
-  // ใช้ _prepQty ถ้ามีการกรอก (รวมถึง 0) ถ้าไม่มีใช้ suggested_qty
+
+  // อ่านค่าจาก input DOM โดยตรง
+  const inp = document.querySelector(`input[oninput*="dwSetPrepQty(${id},"]`);
+  if (inp && inp.value !== '') item._prepQty = parseFloat(inp.value);
+
   const prepQty = (item._prepQty !== undefined && item._prepQty !== null)
     ? item._prepQty
     : (item.suggested_qty||0);
+
   await sb.from('daily_withdrawals').update({
     status: 'ready',
     prepared_qty: prepQty,
@@ -4346,6 +4351,7 @@ async function dwSavePrepared(id) {
   }).eq('id', id);
   item.status = 'ready';
   item.prepared_qty = prepQty;
+  item._prepQty = undefined;
   showToast('บันทึกจำนวนเตรียมแล้วค่ะ');
   await dbLoadDailyWithdrawals();
   renderDailyWithdrawPage();
