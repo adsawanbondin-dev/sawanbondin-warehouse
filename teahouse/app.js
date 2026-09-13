@@ -6020,3 +6020,43 @@ switchPage = async function(p) {
     _dbOrigSwitch(p);
   }
 };
+
+/* ═══════════════════════════════════════════
+   DAILY RESET — รีเซ็ตสถานะเบิกประจำวัน 15.00 น.
+═══════════════════════════════════════════ */
+
+async function dwDailyReset() {
+  // reset รายการที่ยังไม่รับเข้า → pending (คง suggested_qty เดิม)
+  const { data: items, error } = await sb.from('daily_withdrawals')
+    .select('id')
+    .in('status', ['preparing', 'ready']);
+  if (error || !items?.length) return;
+
+  await sb.from('daily_withdrawals').update({
+    status: 'pending',
+    prepared_qty: null,
+    prepared_at: null,
+    prepared_by: null,
+    updated_at: new Date().toISOString(),
+  }).in('id', items.map(x=>x.id));
+
+  showToast('รีเซ็ตรายการเบิกประจำวันแล้วค่ะ (15.00 น.)');
+  if (curPage === 'daily-withdraw') renderDailyWithdrawPage();
+}
+
+function dwScheduleDailyReset() {
+  const now = new Date();
+  const target = new Date();
+  target.setHours(15, 0, 0, 0);
+  if (now >= target) target.setDate(target.getDate() + 1);
+  const ms = target - now;
+  console.log(`Daily reset scheduled in ${Math.round(ms/60000)} minutes`);
+  setTimeout(async () => {
+    await dwDailyReset();
+    // ตั้ง timer ซ้ำทุก 24 ชั่วโมง
+    setInterval(dwDailyReset, 24 * 60 * 60 * 1000);
+  }, ms);
+}
+
+// เริ่ม schedule ทันทีที่แอปโหลด
+dwScheduleDailyReset();
