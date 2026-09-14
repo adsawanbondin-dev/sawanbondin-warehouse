@@ -4055,8 +4055,10 @@ async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
     received_at: new Date().toISOString()
   }).eq('id', id);
   item.status = 'received'; item.received_qty = recvQty;
+  const scrollY = window.scrollY;
   await dbLoadDailyWithdrawals();
   renderDailyWithdrawPage();
+  requestAnimationFrame(() => window.scrollTo(0, scrollY));
 }
 
 async function dwReceiveAllReady(pg) {
@@ -4388,8 +4390,12 @@ async function dwSavePrepared(id) {
   item.prepared_qty = prepQty;
   item._prepQty = undefined;
   showToast('บันทึกจำนวนเตรียมแล้วค่ะ');
+
+  // อัปเดตเฉพาะ row นั้น ไม่ re-render ทั้งหน้า
+  const scrollY = window.scrollY;
   await dbLoadDailyWithdrawals();
   renderDailyWithdrawPage();
+  requestAnimationFrame(() => window.scrollTo(0, scrollY));
 }
 
 async function dwUpdateSuggestedQty(id, val) {
