@@ -6145,15 +6145,21 @@ async function renderPurchaseOrderPage() {
   // เพิ่ม group สำหรับ supplier ที่มีใน DB (แม้ยังไม่มี item)
   allSuppliers.forEach(sup => { poGroups[sup] = []; });
 
-  // ใส่ items จาก store2 เข้า group ตาม supplier_name
+  // ใส่ items จาก store2 เข้า group แต่ใช้ min/max จาก equip_th
   masterDB.filter(m => m.pg==='store2' && m.is_active!==false && !PO_EXCLUDE_SUBCATS.includes(m.subcat||'')).forEach(m => {
     const key = m.supplier_name || '__noSup__';
     if (!poGroups[key]) poGroups[key] = [];
+    // หา equip_th item ที่ตรงกัน (code SWBD_EQ_xxxx)
+    const eqCode = m.code.replace('SWBD_TH_', 'SWBD_EQ_');
+    const eq = masterDB.find(x=>x.code===eqCode && x.pg==='equip_th');
+    const useMin = eq ? (eq.min||0) : (m.min||0);
+    const useMax = eq ? (eq.max||0) : (m.max||0);
+    const useStock = eq ? eq.stock : m.stock;
+    const belowMin = useStock <= useMin;
+    const qty = (belowMin || useStock === 0) ? useMax : Math.max(0, useMax - useStock);
     poGroups[key].push({
       code: m.code, name: m.name, subcat: m.subcat||'', unit: m.unit||'',
-      stock: m.stock, min: m.min||0, max: m.max||0,
-      qty: (m.stock <= (m.min||0) || m.stock === 0) ? (m.max||0) : Math.max(0, (m.max||0) - m.stock),
-      belowMin: m.stock <= (m.min||0)
+      stock: useStock, min: useMin, max: useMax, qty, belowMin
     });
   });
 
@@ -6379,11 +6385,16 @@ function poAddItemToCard(key, code) {
   if (!m) return;
   if (!poGroups[key]) poGroups[key] = [];
   if (poGroups[key].find(i=>i.code===code)) return;
+  const eqCode = m.code.replace('SWBD_TH_', 'SWBD_EQ_');
+  const eq = masterDB.find(x=>x.code===eqCode && x.pg==='equip_th');
+  const useMin = eq ? (eq.min||0) : (m.min||0);
+  const useMax = eq ? (eq.max||0) : (m.max||0);
+  const useStock = eq ? eq.stock : m.stock;
+  const belowMin = useStock <= useMin;
+  const qty = (belowMin || useStock === 0) ? useMax : Math.max(0, useMax - useStock);
   poGroups[key].push({
     code:m.code, name:m.name, subcat:m.subcat||'', unit:m.unit||'',
-    stock:m.stock, min:m.min||0, max:m.max||0,
-    qty: (m.stock <= (m.min||0) || m.stock === 0) ? (m.max||0) : Math.max(0,(m.max||0)-m.stock),
-    belowMin: m.stock <= (m.min||0)
+    stock:useStock, min:useMin, max:useMax, qty, belowMin
   });
   // บันทึก supplier_name ลง items
   const newSup = key === '__noSup__' ? null : key;
