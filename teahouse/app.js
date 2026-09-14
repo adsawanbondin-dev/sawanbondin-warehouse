@@ -3765,6 +3765,16 @@ async function dbLoadDailyWithdrawals() {
     .neq('status', 'received')
     .order('pg').order('item_name');
   dwItems = data || [];
+
+  // ลบรายการที่ stock กลับมาเกิน min แล้ว (ป้องกันค้างโดยไม่จำเป็น)
+  const toDelete = dwItems.filter(x => {
+    const m = masterDB.find(i=>i.code===x.item_code);
+    return m && m.stock > (m.min||0);
+  });
+  if (toDelete.length) {
+    await sb.from('daily_withdrawals').delete().in('id', toDelete.map(x=>x.id));
+    dwItems = dwItems.filter(x => !toDelete.find(d=>d.id===x.id));
+  }
 }
 
 async function dbGenerateDailyList() {
