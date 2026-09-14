@@ -4201,7 +4201,7 @@ function dwRenderContent() {
       const noteInput = isFinish
         ? `<div style="margin-top:3px">
             <select id="note-sel-${item.id}"
-              style="width:100%;padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;font-family:inherit;background:var(--surface);color:var(--ink4)"
+              style="width:100%;padding:3px 6px;border:0.5px solid #5b8fe8;border-radius:5px;font-size:10px;font-family:inherit;background:#eef3fc;color:#2a5298"
               onchange="dwApplyNoteDropdown(${item.id},this.value)">
               <option value="">— หมายเหตุ —</option>
               ${noteOpts.map(n=>`<option value="${n}" ${item.preparer_note===n?'selected':''}>${n}</option>`).join('')}
