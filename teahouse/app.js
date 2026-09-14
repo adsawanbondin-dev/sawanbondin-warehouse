@@ -4106,195 +4106,138 @@ async function renderDailyWithdrawPage() {
   const finishCodes = dwItems.filter(x=>x.pg==='finish' && x.status!=='received').map(x=>x.item_code);
   if (finishCodes.length) await dwLoadFactoryLots(finishCodes);
 
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('th-TH',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  const today    = new Date();
+  const dateStr  = today.toLocaleDateString('th-TH',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   const todayStr = today.toISOString().split('T')[0];
 
-  const total    = dwItems.length;
-  const received = dwItems.filter(x=>x.status==='received').length;
-  const ready    = dwItems.filter(x=>x.status==='ready').length;
-  const pending  = dwItems.filter(x=>x.status==='pending'||x.status==='preparing').length;
+  // สถิติ
+  const cntPending  = dwItems.filter(x=>x.status==='pending'||x.status==='preparing').length;
+  const cntReady    = dwItems.filter(x=>x.status==='ready').length;
+  const cntReceived = dwItems.filter(x=>x.status==='received').length;
 
-  const statusConfig = {
-    pending:  { label:'รอเตรียม',     color:'#7a5900', bg:'#fff8e8', border:'#c8960a' },
-    preparing:{ label:'กำลังเตรียม', color:'#013c58', bg:'#e8f0f5', border:'#013c58' },
-    ready:    { label:'เตรียมแล้ว',  color:'#2d4a0f', bg:'#edf5ec', border:'#4a6b1a' },
-    received: { label:'รับแล้ว',     color:'#2d4a0f', bg:'#edf5ec', border:'#4a6b1a' },
-    shipping: { label:'กำลังจัดส่ง', color:'#2d4a0f', bg:'#edf5ec', border:'#4a6b1a' },
-  };
+  // current tab state
+  if (!window._dwMainTab)  window._dwMainTab  = 'pending';
+  if (!window._dwPgTab)    window._dwPgTab    = 'finish';
 
-  function buildSection(pg, label, icon) {
-    const items = dwItems.filter(m=>m.pg===pg);
-    if (!items.length) return `<div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:12px">
-      <div style="padding:9px 16px;background:var(--s2);display:flex;align-items:center;gap:8px">
-        <i class="ti ${icon}" style="font-size:13px;color:var(--ink4)"></i>
-        <span style="font-size:12px;font-weight:500">${label}</span>
-      </div>
-      <div style="padding:20px;text-align:center;font-size:11px;color:var(--ink4)">ไม่มีรายการเบิก</div>
+  function buildRows(items, mode) {
+    if (!items.length) return `<div style="padding:32px;text-align:center;font-size:12px;color:var(--ink4)">ไม่มีรายการค่ะ</div>`;
+
+    const colHeader = `<div style="display:grid;grid-template-columns:1fr 48px 48px 56px 40px;padding:4px 14px;font-size:9px;color:var(--ink4);background:var(--s2)">
+      <span>รายการ</span>
+      <span style="text-align:right">${mode==='ready'?'แจ้งเบิก':'แจ้งเบิก'}</span>
+      <span style="text-align:right">${mode==='ready'?'เตรียม':'เตรียม'}</span>
+      <span style="text-align:center">${mode==='received'?'รับแล้ว':'รับจริง'}</span>
+      <span></span>
     </div>`;
 
-    const FINISH_CATS = ['สินค้า','ชาตกแต่ง','ชาใบแบบชง','ชาบดผงแบบชง'];
-    const subcatSet = pg==='finish'
-      ? FINISH_CATS
-      : [...new Set(items.map(i=>{const m=masterDB.find(x=>x.code===i.item_code);return m?.subcat||'อื่นๆ';}))].sort();
-    const subcats = subcatSet.length > 0 ? subcatSet : [];
-    const defaultCat = subcats.length > 0 ? subcats[0] : '';
-    const catTabsHtml = subcats.map((sub,idx)=>`
-      <button onclick="dwFilterCat(this,'${pg}','${sub.replace(/'/g,"\'")}') " class="dw-cat-${pg}"
-        style="padding:3px 12px;border-radius:12px;border:0.5px solid var(--line);font-size:10px;cursor:pointer;font-family:inherit;
-        background:${idx===0?'var(--ink)':'transparent'};color:${idx===0?'var(--surface)':'var(--ink3)'}">
-        ${sub}
-      </button>`).join('');
-
-    // แบ่ง 2 กลุ่ม: รอรับ (pending/preparing/ready) เท่านั้น ซ่อนรับแล้ว
-    const waitingItems  = items.filter(x=>x.status==='pending'||x.status==='preparing');
-    const readyItems    = items.filter(x=>x.status==='ready');
-    const secReceived   = items.filter(x=>x.status==='received').length;
-
-    const buildRow = (item, isDone) => {
+    const rows = items.map(item => {
       const m = masterDB.find(x=>x.code===item.item_code);
-      const subcat = m?.subcat||'อื่นๆ';
-      const isCarried = item.date && item.date!==todayStr;
-      const fwStatus = item.factory_withdraw_status||'pending';
-      const initDisplay = subcats.length>0 ? (subcat===defaultCat?'flex':'none') : 'flex';
+      const isCarried = item.date && item.date !== todayStr;
+      const prepQty = (item.prepared_qty !== null && item.prepared_qty !== undefined && item.prepared_qty >= 0 && item.prepared_qty < (item.suggested_qty||0))
+        ? item.prepared_qty : (item.suggested_qty||0);
+      const recvQty = item.received_qty || prepQty;
 
-      if (isDone) return `<div class="dw-row-${pg}" data-cat="${subcat}"
-        style="display:${initDisplay};flex-direction:column;gap:4px;padding:9px 16px;border-bottom:0.5px solid var(--line);opacity:.4">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="flex:1;font-size:12px;font-weight:500">${item.item_name}
-            <span style="font-size:9px;color:#2d6a0f;margin-left:4px">✓ รับแล้ว ${item.received_qty||0}</span>
-          </div>
-          <div style="font-size:11px;color:var(--ink4)">แนะนำ ${item.suggested_qty||0}</div>
-        </div>
-        ${item.preparer_note?`<div style="font-size:10px;color:#013c58;background:#e8f0f5;padding:2px 8px;border-radius:4px;border-left:2px solid #013c58">หมายเหตุผู้เตรียม: ${item.preparer_note}</div>`:''}
-      </div>`;
-
-      const isReady = item.status === 'ready';
-
-      // ส่วนพนักงานเตรียม (pending/preparing) หรือ ready
-      if (!isReady) {
-        // แถว "เตรียมของ"
-        const lots = pg==='finish' ? (dwFactoryLots[item.item_code]||[]) : [];
-        const lotSelect = pg==='finish' ? (lots.length
+      if (mode === 'pending') {
+        // lot selector สำหรับ finish
+        const lots = item.pg==='finish' ? (dwFactoryLots[item.item_code]||[]) : [];
+        const lotSelect = item.pg==='finish' && lots.length
           ? `<select onchange="dwSetLot(${item.id},this.value,this.options[this.selectedIndex].dataset.sw)"
-              style="margin-top:4px;padding:4px 8px;border:0.5px solid var(--line);border-radius:6px;font-size:11px;background:var(--surface);color:var(--ink);font-family:inherit;width:100%">
+              style="width:100%;margin-top:4px;padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;font-family:inherit;background:var(--surface);color:var(--ink)">
               <option value="">— เลือก Lot —</option>
-              ${lots.map(l=>{const bag=l.bag_number?` ถุง${l.bag_number}/${l.bag_total}`:'';const w=l.weight_kg?` ${l.weight_kg}กก.`:'';return `<option value="${l.id}" data-sw="${l.lot_sw}" ${item._lotId===l.id?'selected':''}>${l.lot_sw}${bag}${w} (${l.stock})</option>`;}).join('')}
-            </select>`
-          : `<div style="font-size:10px;color:var(--red);margin-top:3px">ไม่พบ Lot ใน Factory</div>`) : '';
+              ${lots.map(l=>`<option value="${l.id}" data-sw="${l.lot_sw}" ${item._lotId===l.id?'selected':''}>${l.lot_sw} (${l.stock})</option>`).join('')}
+            </select>` : '';
 
-        return `<div class="dw-row-${pg}" data-cat="${subcat}"
-          style="display:${initDisplay};flex-direction:column;gap:6px;padding:10px 16px;border-bottom:0.5px solid var(--line);background:var(--s2)" id="dwrow-${item.id}">
-          <div style="display:flex;align-items:center;gap:6px">
-            <i class="ti ti-tools" style="font-size:11px;color:var(--ink4)"></i>
-            <span style="font-size:10px;font-weight:600;color:var(--ink4)">ผู้เตรียมของ</span>
+        return `<div style="display:grid;grid-template-columns:1fr 48px 48px 56px 40px;border-bottom:0.5px solid var(--line);align-items:start" id="dwrow-${item.id}">
+          <div style="padding:10px 14px">
+            <div style="font-size:12px;font-weight:500">${item.item_name}${isCarried?` <span style="font-size:9px;color:var(--ink4)">ค้างมา</span>`:''}</div>
+            <div style="font-size:10px;color:var(--ink4);margin-top:1px">${m?.subcat||''}</div>
+            ${item.note?`<div style="font-size:10px;color:var(--ink4);margin-top:3px;padding:2px 6px;background:var(--s2);border-radius:4px;border-left:2px solid var(--line)">${item.note}</div>`:''}
+            ${lotSelect}
+            <input type="text" placeholder="หมายเหตุผู้เตรียม..."
+              value="${item.preparer_note||''}"
+              style="margin-top:4px;width:100%;padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;font-family:inherit;background:var(--surface);color:var(--ink4);outline:none"
+              onchange="dwSetPreparerNote(${item.id},this.value)">
           </div>
-          <div style="display:flex;align-items:flex-start;gap:10px">
-            <div style="flex:1;min-width:0">
-              <div style="font-size:12px;font-weight:500">${item.item_name}
-                ${isCarried?`<span style="font-size:9px;color:var(--ink4);margin-left:4px">ค้างมา</span>`:''}
-              </div>
-              ${item.note?`<div style="font-size:10px;color:#7a5900;background:#fff8e8;padding:1px 6px;border-radius:4px;display:inline-block;margin-top:2px">${item.note}</div>`:''}
-              ${pg==='finish' && fwStatus==='shipping'?`<div style="margin-top:3px"><span style="font-size:9px;padding:2px 7px;border-radius:8px;background:#edf5ec;color:#2d4a0f;border:0.5px solid #4a6b1a">กำลังจัดส่ง</span></div>`:''}
-              ${lotSelect}
-            </div>
-            <div style="text-align:right;flex-shrink:0;min-width:44px">
-              <div style="font-size:9px;color:var(--ink4)">แนะนำ</div>
-              <input type="number" min="0" inputmode="decimal"
-                value="${item.suggested_qty||0}"
-                style="width:56px;padding:3px 6px;border:0.5px solid var(--line);border-radius:6px;font-size:13px;text-align:right;background:var(--surface);outline:none;font-family:inherit;font-weight:500"
-                onchange="dwUpdateSuggestedQty(${item.id},this.value)"
-                onfocus="this.select()">
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-              <input type="number" min="0" inputmode="decimal" 
-                placeholder="${item.suggested_qty||0}"
-                value="${(item._prepQty !== undefined && item._prepQty !== null && item._prepQty >= 0) ? item._prepQty : ''}"
-                style="width:68px;padding:5px 8px;border:0.5px solid var(--line);border-radius:7px;font-size:13px;text-align:right;background:var(--surface);outline:none;font-family:inherit"
-                oninput="dwSetPrepQty(${item.id},this.value)"
-                onfocus="this.select()">
-              <button onclick="dwSavePrepared(${item.id})"
-                style="padding:5px 8px;border-radius:7px;border:none;background:var(--ink);color:var(--surface);font-size:10px;cursor:pointer;font-family:inherit;white-space:nowrap">
-                บันทึกเตรียม
-              </button>
-            </div>
+          <div style="text-align:right;padding:10px 10px 0;font-size:13px;color:var(--ink4)">${item.suggested_qty||0}</div>
+          <div style="text-align:right;padding:10px 10px 0">
+            <input type="number" min="0" value="${(item.prepared_qty!==null&&item.prepared_qty!==undefined&&item.prepared_qty>=0)?item.prepared_qty:''}"
+              placeholder="${item.suggested_qty||0}"
+              style="width:44px;padding:3px 5px;border:0.5px solid var(--line);border-radius:6px;font-size:12px;text-align:right;background:var(--surface);outline:none;font-family:inherit"
+              oninput="dwSetPrepQty(${item.id},this.value)" onfocus="this.select()">
           </div>
-          <input type="text" placeholder="หมายเหตุผู้เตรียม..." value="${item.preparer_note||''}"
-            style="width:100%;padding:4px 8px;border:0.5px solid ${item.preparer_note?'#013c58':'var(--line)'};border-radius:6px;font-size:10px;background:${item.preparer_note?'#e8f0f5':'var(--surface)'};color:var(--ink3);outline:none;font-family:inherit"
-            onchange="dwSetPreparerNote(${item.id},this.value)">
+          <div style="padding:10px 4px 0">
+            <input type="number" min="0" placeholder="${item.suggested_qty||0}"
+              style="width:52px;padding:3px 6px;border:0.5px solid var(--line);border-radius:6px;font-size:12px;text-align:center;background:var(--surface);outline:none;font-family:inherit"
+              oninput="dwSetRecvQty(${item.id},this.value)" onfocus="this.select()"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();dwSavePrepared(${item.id})}">
+          </div>
+          <div style="padding:10px 6px 0">
+            <button onclick="dwSavePrepared(${item.id})"
+              style="padding:4px 7px;border-radius:6px;border:none;background:var(--ink);color:var(--surface);font-size:11px;cursor:pointer">
+              <i class="ti ti-check"></i>
+            </button>
+          </div>
         </div>`;
       }
 
-      // แถว "รับของ" (status = ready)
-      return `<div class="dw-row-${pg}" data-cat="${subcat}"
-        style="display:${initDisplay};flex-direction:column;gap:6px;padding:10px 16px;border-bottom:0.5px solid var(--line);background:var(--surface)" id="dwrow-${item.id}">
-        <div style="display:flex;align-items:center;gap:6px">
-          <i class="ti ti-package-import" style="font-size:11px;color:var(--ink4)"></i>
-          <span style="font-size:10px;font-weight:600;color:var(--ink3)">พนักงานรับของ</span>
-          ${(item.prepared_qty !== null && item.prepared_qty !== undefined)?`<span style="font-size:10px;color:var(--ink3);margin-left:4px">เตรียมแล้ว: <b>${item.prepared_qty}</b></span>`:''}
-        </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="flex:1;min-width:0">
+      if (mode === 'ready') {
+        return `<div style="display:grid;grid-template-columns:1fr 48px 48px 56px 40px;border-bottom:0.5px solid var(--line);align-items:start" id="dwrow-${item.id}">
+          <div style="padding:10px 14px">
             <div style="font-size:12px;font-weight:500">${item.item_name}</div>
-            ${item.preparer_note?`<div style="font-size:10px;color:#013c58;background:#e8f0f5;padding:1px 6px;border-radius:4px;display:inline-block;margin-top:2px">หมายเหตุ: ${item.preparer_note}</div>`:''}
+            <div style="font-size:10px;color:var(--ink4);margin-top:1px">${m?.subcat||''}</div>
+            ${item.preparer_note?`<div style="font-size:10px;color:var(--ink4);margin-top:3px;padding:2px 6px;background:var(--s2);border-radius:4px;border-left:2px solid var(--line)">${item.preparer_note}</div>`:''}
           </div>
-          <div style="text-align:right;flex-shrink:0;min-width:44px">
-            <div style="font-size:9px;color:var(--ink4)">เตรียม</div>
-            <div style="font-size:13px;font-weight:500">${(item.prepared_qty !== null && item.prepared_qty !== undefined && item.prepared_qty >= 0 && item.prepared_qty < (item.suggested_qty||0)) ? item.prepared_qty : (item.suggested_qty||0)}</div>
+          <div style="text-align:right;padding:10px 10px 0;font-size:13px;color:var(--ink4)">${item.suggested_qty||0}</div>
+          <div style="text-align:right;padding:10px 10px 0;font-size:13px">${prepQty}</div>
+          <div style="padding:10px 4px 0">
+            <input type="number" min="0" value="${prepQty}"
+              style="width:52px;padding:3px 6px;border:0.5px solid var(--line);border-radius:6px;font-size:12px;text-align:center;background:var(--surface);outline:none;font-family:inherit"
+              oninput="dwSetRecvQty(${item.id},this.value)" onfocus="this.select()"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();dwReceive(${item.id})}">
           </div>
-          <input type="number" min="0" inputmode="decimal" placeholder="${(item.prepared_qty !== null && item.prepared_qty !== undefined && item.prepared_qty >= 0 && item.prepared_qty < (item.suggested_qty||0)) ? item.prepared_qty : (item.suggested_qty||0)}"
-            style="width:68px;padding:5px 8px;border:0.5px solid var(--line);border-radius:7px;font-size:13px;text-align:right;background:var(--surface);outline:none;font-family:inherit"
-            oninput="dwSetRecvQty(${item.id},this.value)"
-            onfocus="this.select()"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();dwReceive(${item.id})}">
-          <button onclick="dwReceive(${item.id})"
-            style="padding:5px 10px;border-radius:7px;border:none;background:var(--ink);color:var(--surface);font-size:10px;cursor:pointer;font-family:inherit;white-space:nowrap">
-            รับเข้า
-          </button>
+          <div style="padding:10px 6px 0">
+            <button onclick="dwReceive(${item.id})"
+              style="padding:4px 7px;border-radius:6px;border:none;background:var(--ink);color:var(--surface);font-size:11px;cursor:pointer">
+              <i class="ti ti-package-import"></i>
+            </button>
+          </div>
+        </div>`;
+      }
+
+      // received
+      return `<div style="display:grid;grid-template-columns:1fr 48px 48px 56px 40px;border-bottom:0.5px solid var(--line);align-items:center;opacity:.45">
+        <div style="padding:9px 14px">
+          <div style="font-size:12px;font-weight:500">${item.item_name}</div>
+          <div style="font-size:10px;color:var(--ink4);margin-top:1px">${m?.subcat||''}</div>
         </div>
+        <div style="text-align:right;padding:0 10px;font-size:13px;color:var(--ink4)">${item.suggested_qty||0}</div>
+        <div style="text-align:right;padding:0 10px;font-size:13px;color:var(--ink4)">${prepQty}</div>
+        <div style="text-align:center;padding:0 4px;font-size:13px">${item.received_qty||0}</div>
+        <div style="padding:0 6px;text-align:center;font-size:16px;color:var(--ink4)"><i class="ti ti-check"></i></div>
       </div>`;
-    };
+    }).join('');
 
-    const waitingRows = waitingItems.map(i=>buildRow(i,false)).join('') || `<div style="padding:16px;text-align:center;font-size:11px;color:var(--ink4)">ไม่มีรายการที่รอเตรียม</div>`;
-    const readyRows   = readyItems.map(i=>buildRow(i,false)).join('');
+    return colHeader + rows;
+  }
 
-    return `<div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:12px">
-      <div style="padding:9px 16px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:8px">
-          <i class="ti ${icon}" style="font-size:13px;color:var(--ink4)"></i>
-          <span style="font-size:12px;font-weight:500">${label}</span>
-          <span style="font-size:10px;color:var(--ink4)">${items.length} รายการ${secReceived?` · รับแล้ว ${secReceived}`:''}</span>
-        </div>
-        <button onclick="dwCopySectionText('${pg}')"
-          style="font-size:10px;padding:3px 10px;border-radius:6px;border:0.5px solid var(--line);background:transparent;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px">
-          <i class="ti ti-copy" style="font-size:11px"></i> คัดลอก
-        </button>
-      </div>
-      ${subcats.length?`<div style="display:flex;gap:6px;padding:8px 14px;border-bottom:0.5px solid var(--line);flex-wrap:wrap;background:var(--s2)">${catTabsHtml}</div>`:''}
-      <div style="display:grid;grid-template-columns:1fr 48px auto 56px;padding:5px 16px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
-        <span>รายการ</span><span style="text-align:right">แนะนำ</span><span style="text-align:right">จำนวน</span><span></span>
-      </div>
-      <!-- รอเตรียม -->
-      ${waitingItems.length>0?`<div style="padding:5px 16px;font-size:10px;font-weight:600;color:var(--ink4);background:var(--s2);border-bottom:0.5px solid var(--line)">รอเตรียม (${waitingItems.length})</div>`:''}
-      <div>${waitingRows}</div>
-      ${waitingItems.length>0?`
-      <div style="padding:8px 16px;border-top:0.5px solid var(--line);background:var(--s2);display:flex;justify-content:flex-end">
-        <button onclick="dwSavePreparedAll('${pg}')"
-          style="font-size:11px;padding:5px 14px;border-radius:8px;background:var(--ink);color:var(--surface);border:none;cursor:pointer;font-family:inherit">
-          <i class="ti ti-check"></i> บันทึกเตรียมทั้งหมด (${waitingItems.length})
-        </button>
-      </div>`:''}
-      <!-- เตรียมแล้ว รอรับเข้า -->
-      ${readyItems.length>0?`
-      <div style="padding:5px 16px;font-size:10px;font-weight:600;color:#2d4a0f;background:#edf5ec;border-top:1px solid var(--line);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
-        <span>เตรียมแล้ว รอรับเข้า (${readyItems.length})</span>
-        <button onclick="dwReceiveAllReady('${pg}')"
-          style="font-size:10px;padding:3px 10px;border-radius:6px;background:var(--ink);color:var(--surface);border:none;cursor:pointer;font-family:inherit">
+  function buildSection(pg, label) {
+    const mainTab  = window._dwMainTab;
+    const statuses = mainTab==='pending' ? ['pending','preparing'] : mainTab==='ready' ? ['ready'] : ['received'];
+    const items    = dwItems.filter(x=>x.pg===pg && statuses.includes(x.status));
+
+    const lots = pg==='finish' ? (dwFactoryLots[pg]||[]) : [];
+    return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:10px">
+      <div style="padding:7px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;font-weight:500">${label} · ${items.length} รายการ</span>
+        ${mainTab==='pending'?`<button onclick="dwSavePreparedAll('${pg}')"
+          style="font-size:10px;padding:3px 9px;border-radius:6px;background:var(--ink);color:var(--surface);border:none;cursor:pointer;font-family:inherit">
+          <i class="ti ti-checks"></i> บันทึกเตรียมทั้งหมด
+        </button>`:mainTab==='ready'?`<button onclick="dwReceiveAllReady('${pg}')"
+          style="font-size:10px;padding:3px 9px;border-radius:6px;background:var(--ink);color:var(--surface);border:none;cursor:pointer;font-family:inherit">
           <i class="ti ti-package-import"></i> รับเข้าทั้งหมด
-        </button>
+        </button>`:''}
       </div>
-      <div>${readyRows}</div>`:''}
-
+      ${buildRows(items, mainTab==='pending'?'pending':mainTab==='ready'?'ready':'received')}
     </div>`;
   }
 
@@ -4303,54 +4246,32 @@ async function renderDailyWithdrawPage() {
       <div><div class="page-title">เบิกประจำวัน</div>
         <div class="page-sub">${dateStr}</div></div>
       <div style="display:flex;gap:6px">
-        <button class="btn btn-sm" onclick="renderDwHistoryPage()" style="font-size:11px">
-          <i class="ti ti-history"></i> ประวัติ
-        </button>
-        <button class="btn btn-sm" onclick="dwOpenAddModal('')" style="font-size:11px">
-          <i class="ti ti-plus"></i> เพิ่ม
-        </button>
-        <button class="btn btn-sm" onclick="dwClearAll()" style="font-size:11px;color:#b03030;border-color:#e8a0a0">
-          <i class="ti ti-trash"></i> ล้าง
-        </button>
-        <button class="btn btn-sm" onclick="dwManualReset()" style="font-size:11px;color:#7a5900;border-color:#c8960a" title="รีเซ็ตรายการที่เตรียมแล้วกลับเป็นรอเตรียมใหม่">
-          <i class="ti ti-refresh-alert"></i> รีเซ็ต
-        </button>
-        <button class="btn btn-sm" onclick="(async()=>{await dbGenerateDailyList();await dbLoadDailyWithdrawals();renderDailyWithdrawPage();})()" style="font-size:11px">
+        <button class="btn btn-sm" onclick="dwManualReset()" style="font-size:11px">รีเซ็ต</button>
+        <button class="btn btn-sm" onclick="dwClearAll()" style="font-size:11px;color:#b03030;border-color:#e8a0a0">ล้าง</button>
+        <button class="btn btn-sm" onclick="(async()=>{await dbGenerateDailyList();await dbLoadDailyWithdrawals();renderDailyWithdrawPage()})()" style="font-size:11px">
           <i class="ti ti-refresh"></i>
         </button>
       </div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:20px;font-weight:500">${total}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-top:2px">ทั้งหมด</div>
-      </div>
-      <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:20px;font-weight:500">${pending}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-top:2px">รอเตรียม</div>
-      </div>
-      <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:20px;font-weight:500">${ready}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-top:2px">รอรับเข้า</div>
-      </div>
-      <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:20px;font-weight:500;color:#2d6a0f">${received}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-top:2px">รับแล้ว</div>
-      </div>
-    </div>
-    ${buildSection('finish','สินค้าสำเร็จรูป (จาก Factory)','ti-package')}
-    ${buildSection('store2','Stock Tea House','ti-building-store')}`;
-}
 
-async function dwClearAll() {
-  const pending = dwItems.filter(x=>x.status!=='received');
-  if (!pending.length) { showToast('ไม่มีรายการที่จะล้าง','err'); return; }
-  if (!confirm(`ล้างรายการเบิกที่ยังไม่รับเข้า ${pending.length} รายการ?`)) return;
-  const ids = pending.map(x=>x.id);
-  await sb.from('daily_withdrawals').delete().in('id', ids);
-  showToast('ล้างรายการเรียบร้อยค่ะ');
-  await dbLoadDailyWithdrawals();
-  renderDailyWithdrawPage();
+    <!-- 3 main tabs -->
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      ${[
+        {key:'pending', label:'รอเตรียม',    cnt:cntPending},
+        {key:'ready',   label:'เตรียมแล้ว',  cnt:cntReady},
+        {key:'received',label:'รับแล้ว',     cnt:cntReceived},
+      ].map(t=>`<div onclick="window._dwMainTab='${t.key}';renderDailyWithdrawPage()"
+        style="flex:1;padding:10px 12px;text-align:center;border-radius:10px;cursor:pointer;
+        border:${window._dwMainTab===t.key?'1.5px solid var(--ink)':'0.5px solid var(--line)'};
+        background:${window._dwMainTab===t.key?'var(--ink)':'var(--surface)'};
+        color:${window._dwMainTab===t.key?'var(--surface)':'var(--ink4)'}">
+        <div style="font-size:18px;font-weight:500">${t.cnt}</div>
+        <div style="font-size:10px;margin-top:2px">${t.label}</div>
+      </div>`).join('')}
+    </div>
+
+    ${buildSection('finish','สินค้าสำเร็จรูป')}
+    ${buildSection('store2','Stock Tea House')}`;
 }
 
 async function dwSavePreparedAll(pg) {
