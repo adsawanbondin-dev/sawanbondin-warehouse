@@ -6276,9 +6276,27 @@ function posBuildCard(key) {
       </div>
       <div style="display:flex;gap:5px">
         ${!isNoSup?`<button class="btn btn-sm" onclick="poEditSup('${key.replace(/'/g,"\\'")}')" style="font-size:10px"><i class="ti ti-edit"></i></button>`:''}
+        <button class="btn btn-sm" onclick="poToggleAddRow('${key.replace(/'/g,"\\'")}');event.stopPropagation()" style="font-size:10px">
+          <i class="ti ti-plus"></i> เพิ่มรายการ
+        </button>
         <button class="btn btn-sm" onclick="poCopyCardByKey('${key.replace(/'/g,"\\'")}');" style="font-size:10px">
           <i class="ti ti-copy"></i> คัดลอก
         </button>
+      </div>
+    </div>
+    <!-- ช่องค้นหาเพิ่มรายการ -->
+    <div id="po-addrow-${key.replace(/[^a-zA-Z0-9]/g,'_')}" style="display:none;padding:10px 14px;background:var(--s2);border-bottom:0.5px solid var(--line)">
+      <div style="font-size:11px;color:var(--ink4);margin-bottom:6px">ค้นหาและเลือกรายการจาก Stock Tea House</div>
+      <div style="position:relative">
+        <i class="ti ti-search" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--ink4);pointer-events:none"></i>
+        <input type="text" placeholder="พิมพ์ชื่อสินค้า..."
+          style="width:100%;padding:6px 10px 6px 30px;border:0.5px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:var(--surface);color:var(--ink);outline:none"
+          id="po-search-${key.replace(/[^a-zA-Z0-9]/g,'_')}"
+          oninput="poFilterItems('${key.replace(/'/g,"\\'")}',this.value)"
+          onfocus="poShowItemDrop('${key.replace(/'/g,"\\'")}',this.value)"
+          autocomplete="off">
+        <div id="po-drop-${key.replace(/[^a-zA-Z0-9]/g,'_')}"
+          style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:0.5px solid var(--line);border-radius:8px;z-index:200;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:20px 1fr 52px 60px 62px 28px;padding:4px 14px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
@@ -6301,6 +6319,70 @@ function poShowAddSupModal() {
   document.getElementById('po-sup-modal').style.display = 'flex';
   setTimeout(()=>document.getElementById('po-sup-inp').focus(), 100);
 }
+function poToggleAddRow(key) {
+  const id = 'po-addrow-' + key.replace(/[^a-zA-Z0-9]/g,'_');
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) {
+    const inp = document.getElementById('po-search-' + key.replace(/[^a-zA-Z0-9]/g,'_'));
+    if (inp) { inp.value = ''; inp.focus(); poFilterItems(key, ''); }
+  }
+}
+
+function poFilterItems(key, q) {
+  const existingCodes = new Set((poGroups[key]||[]).map(i=>i.code));
+  const items = masterDB.filter(m =>
+    m.pg === 'store2' && m.is_active !== false &&
+    !PO_EXCLUDE_SUBCATS.includes(m.subcat||'') &&
+    !existingCodes.has(m.code) &&
+    (!q || m.name.toLowerCase().includes(q.toLowerCase()) || (m.subcat||'').toLowerCase().includes(q.toLowerCase()))
+  ).slice(0, 20);
+  const dropId = 'po-drop-' + key.replace(/[^a-zA-Z0-9]/g,'_');
+  const drop = document.getElementById(dropId);
+  if (!drop) return;
+  drop.style.display = 'block';
+  if (!items.length) {
+    drop.innerHTML = `<div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">ไม่พบรายการค่ะ</div>`;
+    return;
+  }
+  drop.innerHTML = items.map(m => {
+    const sc = m.stock === 0 ? '#b03030' : m.stock <= (m.min||0) ? 'var(--acc)' : '#2d6a0f';
+    const ek = key.replace(/'/g,"\\'");
+    return `<div onclick="poAddItemToCard('${ek}','${m.code}')"
+      style="padding:8px 12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:0.5px solid var(--line)"
+      onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+      <div>
+        <div style="font-size:12px;font-weight:500">${m.name}</div>
+        <div style="font-size:10px;color:var(--ink4)">${m.subcat||''} · ${m.unit||''} · Min ${m.min||0} / Max ${m.max||0}</div>
+      </div>
+      <div style="font-size:11px;font-weight:500;color:${sc};flex-shrink:0;margin-left:8px">Stock ${m.stock}</div>
+    </div>`;
+  }).join('');
+}
+
+function poAddItemToCard(key, code) {
+  const m = masterDB.find(x=>x.code===code);
+  if (!m) return;
+  if (!poGroups[key]) poGroups[key] = [];
+  if (poGroups[key].find(i=>i.code===code)) return;
+  const qty = Math.max(0, (m.max||0) - m.stock);
+  poGroups[key].push({ code:m.code, name:m.name, subcat:m.subcat||'', unit:m.unit||'', stock:m.stock, min:m.min||0, max:m.max||0, qty });
+  const newSup = key === '__noSup__' ? null : key;
+  sb.from('items').update({ supplier_name: newSup }).eq('code', code);
+  const div = document.getElementById('page-alert-purchase');
+  poRenderCards(div, 0);
+  showToast(`เพิ่ม ${m.name} แล้วค่ะ`);
+  // เปิด add row กลับ
+  setTimeout(()=>{
+    const rowEl = document.getElementById('po-addrow-'+key.replace(/[^a-zA-Z0-9]/g,'_'));
+    if (rowEl) rowEl.style.display = 'block';
+    const inp = document.getElementById('po-search-'+key.replace(/[^a-zA-Z0-9]/g,'_'));
+    if (inp) { inp.value = ''; inp.focus(); poFilterItems(key,''); }
+  }, 80);
+}
+
 function poEditSup(key) {
   poEditingSupKey = key;
   document.getElementById('po-modal-title').textContent = 'แก้ไขชื่อซัพพลายเออร์';
