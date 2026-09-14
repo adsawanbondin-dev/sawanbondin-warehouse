@@ -4196,19 +4196,17 @@ function dwRenderContent() {
             ${lots.map(l=>`<option value="${l.id}" data-sw="${l.lot_sw}" ${item._lotId===l.id?'selected':''}>${l.lot_sw} (${l.stock})</option>`).join('')}
           </select>` : '';
 
-      // หมายเหตุ: finish ใช้ dropdown, store2 ใช้ text input
+      const noteOpts = [...DW_FINISH_NOTES];
+      if (item.preparer_note && !noteOpts.includes(item.preparer_note)) noteOpts.push(item.preparer_note);
       const noteInput = isFinish
-        ? `<div style="margin-top:3px;display:flex;gap:4px;align-items:center">
+        ? `<div style="margin-top:3px">
             <select id="note-sel-${item.id}"
-              style="flex:1;padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;font-family:inherit;background:var(--surface);color:var(--ink4)"
+              style="width:100%;padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;font-family:inherit;background:var(--surface);color:var(--ink4)"
               onchange="dwApplyNoteDropdown(${item.id},this.value)">
               <option value="">— หมายเหตุ —</option>
-              ${DW_FINISH_NOTES.map(n=>`<option value="${n}" ${item.preparer_note===n?'selected':''}>${n}</option>`).join('')}
+              ${noteOpts.map(n=>`<option value="${n}" ${item.preparer_note===n?'selected':''}>${n}</option>`).join('')}
               <option value="__custom__">+ เพิ่มหมายเหตุใหม่...</option>
             </select>
-            ${item.preparer_note&&!DW_FINISH_NOTES.includes(item.preparer_note)
-              ?`<span style="font-size:10px;color:var(--ink4);padding:2px 6px;background:var(--s2);border-radius:4px;border:0.5px solid var(--line)">${item.preparer_note}</span>`
-              :''}
           </div>`
         : `<input type="text" placeholder="หมายเหตุ..." value="${item.preparer_note||''}"
             style="margin-top:3px;width:100%;padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;font-family:inherit;background:var(--surface);color:var(--ink4);outline:none"
