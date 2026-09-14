@@ -6152,7 +6152,7 @@ async function renderPurchaseOrderPage() {
     poGroups[key].push({
       code: m.code, name: m.name, subcat: m.subcat||'', unit: m.unit||'',
       stock: m.stock, min: m.min||0, max: m.max||0,
-      qty: Math.max(0, (m.max||0) - m.stock),
+      qty: (m.stock <= (m.min||0) || m.stock === 0) ? (m.max||0) : Math.max(0, (m.max||0) - m.stock),
       belowMin: m.stock <= (m.min||0)
     });
   });
@@ -6382,7 +6382,7 @@ function poAddItemToCard(key, code) {
   poGroups[key].push({
     code:m.code, name:m.name, subcat:m.subcat||'', unit:m.unit||'',
     stock:m.stock, min:m.min||0, max:m.max||0,
-    qty: Math.max(0,(m.max||0)-m.stock),
+    qty: (m.stock <= (m.min||0) || m.stock === 0) ? (m.max||0) : Math.max(0,(m.max||0)-m.stock),
     belowMin: m.stock <= (m.min||0)
   });
   // บันทึก supplier_name ลง items
