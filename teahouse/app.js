@@ -6101,7 +6101,12 @@ const PO_EXCLUDE_SUBCATS = [
   'อุปกรณ์ทำขนม','อุปกรณ์สำนักงาน','อุปกรณ์ส่องสว่าง','เครื่องใช้ไฟฟ้า'
 ];
 
-let poQtyEdits = {}; // { item_code: qty }
+let poQtyEdits   = {};
+let poDragSup    = null;
+let poDragCode   = null;
+let poCtxSupKey  = null;
+let poCtxCode    = null;
+let poGroups     = {};  // { supplierName: [items] } — state กลาง
 
 function renderAlertGroupPage(group) {
   if (group === 'purchase') renderPurchaseOrderPage();
@@ -6112,80 +6117,46 @@ async function renderPurchaseOrderPage() {
   if (!div) return;
   div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
 
-  // กรอง store2 ที่ถึง min ยกเว้น subcat ที่ไม่ต้องการ
   const items = masterDB.filter(m =>
-    m.pg === 'store2' &&
-    m.is_active !== false &&
-    m.min > 0 &&
-    m.stock <= m.min &&
+    m.pg === 'store2' && m.is_active !== false && m.min > 0 && m.stock <= m.min &&
     !PO_EXCLUDE_SUBCATS.includes(m.subcat||'')
   );
 
-  // group by supplier
-  const groups = {};
+  // สร้าง poGroups จาก DB (ครั้งแรก หรือถ้า items เปลี่ยน)
+  const existingCodes = new Set(Object.values(poGroups).flat().map(i=>i.code));
   items.forEach(m => {
-    const sup = m.supplier_name || '__ไม่มีซัพพลายเออร์__';
-    if (!groups[sup]) groups[sup] = [];
-    groups[sup].push(m);
+    if (existingCodes.has(m.code)) return;
+    const key = m.supplier_name || '__noSup__';
+    if (!poGroups[key]) poGroups[key] = [];
+    poGroups[key].push({
+      code: m.code, name: m.name, subcat: m.subcat||'', unit: m.unit||'',
+      stock: m.stock, min: m.min||0, max: m.max||0,
+      qty: poQtyEdits[m.code] !== undefined ? poQtyEdits[m.code] : Math.max(0,(m.max||0)-m.stock)
+    });
   });
 
-  const supCount = Object.keys(groups).filter(k=>k!=='__ไม่มีซัพพลายเออร์__').length;
-  const noSupCount = (groups['__ไม่มีซัพพลายเออร์__']||[]).length;
+  poRenderCards(div, items.length);
+}
 
-  function buildCard(supplier, groupItems) {
-    const isNoSup = supplier === '__ไม่มีซัพพลายเออร์__';
-    const rows = groupItems.map(m => {
-      const orderQty = poQtyEdits[m.code] !== undefined ? poQtyEdits[m.code] : Math.max(0, (m.max||0) - m.stock);
-      const stockColor = m.stock === 0 ? 'var(--red)' : 'var(--acc)';
-      return `<div style="display:grid;grid-template-columns:1fr 52px 60px 70px;padding:9px 14px;border-bottom:0.5px solid var(--line);align-items:center;gap:8px">
-        <div>
-          <div style="font-size:12px;font-weight:500">${m.name}</div>
-          <div style="font-size:10px;color:var(--ink4);margin-top:1px">${m.subcat||''} · ${m.unit||''}</div>
-        </div>
-        <div style="text-align:right;font-size:13px;font-weight:500;color:${stockColor}">${m.stock}</div>
-        <div style="text-align:right;font-size:11px;color:var(--ink4)">${m.min||0} / ${m.max||0}</div>
-        <input type="number" min="0" value="${orderQty}"
-          style="padding:4px 8px;border:0.5px solid var(--line);border-radius:7px;font-size:12px;text-align:right;background:var(--surface);color:var(--ink);outline:none;font-family:inherit;width:100%"
-          oninput="poQtyEdits['${m.code}']=parseFloat(this.value)||0"
-          onfocus="this.select()">
-      </div>`;
-    }).join('');
+function poRenderCards(div, totalItems) {
+  const supKeys = Object.keys(poGroups).filter(k=>k!=='__noSup__').sort((a,b)=>a.localeCompare(b,'th'));
+  const noSup   = poGroups['__noSup__'] || [];
+  const allKeys = [...supKeys, ...(noSup.length?['__noSup__']:[])];
 
-    return `<div style="border:0.5px solid ${isNoSup?'var(--acc)':'var(--line)'};border-radius:12px;overflow:hidden;margin-bottom:12px">
-      <div style="padding:9px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:8px">
-          <i class="ti ${isNoSup?'ti-help-circle':'ti-building-store'}" style="font-size:13px;color:var(--ink4)"></i>
-          <span style="font-size:12px;font-weight:500">${isNoSup?'ยังไม่มีซัพพลายเออร์':supplier}</span>
-          <span style="font-size:10px;background:var(--s2);border:0.5px solid var(--line);padding:1px 7px;border-radius:10px;color:var(--ink4)">${groupItems.length} รายการ</span>
-        </div>
-        <div style="display:flex;gap:6px">
-          ${isNoSup?`<button class="btn btn-sm" onclick="poGoMaster()" style="font-size:10px">+ กรอกซัพพลายเออร์</button>`:''}
-          <button class="btn btn-sm" onclick="poCopyCard('${supplier.replace(/'/g,"\\'")}','${groupItems.map(m=>m.code).join(',')}')" style="font-size:10px">
-            <i class="ti ti-copy" style="font-size:11px"></i> คัดลอก
-          </button>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 52px 60px 70px;padding:4px 14px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
-        <span>รายการ</span><span style="text-align:right">Stock</span><span style="text-align:right">Min/Max</span><span style="text-align:right">สั่ง</span>
-      </div>
-      ${rows}
-      <div style="padding:8px 14px;background:var(--s2);border-top:0.5px solid var(--line);display:flex;justify-content:flex-end">
-        <button class="btn btn-sm btn-primary" onclick="poCopyCard('${supplier.replace(/'/g,"\\'")}','${groupItems.map(m=>m.code).join(',')}')" style="font-size:11px">
-          <i class="ti ti-copy"></i> คัดลอกใบสั่ง
-        </button>
-      </div>
-    </div>`;
-  }
+  const totalSups = supKeys.length;
+  const totalOrder = Object.values(poGroups).flat().length;
+  const noSupCount = noSup.length;
 
-  const cardsHtml = Object.entries(groups)
-    .sort(([a],[b]) => a==='__ไม่มีซัพพลายเออร์__' ? 1 : b==='__ไม่มีซัพพลายเออร์__' ? -1 : a.localeCompare(b,'th'))
-    .map(([sup, items]) => buildCard(sup, items)).join('');
+  const cardsHtml = allKeys.map(key => posBuildCard(key)).join('');
 
   div.innerHTML = `
     <div class="page-header">
       <div><div class="page-title">รายการจัดซื้อ</div>
         <div class="page-sub">Stock Tea House — รายการที่ถึง Min</div></div>
       <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="poShowAddSupModal()" style="font-size:11px">
+          <i class="ti ti-plus"></i> เพิ่มซัพพลายเออร์
+        </button>
         <button class="btn btn-sm" onclick="renderPurchaseOrderPage()" style="font-size:11px">
           <i class="ti ti-refresh"></i>
         </button>
@@ -6196,11 +6167,11 @@ async function renderPurchaseOrderPage() {
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px">
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:20px;font-weight:500">${supCount}</div>
+        <div style="font-size:20px;font-weight:500">${totalSups}</div>
         <div style="font-size:10px;color:var(--ink4);margin-top:2px">ซัพพลายเออร์</div>
       </div>
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:20px;font-weight:500;color:var(--acc)">${items.length}</div>
+        <div style="font-size:20px;font-weight:500;color:var(--acc)">${totalOrder}</div>
         <div style="font-size:10px;color:var(--ink4);margin-top:2px">รายการต้องสั่ง</div>
       </div>
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
@@ -6208,53 +6179,254 @@ async function renderPurchaseOrderPage() {
         <div style="font-size:10px;color:var(--ink4);margin-top:2px">ไม่มีซัพพลายเออร์</div>
       </div>
     </div>
-    ${items.length ? cardsHtml : `<div style="padding:48px;text-align:center;color:var(--ink4)">
-      <i class="ti ti-checks" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>
-      ไม่มีรายการที่ต้องสั่ง — Stock ทุกรายการยังไม่ถึง Min ค่ะ
-    </div>`}`;
+    ${cardsHtml}
+    <div onclick="poShowAddSupModal()"
+      style="border:1.5px dashed var(--line);border-radius:12px;padding:14px;text-align:center;cursor:pointer;color:var(--ink4);font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:12px">
+      <i class="ti ti-plus"></i> เพิ่มซัพพลายเออร์ใหม่
+    </div>
+
+    <!-- Context menu -->
+    <div id="po-ctx" style="position:fixed;display:none;background:var(--surface);border:0.5px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);padding:4px;z-index:500;min-width:160px">
+      <div onclick="poCtxMove()" style="padding:7px 12px;font-size:12px;cursor:pointer;border-radius:5px;display:flex;align-items:center;gap:8px"
+        onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+        <i class="ti ti-arrows-transfer-up" style="font-size:13px"></i> ย้ายไปซัพพลายเออร์อื่น
+      </div>
+      <div onclick="poCtxRemove()" style="padding:7px 12px;font-size:12px;cursor:pointer;border-radius:5px;display:flex;align-items:center;gap:8px;color:#b03030"
+        onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+        <i class="ti ti-trash" style="font-size:13px"></i> ลบออกจากใบสั่ง
+      </div>
+    </div>
+
+    <!-- Modal เพิ่ม/แก้ไขซัพพลายเออร์ -->
+    <div id="po-sup-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:600;align-items:center;justify-content:center">
+      <div style="background:var(--surface);border-radius:12px;border:0.5px solid var(--line);padding:20px;width:320px">
+        <div style="font-size:13px;font-weight:500;margin-bottom:12px" id="po-modal-title">เพิ่มซัพพลายเออร์ใหม่</div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--ink4);margin-bottom:4px">ชื่อซัพพลายเออร์</div>
+          <input id="po-sup-inp" type="text" placeholder="เช่น Makro เชียงราย"
+            style="width:100%;padding:7px 10px;border:0.5px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:var(--surface);color:var(--ink);outline:none"
+            onkeydown="if(event.key==='Enter')poConfirmSup()">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-sm" onclick="poCloseModal()">ยกเลิก</button>
+          <button class="btn btn-sm btn-primary" onclick="poConfirmSup()">บันทึก</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal ย้ายรายการ -->
+    <div id="po-move-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:600;align-items:center;justify-content:center">
+      <div style="background:var(--surface);border-radius:12px;border:0.5px solid var(--line);padding:20px;width:320px">
+        <div style="font-size:13px;font-weight:500;margin-bottom:6px">ย้ายรายการ</div>
+        <div style="font-size:11px;color:var(--ink4);margin-bottom:12px" id="po-move-item-name"></div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--ink4);margin-bottom:4px">ย้ายไปยังซัพพลายเออร์</div>
+          <select id="po-move-target" style="width:100%;padding:7px 10px;border:0.5px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:var(--surface);color:var(--ink)"></select>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-sm" onclick="poCloseMoveModal()">ยกเลิก</button>
+          <button class="btn btn-sm btn-primary" onclick="poConfirmMove()">ย้าย</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.addEventListener('click', poHideCtx, { once: false });
 }
 
-function poCopyCard(supplier, codesStr) {
-  const codes = codesStr.split(',');
-  const items = masterDB.filter(m=>codes.includes(m.code));
+function posBuildCard(key) {
+  const isNoSup = key === '__noSup__';
+  const groupItems = poGroups[key] || [];
+  const displayName = isNoSup ? 'ยังไม่มีซัพพลายเออร์' : key;
+
+  const rows = groupItems.map(item => {
+    const sc = item.stock === 0 ? '#b03030' : 'var(--acc)';
+    return `<div draggable="true"
+      ondragstart="poDragStart(event,'${key}','${item.code}')"
+      ondragover="event.preventDefault()"
+      style="display:grid;grid-template-columns:20px 1fr 52px 60px 62px 28px;padding:8px 14px;border-bottom:0.5px solid var(--line);align-items:center;gap:6px"
+      id="po-row-${item.code}">
+      <div style="cursor:grab;color:var(--ink4);font-size:16px;text-align:center"><i class="ti ti-grip-vertical" aria-hidden="true"></i></div>
+      <div>
+        <div style="font-size:12px;font-weight:500">${item.name}</div>
+        <div style="font-size:10px;color:var(--ink4)">${item.subcat} · ${item.unit}</div>
+      </div>
+      <div style="text-align:right;font-size:13px;font-weight:500;color:${sc}">${item.stock}</div>
+      <div style="text-align:right;font-size:11px;color:var(--ink4)">${item.min}/${item.max}</div>
+      <input type="number" min="0" value="${item.qty}"
+        style="padding:3px 7px;border:0.5px solid var(--line);border-radius:7px;font-size:12px;text-align:right;background:var(--surface);color:var(--ink);font-family:inherit;width:100%;outline:none"
+        oninput="poQtyEdits['${item.code}']=parseFloat(this.value)||0; const g=poGroups['${key.replace(/'/g,"\\'")}'];const it=g&&g.find(x=>x.code==='${item.code}');if(it)it.qty=parseFloat(this.value)||0"
+        onfocus="this.select()">
+      <button style="background:none;border:none;cursor:pointer;color:var(--ink4);padding:2px 4px;font-size:16px"
+        onclick="poOpenCtx(event,'${key.replace(/'/g,"\\'")}','${item.code}')" title="ตัวเลือก">
+        <i class="ti ti-dots-vertical" aria-hidden="true"></i>
+      </button>
+    </div>`;
+  }).join('') || `<div style="padding:14px;text-align:center;font-size:11px;color:var(--ink4)">ยังไม่มีรายการ — ลากมาวางได้เลยค่ะ</div>`;
+
+  return `<div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:12px"
+    id="po-card-${key.replace(/[^a-zA-Z0-9]/g,'_')}"
+    ondragover="poDragOver(event,'${key.replace(/'/g,"\\'")}');event.preventDefault()"
+    ondrop="poDrop(event,'${key.replace(/'/g,"\\'")}');event.preventDefault()"
+    ondragleave="poDragLeave(event)">
+    <div style="padding:9px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:8px">
+        <i class="ti ${isNoSup?'ti-help-circle':'ti-building-store'}" aria-hidden="true" style="font-size:13px;color:var(--ink4)"></i>
+        <span style="font-size:12px;font-weight:500">${displayName}</span>
+        <span style="font-size:10px;background:var(--s2);border:0.5px solid var(--line);padding:1px 7px;border-radius:10px;color:var(--ink4)">${groupItems.length} รายการ</span>
+      </div>
+      <div style="display:flex;gap:5px">
+        ${!isNoSup?`<button class="btn btn-sm" onclick="poEditSup('${key.replace(/'/g,"\\'")}')" style="font-size:10px"><i class="ti ti-edit"></i></button>`:''}
+        <button class="btn btn-sm" onclick="poCopyCardByKey('${key.replace(/'/g,"\\'")}');" style="font-size:10px">
+          <i class="ti ti-copy"></i> คัดลอก
+        </button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:20px 1fr 52px 60px 62px 28px;padding:4px 14px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
+      <span></span><span>รายการ</span><span style="text-align:right">Stock</span><span style="text-align:right">Min/Max</span><span style="text-align:right">สั่ง</span><span></span>
+    </div>
+    ${rows}
+    <div style="padding:7px 14px;background:var(--s2);border-top:0.5px solid var(--line);display:flex;justify-content:flex-end">
+      <button class="btn btn-sm btn-primary" onclick="poCopyCardByKey('${key.replace(/'/g,"\\'")}')" style="font-size:11px">
+        <i class="ti ti-copy"></i> คัดลอกใบสั่ง
+      </button>
+    </div>
+  </div>`;
+}
+
+let poEditingSupKey = null;
+function poShowAddSupModal() {
+  poEditingSupKey = null;
+  document.getElementById('po-modal-title').textContent = 'เพิ่มซัพพลายเออร์ใหม่';
+  document.getElementById('po-sup-inp').value = '';
+  document.getElementById('po-sup-modal').style.display = 'flex';
+  setTimeout(()=>document.getElementById('po-sup-inp').focus(), 100);
+}
+function poEditSup(key) {
+  poEditingSupKey = key;
+  document.getElementById('po-modal-title').textContent = 'แก้ไขชื่อซัพพลายเออร์';
+  document.getElementById('po-sup-inp').value = key;
+  document.getElementById('po-sup-modal').style.display = 'flex';
+  setTimeout(()=>document.getElementById('po-sup-inp').focus(), 100);
+}
+function poCloseModal() { document.getElementById('po-sup-modal').style.display = 'none'; }
+function poCloseMoveModal() { document.getElementById('po-move-modal').style.display = 'none'; }
+
+function poConfirmSup() {
+  const name = document.getElementById('po-sup-inp').value.trim();
+  if (!name) { showToast('กรุณากรอกชื่อซัพพลายเออร์ค่ะ','err'); return; }
+  if (poEditingSupKey !== null) {
+    // แก้ไขชื่อ
+    const items = poGroups[poEditingSupKey] || [];
+    delete poGroups[poEditingSupKey];
+    poGroups[name] = items;
+    // update supplier_name ใน DB ด้วย
+    Promise.all(items.map(i => sb.from('items').update({ supplier_name: name }).eq('code', i.code)));
+  } else {
+    if (!poGroups[name]) poGroups[name] = [];
+  }
+  poCloseModal();
+  const div = document.getElementById('page-alert-purchase');
+  poRenderCards(div, 0);
+}
+
+function poOpenCtx(e, key, code) {
+  e.stopPropagation();
+  poCtxSupKey = key; poCtxCode = code;
+  const m = document.getElementById('po-ctx');
+  if (!m) return;
+  m.style.display = 'block';
+  m.style.left = Math.min(e.pageX, window.innerWidth-170)+'px';
+  m.style.top  = e.pageY+'px';
+}
+function poHideCtx() { const m=document.getElementById('po-ctx'); if(m) m.style.display='none'; }
+
+function poCtxMove() {
+  const items = poGroups[poCtxSupKey]||[];
+  const item = items.find(i=>i.code===poCtxCode);
+  if (!item) return;
+  document.getElementById('po-move-item-name').textContent = item.name;
+  const sel = document.getElementById('po-move-target');
+  const keys = Object.keys(poGroups).filter(k=>k!==poCtxSupKey);
+  sel.innerHTML = keys.map(k=>`<option value="${k.replace(/"/g,'&quot;')}">${k==='__noSup__'?'ไม่มีซัพพลายเออร์':k}</option>`).join('');
+  document.getElementById('po-move-modal').style.display = 'flex';
+}
+
+function poConfirmMove() {
+  const targetKey = document.getElementById('po-move-target').value;
+  const fromItems = poGroups[poCtxSupKey]||[];
+  const idx = fromItems.findIndex(i=>i.code===poCtxCode);
+  if (idx < 0) return;
+  const [item] = fromItems.splice(idx, 1);
+  if (!poGroups[targetKey]) poGroups[targetKey] = [];
+  poGroups[targetKey].push(item);
+  // update supplier_name ใน DB
+  const newSup = targetKey === '__noSup__' ? null : targetKey;
+  sb.from('items').update({ supplier_name: newSup }).eq('code', item.code);
+  poCloseMoveModal();
+  const div = document.getElementById('page-alert-purchase');
+  poRenderCards(div, 0);
+}
+
+function poCtxRemove() {
+  const items = poGroups[poCtxSupKey]||[];
+  poGroups[poCtxSupKey] = items.filter(i=>i.code!==poCtxCode);
+  const div = document.getElementById('page-alert-purchase');
+  poRenderCards(div, 0);
+}
+
+function poDragStart(e, key, code) {
+  poDragSup = key; poDragCode = code;
+  e.dataTransfer.effectAllowed = 'move';
+}
+function poDragOver(e, key) {
+  const card = e.currentTarget;
+  if (card) card.style.outline = '2px solid var(--acc)';
+}
+function poDragLeave(e) {
+  const card = e.currentTarget;
+  if (card) card.style.outline = '';
+}
+function poDrop(e, targetKey) {
+  const card = e.currentTarget;
+  if (card) card.style.outline = '';
+  if (!poDragCode || poDragSup === targetKey) return;
+  const fromItems = poGroups[poDragSup]||[];
+  const idx = fromItems.findIndex(i=>i.code===poDragCode);
+  if (idx < 0) return;
+  const [item] = fromItems.splice(idx, 1);
+  if (!poGroups[targetKey]) poGroups[targetKey] = [];
+  poGroups[targetKey].push(item);
+  // update supplier_name ใน DB
+  const newSup = targetKey === '__noSup__' ? null : targetKey;
+  sb.from('items').update({ supplier_name: newSup }).eq('code', item.code);
+  poDragSup = null; poDragCode = null;
+  const div = document.getElementById('page-alert-purchase');
+  poRenderCards(div, 0);
+}
+
+function poCopyCardByKey(key) {
+  const groupItems = poGroups[key]||[];
+  const displayName = key==='__noSup__'?'ไม่มีซัพพลายเออร์':key;
   const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
-  const lines = [
-    `ใบสั่งซื้อ — ${supplier==='__ไม่มีซัพพลายเออร์__'?'ไม่มีซัพพลายเออร์':supplier}`,
-    `วันที่ ${today}`,
-    '─'.repeat(30)
-  ];
-  items.forEach((m,i) => {
-    const qty = poQtyEdits[m.code] !== undefined ? poQtyEdits[m.code] : Math.max(0,(m.max||0)-m.stock);
-    lines.push(`${i+1}. ${m.name}  จำนวน ${qty} ${m.unit||''}`);
-  });
-  lines.push('─'.repeat(30));
+  const lines = [`ใบสั่งซื้อ — ${displayName}`,`วันที่ ${today}`,'─'.repeat(28)];
+  groupItems.forEach((m,i)=>lines.push(`${i+1}. ${m.name}  ${m.qty} ${m.unit}`));
   navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกใบสั่งแล้วค่ะ'));
 }
 
 function poCopyAll() {
-  const items = masterDB.filter(m =>
-    m.pg==='store2' && m.is_active!==false && m.min>0 && m.stock<=m.min &&
-    !PO_EXCLUDE_SUBCATS.includes(m.subcat||'')
-  );
   const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
-  const lines = [`ใบสั่งซื้อทั้งหมด — ${today}`,'─'.repeat(30)];
-  const groups = {};
-  items.forEach(m => {
-    const sup = m.supplier_name||'ไม่มีซัพพลายเออร์';
-    if (!groups[sup]) groups[sup]=[];
-    groups[sup].push(m);
+  const lines = [`ใบสั่งซื้อทั้งหมด — ${today}`];
+  Object.entries(poGroups).forEach(([key,items])=>{
+    if(!items.length) return;
+    const name = key==='__noSup__'?'ไม่มีซัพพลายเออร์':key;
+    lines.push(`\n【 ${name} 】`);
+    items.forEach((m,i)=>lines.push(`${i+1}. ${m.name}  ${m.qty} ${m.unit}`));
   });
-  Object.entries(groups).forEach(([sup,gItems]) => {
-    lines.push(`\n【 ${sup} 】`);
-    gItems.forEach((m,i) => {
-      const qty = poQtyEdits[m.code]!==undefined ? poQtyEdits[m.code] : Math.max(0,(m.max||0)-m.stock);
-      lines.push(`${i+1}. ${m.name}  จำนวน ${qty} ${m.unit||''}`);
-    });
-  });
-  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกใบสั่งทั้งหมดแล้วค่ะ'));
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกทั้งหมดแล้วค่ะ'));
 }
 
 function poGoMaster() {
   switchPage('master');
   showToast('กรอก supplier_name ในหน้า Master ได้เลยค่ะ');
 }
+
