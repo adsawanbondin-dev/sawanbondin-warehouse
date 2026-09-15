@@ -4952,7 +4952,6 @@ function dwCopyForPrep(pg) {
   const store2 = pending.filter(x=>x.pg==='store2');
 
   function getUnit(name) {
-    // LL = กรัม
     if (/^LL\./i.test(name)) return 'กรัม';
     const n = name.toLowerCase();
     if (n.includes('กิโล') || n.includes(' kg')) return 'กิโลกรัม';
@@ -4968,22 +4967,34 @@ function dwCopyForPrep(pg) {
     return m?.unit || '';
   }
 
-  function buildLines(items) {
-    return items.map(x=>`-${x.item_name} จำนวน ${x.suggested_qty||0} ${getUnit(x.item_name)}`);
+  function buildBySubcat(items) {
+    const lines = [];
+    const groups = {};
+    items.forEach(x => {
+      const m = masterDB.find(i=>i.code===x.item_code);
+      const sub = m?.subcat || 'อื่นๆ';
+      if (!groups[sub]) groups[sub] = [];
+      groups[sub].push(x);
+    });
+    Object.entries(groups).forEach(([sub, gItems]) => {
+      lines.push(`\n${sub}`);
+      gItems.forEach(x => lines.push(`* ${x.item_name} จำนวน ${x.suggested_qty||0} ${getUnit(x.item_name)}`));
+    });
+    return lines;
   }
 
-  const lines = [`รายการเบิกประจำวัน — ${today}`,'─'.repeat(30)];
+  const lines = [`รายการเบิกประจำวัน — ${today}`];
 
   if (pg === 'finish' || !pg) {
     if (finish.length) {
-      if (!pg) lines.push('\n【 สินค้าสำเร็จรูป 】');
-      lines.push(...buildLines(finish));
+      if (!pg) lines.push('\n═══ สินค้าสำเร็จรูป ═══');
+      lines.push(...buildBySubcat(finish));
     }
   }
   if (pg === 'store2' || !pg) {
     if (store2.length) {
-      if (!pg) lines.push('\n【 Stock Tea House 】');
-      lines.push(...buildLines(store2));
+      if (!pg) lines.push('\n═══ Stock Tea House ═══');
+      lines.push(...buildBySubcat(store2));
     }
   }
 
