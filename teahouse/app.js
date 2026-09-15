@@ -4287,17 +4287,22 @@ function dwRenderContent() {
     const items = dwItems.filter(x=>x.pg===pg && statuses.includes(x.status));
     const mode  = mainTab;
 
+    const copyBtn = `<button onclick="dwCopyForPrep('${pg}')"
+        style="font-size:10px;padding:3px 9px;border-radius:6px;background:transparent;color:var(--ink4);border:0.5px solid var(--line);cursor:pointer;font-family:inherit">
+        <i class="ti ti-copy"></i> คัดลอก
+       </button>`;
+
     const actionBtn = mode==='pending'
-      ? `<button onclick="dwSavePreparedAll('${pg}')"
+      ? `<div style="display:flex;gap:5px">${copyBtn}<button onclick="dwSavePreparedAll('${pg}')"
           style="font-size:10px;padding:3px 9px;border-radius:6px;background:var(--ink);color:var(--surface);border:none;cursor:pointer;font-family:inherit">
           <i class="ti ti-checks"></i> บันทึกทั้งหมด (${items.length})
-         </button>`
+         </button></div>`
       : mode==='ready'
-      ? `<button onclick="dwReceiveAllReady('${pg}')"
+      ? `<div style="display:flex;gap:5px">${copyBtn}<button onclick="dwReceiveAllReady('${pg}')"
           style="font-size:10px;padding:3px 9px;border-radius:6px;background:var(--ink);color:var(--surface);border:none;cursor:pointer;font-family:inherit">
           <i class="ti ti-package-import"></i> รับเข้าทั้งหมด (${items.length})
-         </button>`
-      : '';
+         </button></div>`
+      : copyBtn;
 
     const rows = items.length
       ? items.map(i=>buildRow(i,mode)).join('')
@@ -4939,7 +4944,7 @@ async function renderDwHistoryPage() {
     }`;
 }
 
-function dwCopyForPrep() {
+function dwCopyForPrep(pg) {
   const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
   const pending = dwItems.filter(x=>x.status==='pending'||x.status==='preparing');
 
@@ -4948,19 +4953,23 @@ function dwCopyForPrep() {
 
   const lines = [`รายการเบิกประจำวัน — ${today}`,'─'.repeat(30)];
 
-  if (finish.length) {
-    lines.push('\n【 สินค้าสำเร็จรูป 】');
-    finish.forEach((x,i)=>{
-      const note = x.preparer_note ? `  (${x.preparer_note})` : '';
-      lines.push(`${i+1}. ${x.item_name}  ${x.suggested_qty||0}${note}`);
-    });
+  if (pg === 'finish' || !pg) {
+    if (finish.length) {
+      if (!pg) lines.push('\n【 สินค้าสำเร็จรูป 】');
+      finish.forEach((x,i)=>{
+        const note = x.preparer_note ? `  (${x.preparer_note})` : '';
+        lines.push(`${i+1}. ${x.item_name}  ${x.suggested_qty||0}${note}`);
+      });
+    }
   }
-  if (store2.length) {
-    lines.push('\n【 Stock Tea House 】');
-    store2.forEach((x,i)=>{
-      const note = x.preparer_note ? `  (${x.preparer_note})` : '';
-      lines.push(`${i+1}. ${x.item_name}  ${x.suggested_qty||0}${note}`);
-    });
+  if (pg === 'store2' || !pg) {
+    if (store2.length) {
+      if (!pg) lines.push('\n【 Stock Tea House 】');
+      store2.forEach((x,i)=>{
+        const note = x.preparer_note ? `  (${x.preparer_note})` : '';
+        lines.push(`${i+1}. ${x.item_name}  ${x.suggested_qty||0}${note}`);
+      });
+    }
   }
 
   navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกรายการเบิกแล้วค่ะ'));
