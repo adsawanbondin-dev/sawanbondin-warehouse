@@ -3989,10 +3989,6 @@ async function renderDailyWithdrawPage() {
         <div class="page-sub">${dateStr}</div></div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-sm" onclick="dwManualReset()" style="font-size:11px">รีเซ็ต</button>
-        <button class="btn btn-sm" onclick="dwClearAll()" style="font-size:11px;color:#b03030;border-color:#e8a0a0">ล้าง</button>
-        <button class="btn btn-sm" onclick="dwCopyForPrep()" style="font-size:11px">
-          <i class="ti ti-copy"></i> คัดลอก
-        </button>
         <button class="btn btn-sm" onclick="renderDwHistoryPage()" style="font-size:11px">
           <i class="ti ti-history"></i> ประวัติ
         </button>
