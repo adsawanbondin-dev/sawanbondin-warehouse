@@ -3330,7 +3330,7 @@ async function renderStockCountPage() {
   const today = new Date().toLocaleDateString('th-TH',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
 
   const finishItems = masterDB.filter(m => m.pg==='finish' && m.is_active!==false);
-  const store2Items = masterDB.filter(m => m.pg==='equip_th' && m.is_active!==false);
+  const store2Items = masterDB.filter(m => m.pg==='teahouse' && m.is_active!==false);
   const allItems    = [...finishItems, ...store2Items];
 
   const counted  = allItems.filter(m=>scData[m.code]!==undefined).length;
@@ -3659,7 +3659,7 @@ async function dbGenerateDailyList() {
     carriedByCode[x.item_code].push(x);
   });
 
-  const pgs = ['finish', 'equip_th'];
+  const pgs = ['finish', 'teahouse'];
   const needWithdraw = masterDB.filter(m =>
     pgs.includes(m.pg) && m.is_active !== false && (m.stock <= (m.min||0) || m.stock === 0) && m.max > 0
   );
@@ -3893,26 +3893,21 @@ async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
     const m = masterDB.find(x=>x.code===item.item_code);
     if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
 
-  } else if (item.pg === 'equip_th') {
-    // รับเข้า Stock Tea House (equip_th)
-    // 1. หา store2 code จาก item_factory_map (equip_th ← store2)
-    const { data: map } = await sb.from('item_factory_map')
-      .select('th_code, factory_code')
-      .eq('th_code', item.item_code)
-      .eq('note', 'equip_th ← store2')
-      .single();
+  } else if (item.pg === 'teahouse') {
+    // รับเข้า Stock Tea House (teahouse)
+    // หา equip_th code จาก item_factory_map (equip_th ← store2/teahouse)
+    // item_code ของ teahouse คือ SWBD_TH_ → หา SWBD_EQ_ ที่ map กัน
+    const eqCode = item.item_code.replace('SWBD_TH_', 'SWBD_EQ_');
+    const eqItem = masterDB.find(x=>x.code===eqCode && x.pg==='equip_th');
 
-    if (map) {
-      // หัก stock จาก Store 2 (store2)
-      const s2Item = masterDB.find(x=>x.code===map.factory_code);
-      if (s2Item) {
-        const newS2Stock = Math.max(0, s2Item.stock - recvQty);
-        await sb.from('items').update({ stock: newS2Stock, updated_at: new Date().toISOString() }).eq('code', map.factory_code);
-        s2Item.stock = newS2Stock;
-      }
+    if (eqItem) {
+      // หัก stock จาก Store 2 (equip_th)
+      const newEqStock = Math.max(0, eqItem.stock - recvQty);
+      await sb.from('items').update({ stock: newEqStock, updated_at: new Date().toISOString() }).eq('code', eqCode);
+      eqItem.stock = newEqStock;
     }
 
-    // บวก Stock Tea House (equip_th)
+    // บวก Stock Tea House (teahouse)
     const m = masterDB.find(x=>x.code===item.item_code);
     if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns, updated_at: new Date().toISOString() }).eq('code', item.item_code); m.stock = ns; }
   }
@@ -4088,7 +4083,7 @@ function dwRenderContent() {
             style="margin-top:3px;width:100%;padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;font-family:inherit;background:var(--surface);color:var(--ink4);outline:none"
             onchange="dwSetPreparerNote(${item.id},this.value)">`;
 
-      return `<div style="display:grid;grid-template-columns:1fr 56px 56px 36px ${item.pg==='equip_th'?'28px':''};border-bottom:0.5px solid var(--line);align-items:start" id="dwrow-${item.id}">
+      return `<div style="display:grid;grid-template-columns:1fr 56px 56px 36px ${item.pg==='teahouse'?'28px':''};border-bottom:0.5px solid var(--line);align-items:start" id="dwrow-${item.id}">
         <div style="padding:9px 14px">
           <div style="font-size:12px;font-weight:500">${item.item_name}${isCarried?` <span style="font-size:9px;color:var(--ink4)">ค้างมา</span>`:''}</div>
           <div style="font-size:10px;color:var(--ink4);margin-top:1px">${m?.subcat||''}</div>
@@ -4114,7 +4109,7 @@ function dwRenderContent() {
             <i class="ti ti-check"></i>
           </button>
         </div>
-        ${item.pg==='equip_th'?`<div style="padding:9px 4px 0">
+        ${item.pg==='teahouse'?`<div style="padding:9px 4px 0">
           <button onclick="dwDeleteItem(${item.id})"
             style="padding:4px 6px;border-radius:6px;border:0.5px solid #e8a0a0;background:none;color:#b03030;font-size:11px;cursor:pointer">
             <i class="ti ti-trash"></i>
@@ -4196,7 +4191,7 @@ function dwRenderContent() {
     </div>`;
   }
 
-  content.innerHTML = buildSection('finish','สินค้าสำเร็จรูป') + buildSection('equip_th','Stock Tea House');
+  content.innerHTML = buildSection('finish','สินค้าสำเร็จรูป') + buildSection('teahouse','Stock Tea House');
 }
 
 async function dwDeleteItem(id) {
@@ -4421,7 +4416,7 @@ function dscUpdateContent() {
   if (!content) return;
 
   const finishItems = masterDB.filter(m => m.pg==='finish' && m.is_active!==false);
-  const store2Items = masterDB.filter(m => m.pg==='equip_th' && m.is_active!==false);
+  const store2Items = masterDB.filter(m => m.pg==='teahouse' && m.is_active!==false);
   const allItems    = [...finishItems, ...store2Items];
 
   const subcats   = [...new Set(finishItems.map(m=>m.subcat||'ไม่มีหมวดหมู่'))].sort();
@@ -4585,7 +4580,7 @@ function dscCalc(code, val) {
     if (hint) hint.textContent='';
   }
   // อัปเดต counter
-  const allItems   = masterDB.filter(m=>['finish','equip_th'].includes(m.pg)&&m.is_active!==false);
+  const allItems   = masterDB.filter(m=>['finish','teahouse'].includes(m.pg)&&m.is_active!==false);
   const allCounted = Object.keys(dscData).filter(k=>dscData[k]?.actual!=='').length;
   const cntEl = document.getElementById('dsc-counted');
   const remEl = document.getElementById('dsc-remain');
@@ -4618,7 +4613,7 @@ function dscClearRow(code) {
 
 async function dscSaveCat(cat, isStore2) {
   const items = isStore2
-    ? masterDB.filter(m=>m.pg==='equip_th'&&m.is_active!==false&&(m.subcat||'ไม่มีหมวดหมู่')===dscS2Cat)
+    ? masterDB.filter(m=>m.pg==='teahouse'&&m.is_active!==false&&(m.subcat||'ไม่มีหมวดหมู่')===dscS2Cat)
     : masterDB.filter(m=>m.pg==='finish'&&m.is_active!==false&&(m.subcat||'ไม่มีหมวดหมู่')===cat);
   const rows = items.filter(m=>dscData[m.code]?.actual!=='');
   if (!rows.length) { showToast('ยังไม่ได้กรอกจำนวนค่ะ','err'); return; }
@@ -4634,7 +4629,7 @@ async function dscSaveCat(cat, isStore2) {
 }
 
 async function dscSaveAll() {
-  const allItems = masterDB.filter(m=>['finish','equip_th'].includes(m.pg)&&m.is_active!==false);
+  const allItems = masterDB.filter(m=>['finish','teahouse'].includes(m.pg)&&m.is_active!==false);
   const rows = allItems.filter(m=>dscData[m.code]?.actual!=='');
   if (!rows.length) { showToast('ยังไม่ได้กรอกจำนวนค่ะ','err'); return; }
   for (const m of rows) {
@@ -4670,7 +4665,7 @@ async function renderDwHistoryPage() {
 
   const byPg = {
     finish: rows.filter(r=>r.pg==='finish'),
-    store2: rows.filter(r=>r.pg==='equip_th'),
+    store2: rows.filter(r=>r.pg==='teahouse'),
   };
 
   function buildTable(items, label) {
@@ -4758,7 +4753,7 @@ function dwCopyForPrep(pg) {
   const pending = dwItems.filter(x=>x.status==='pending'||x.status==='preparing');
 
   const finish = pending.filter(x=>x.pg==='finish');
-  const store2 = pending.filter(x=>x.pg==='equip_th');
+  const store2 = pending.filter(x=>x.pg==='teahouse');
 
   function getUnit(name) {
     if (/^LL\./i.test(name)) return 'กรัม';
