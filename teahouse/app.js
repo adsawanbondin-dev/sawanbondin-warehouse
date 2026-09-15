@@ -3878,39 +3878,35 @@ async function dwConfirmLotReceive(id, recvQty) {
 }
 
 async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
-  if (item.pg === 'finish') {
-    if (lotId) {
-      // หัก stock Lot ใน Factory
-      const { data: lot } = await sbFactory.from('lots').select('id,stock,item_code').eq('id', lotId).single();
-      if (lot) {
-        const newLotStock = Math.max(0, lot.stock - recvQty);
-        await sbFactory.from('lots').update({ stock: newLotStock }).eq('id', lotId);
-        const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', lot.item_code).single();
-        if (fItem) await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', fItem.code);
+  // รายการพิเศษที่ไม่ต้องตัด/บวก stock ใดเลย
+  const NO_STOCK_CODES = ['SWBD_TH_0293'];
+
+  if (!NO_STOCK_CODES.includes(item.item_code)) {
+    if (item.pg === 'finish') {
+      if (lotId) {
+        const { data: lot } = await sbFactory.from('lots').select('id,stock,item_code').eq('id', lotId).single();
+        if (lot) {
+          const newLotStock = Math.max(0, lot.stock - recvQty);
+          await sbFactory.from('lots').update({ stock: newLotStock }).eq('id', lotId);
+          const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', lot.item_code).single();
+          if (fItem) await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', fItem.code);
+        }
       }
+      const m = masterDB.find(x=>x.code===item.item_code);
+      if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
+
+    } else if (item.pg === 'teahouse') {
+      const eqCode = item.item_code.replace('SWBD_TH_', 'SWBD_EQ_');
+      const eqItem = masterDB.find(x=>x.code===eqCode && x.pg==='equip_th');
+      if (eqItem) {
+        const newEqStock = Math.max(0, eqItem.stock - recvQty);
+        await sb.from('items').update({ stock: newEqStock, updated_at: new Date().toISOString() }).eq('code', eqCode);
+        eqItem.stock = newEqStock;
+      }
+      const m = masterDB.find(x=>x.code===item.item_code);
+      if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns, updated_at: new Date().toISOString() }).eq('code', item.item_code); m.stock = ns; }
     }
-    // บวก Tea House finish
-    const m = masterDB.find(x=>x.code===item.item_code);
-    if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
-
-  } else if (item.pg === 'teahouse') {
-    // รับเข้า Stock Tea House (teahouse)
-    // หา equip_th code จาก item_factory_map (equip_th ← store2/teahouse)
-    // item_code ของ teahouse คือ SWBD_TH_ → หา SWBD_EQ_ ที่ map กัน
-    const eqCode = item.item_code.replace('SWBD_TH_', 'SWBD_EQ_');
-    const eqItem = masterDB.find(x=>x.code===eqCode && x.pg==='equip_th');
-
-    if (eqItem) {
-      // หัก stock จาก Store 2 (equip_th)
-      const newEqStock = Math.max(0, eqItem.stock - recvQty);
-      await sb.from('items').update({ stock: newEqStock, updated_at: new Date().toISOString() }).eq('code', eqCode);
-      eqItem.stock = newEqStock;
-    }
-
-    // บวก Stock Tea House (teahouse)
-    const m = masterDB.find(x=>x.code===item.item_code);
-    if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns, updated_at: new Date().toISOString() }).eq('code', item.item_code); m.stock = ns; }
-  }
+  } // end NO_STOCK_CODES check
 
   await sb.from('daily_withdrawals').update({
     status: 'received', received_qty: recvQty,
