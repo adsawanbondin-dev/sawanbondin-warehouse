@@ -2667,7 +2667,7 @@ function renderMasterContent(){
   const whTabDefs = [
     { pg: 'finish',   icon: 'ti-package' },
     { pg: 'equip_th', icon: 'ti-tool' },
-    { pg: 'store2',   icon: 'ti-building-store' },
+    { pg: 'teahouse',   icon: 'ti-building-store' },
   ];
   const whTabs = whTabDefs.map(({pg, icon}) => {
     const label = WAREHOUSE_CONFIG[pg]?.label || pg;
@@ -3472,7 +3472,7 @@ async function renderStockCountPage() {
     </div>
 
     ${buildSection('finish','สินค้าสำเร็จรูป',finishItems,"scSavePg('finish')")}
-    ${buildSection('store2','Stock Store',store2Items,"scSavePg('store2')")}`;
+    ${buildSection('teahouse','Stock Store',store2Items,"scSavePg('teahouse')")}`;
 
   // bind copy functions
   window.scCopyFinish = copyFinish;
@@ -3626,7 +3626,7 @@ const DW_STATUS = {
 
 const DW_GROUPS = {
   finish: { label:'สินค้าสำเร็จรูป', pgs:['finish'] },
-  store2: { label:'Store 2',         pgs:['store2'] },
+  store2: { label:'Store 2',         pgs:['teahouse'] },
 };
 
 async function dbLoadDailyWithdrawals() {
@@ -4365,7 +4365,7 @@ function dscRender(divArg) {
 
   const today    = new Date().toLocaleDateString('th-TH',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
   const finishItems = masterDB.filter(m => m.pg==='finish' && m.is_active!==false);
-  const store2Items = masterDB.filter(m => m.pg==='store2' && m.is_active!==false);
+  const store2Items = masterDB.filter(m => m.pg==='teahouse' && m.is_active!==false);
   const allItems    = [...finishItems, ...store2Items];
   const allCounted  = Object.keys(dscData).filter(k=>dscData[k]?.actual!=='').length;
 
@@ -4800,7 +4800,7 @@ function dwCopyForPrep(pg) {
       lines.push(...buildBySubcat(finish));
     }
   }
-  if (pg === 'store2' || !pg) {
+  if (pg === 'teahouse' || !pg) {
     if (store2.length) {
       if (!pg) lines.push('\n═══ Stock Tea House ═══');
       lines.push(...buildBySubcat(store2));
@@ -4865,7 +4865,7 @@ async function renderPurchaseOrderPage() {
   const dbSuppliers = (supRows||[]).map(r=>r.name);
 
   // รวม suppliers จาก items ด้วย
-  const itemSuppliers = [...new Set(masterDB.filter(m=>m.pg==='store2'&&m.supplier_name).map(m=>m.supplier_name))];
+  const itemSuppliers = [...new Set(masterDB.filter(m=>m.pg==='teahouse'&&m.supplier_name).map(m=>m.supplier_name))];
   const allSuppliers  = [...new Set([...dbSuppliers, ...itemSuppliers])].sort((a,b)=>a.localeCompare(b,'th'));
 
   // สร้าง poGroups ใหม่ทุกครั้ง — items อ้างอิงจาก masterDB ล่าสุด
@@ -4875,7 +4875,7 @@ async function renderPurchaseOrderPage() {
   allSuppliers.forEach(sup => { poGroups[sup] = []; });
 
   // ใส่ items จาก store2 เข้า group แต่ใช้ min/max จาก equip_th
-  masterDB.filter(m => m.pg==='store2' && m.is_active!==false && !PO_EXCLUDE_SUBCATS.includes(m.subcat||'')).forEach(m => {
+  masterDB.filter(m => m.pg==='teahouse' && m.is_active!==false && !PO_EXCLUDE_SUBCATS.includes(m.subcat||'')).forEach(m => {
     const key = m.supplier_name || '__noSup__';
     if (!poGroups[key]) poGroups[key] = [];
     // หา equip_th item ที่ตรงกัน (code SWBD_EQ_xxxx)
@@ -5081,7 +5081,7 @@ function poToggleAddRow(key) {
 function poFilterItems(key, q) {
   const existingCodes = new Set((poGroups[key]||[]).map(i=>i.code));
   const items = masterDB.filter(m =>
-    m.pg === 'store2' && m.is_active !== false &&
+    m.pg === 'teahouse' && m.is_active !== false &&
     !PO_EXCLUDE_SUBCATS.includes(m.subcat||'') &&
     !existingCodes.has(m.code) &&
     (!q || m.name.toLowerCase().includes(q.toLowerCase()) || (m.subcat||'').toLowerCase().includes(q.toLowerCase()))
