@@ -3661,7 +3661,7 @@ async function dbGenerateDailyList() {
 
   const pgs = ['finish', 'store2'];
   const needWithdraw = masterDB.filter(m =>
-    pgs.includes(m.pg) && m.is_active !== false && m.min > 0 && m.stock <= m.min
+    pgs.includes(m.pg) && m.is_active !== false && (m.stock <= (m.min||0) || m.stock === 0) && m.max > 0
   );
 
   for (const m of needWithdraw) {
