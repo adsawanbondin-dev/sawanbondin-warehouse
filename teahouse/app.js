@@ -4627,6 +4627,7 @@ async function dscSaveCat(cat, isStore2) {
     await sb.from('items').update({ stock: actual, updated_at: new Date().toISOString() }).eq('code', m.code);
     const mi = masterDB.find(x=>x.code===m.code); if(mi) mi.stock = actual;
   }
+  await dbGenerateDailyList();
   showToast(`บันทึก ${rows.length} รายการแล้วค่ะ`);
 }
 
