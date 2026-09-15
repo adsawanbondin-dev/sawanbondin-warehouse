@@ -4191,7 +4191,25 @@ function dwRenderContent() {
     </div>`;
   }
 
-  content.innerHTML = buildSection('finish','สินค้าสำเร็จรูป') + buildSection('teahouse','Stock Tea House');
+  if (!window._dwPgTab) window._dwPgTab = 'finish';
+
+  const cntFinish   = dwItems.filter(x=>x.pg==='finish'   && statuses.includes(x.status)).length;
+  const cntTeahouse = dwItems.filter(x=>x.pg==='teahouse' && statuses.includes(x.status)).length;
+
+  const pgTabs = [
+    {key:'finish',   label:'สินค้าสำเร็จรูป', cnt:cntFinish},
+    {key:'teahouse', label:'Stock Tea House',  cnt:cntTeahouse},
+  ].map(t=>`<div onclick="window._dwPgTab='${t.key}';dwRenderContent()"
+    style="flex:1;padding:8px 12px;text-align:center;border-radius:10px;cursor:pointer;
+    border:${window._dwPgTab===t.key?'1.5px solid var(--ink)':'0.5px solid var(--line)'};
+    background:${window._dwPgTab===t.key?'var(--ink)':'var(--surface)'};
+    color:${window._dwPgTab===t.key?'var(--surface)':'var(--ink4)'}">
+    <div style="font-size:16px;font-weight:500">${t.cnt}</div>
+    <div style="font-size:10px;margin-top:1px">${t.label}</div>
+  </div>`).join('');
+
+  content.innerHTML = `<div style="display:flex;gap:8px;margin-bottom:12px">${pgTabs}</div>` +
+    buildSection(window._dwPgTab, window._dwPgTab==='finish'?'สินค้าสำเร็จรูป':'Stock Tea House');
 }
 
 async function dwDeleteItem(id) {
