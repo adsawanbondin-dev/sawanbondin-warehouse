@@ -5076,7 +5076,7 @@ async function renderPurchaseOrderPage() {
     const useMax = eq ? (eq.max||0) : (m.max||0);
     const useStock = eq ? eq.stock : m.stock;
     const belowMin = useStock <= useMin;
-    const qty = (belowMin || useStock === 0) ? useMax : Math.max(0, useMax - useStock);
+    const qty = Math.max(0, useMax - useStock);
     poGroups[key].push({
       code: m.code, name: m.name, subcat: m.subcat||'', unit: m.unit||'',
       stock: useStock, min: useMin, max: useMax, qty, belowMin
@@ -5311,7 +5311,7 @@ function poAddItemToCard(key, code) {
   const useMax = eq ? (eq.max||0) : (m.max||0);
   const useStock = eq ? eq.stock : m.stock;
   const belowMin = useStock <= useMin;
-  const qty = (belowMin || useStock === 0) ? useMax : Math.max(0, useMax - useStock);
+  const qty = Math.max(0, useMax - useStock);
   poGroups[key].push({
     code:m.code, name:m.name, subcat:m.subcat||'', unit:m.unit||'',
     stock:useStock, min:useMin, max:useMax, qty, belowMin
