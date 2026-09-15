@@ -4475,7 +4475,7 @@ function dscUpdateContent() {
   // ── FINISH section ──
   const finishCatTabs = subcats.map(sub => {
     const subItems  = finishItems.filter(m=>(m.subcat||'ไม่มีหมวดหมู่')===sub);
-    const counted   = subItems.filter(m=>dscData[m.code]?.actual!=='').length;
+    const counted   = subItems.filter(m=>dscData[m.code]?.actual!==undefined && dscData[m.code]?.actual!=='').length;
     const isActive  = sub === dscCat;
     const allDone   = counted===subItems.length && subItems.length>0;
     return `<button onclick="dscCat='${sub.replace(/'/g,"\\'")}';dscUpdateContent()"
@@ -4493,12 +4493,12 @@ function dscUpdateContent() {
   const finishCodeList  = finishCatItems.map(m=>m.code).join(',');
   const finishRows      = finishCatItems.map(m=>buildRow(m,finishCodeList)).join('') ||
     `<div style="padding:24px;text-align:center;font-size:11px;color:var(--ink4)">ไม่พบรายการ</div>`;
-  const finishCatCount  = finishCatItems.filter(m=>dscData[m.code]?.actual!=='').length;
+  const finishCatCount  = finishCatItems.filter(m=>dscData[m.code]?.actual!==undefined && dscData[m.code]?.actual!=='').length;
 
   // ── STORE2 section ──
   const s2CatTabs = s2Subcats.map(sub => {
     const subItems  = store2Items.filter(m=>(m.subcat||'ไม่มีหมวดหมู่')===sub);
-    const counted   = subItems.filter(m=>dscData[m.code]?.actual!=='').length;
+    const counted   = subItems.filter(m=>dscData[m.code]?.actual!==undefined && dscData[m.code]?.actual!=='').length;
     const isActive  = sub === dscS2Cat;
     const allDone   = counted===subItems.length && subItems.length>0;
     return `<button onclick="dscS2Cat='${sub.replace(/'/g,"\\'")}';dscUpdateContent()"
@@ -4516,8 +4516,8 @@ function dscUpdateContent() {
   const s2CodeList  = s2CatItems.map(m=>m.code).join(',');
   const s2Rows      = s2CatItems.map(m=>buildRow(m,s2CodeList)).join('') ||
     `<div style="padding:24px;text-align:center;font-size:11px;color:var(--ink4)">ไม่พบรายการ</div>`;
-  const s2CatCount  = s2CatItems.filter(m=>dscData[m.code]?.actual!=='').length;
-  const s2Counted   = store2Items.filter(m=>dscData[m.code]?.actual!=='').length;
+  const s2CatCount  = s2CatItems.filter(m=>dscData[m.code]?.actual!==undefined && dscData[m.code]?.actual!=='').length;
+  const s2Counted   = store2Items.filter(m=>dscData[m.code]?.actual!==undefined && dscData[m.code]?.actual!=='').length;
 
   content.innerHTML = `
     <!-- สินค้าสำเร็จรูป -->
@@ -4615,7 +4615,7 @@ async function dscSaveCat(cat, isStore2) {
   const items = isStore2
     ? masterDB.filter(m=>m.pg==='teahouse'&&m.is_active!==false&&(m.subcat||'ไม่มีหมวดหมู่')===dscS2Cat)
     : masterDB.filter(m=>m.pg==='finish'&&m.is_active!==false&&(m.subcat||'ไม่มีหมวดหมู่')===cat);
-  const rows = items.filter(m=>dscData[m.code]?.actual!=='');
+  const rows = items.filter(m=>dscData[m.code]!==undefined && dscData[m.code]?.actual!==undefined && dscData[m.code]?.actual!==undefined && dscData[m.code]?.actual!=='');
   if (!rows.length) { showToast('ยังไม่ได้กรอกจำนวนค่ะ','err'); return; }
   for (const m of rows) {
     const actual = parseFloat(dscData[m.code].actual)||0;
@@ -4630,7 +4630,7 @@ async function dscSaveCat(cat, isStore2) {
 
 async function dscSaveAll() {
   const allItems = masterDB.filter(m=>['finish','teahouse'].includes(m.pg)&&m.is_active!==false);
-  const rows = allItems.filter(m=>dscData[m.code]?.actual!=='');
+  const rows = allItems.filter(m=>dscData[m.code]!==undefined && dscData[m.code]?.actual!==undefined && dscData[m.code]?.actual!==undefined && dscData[m.code]?.actual!=='');
   if (!rows.length) { showToast('ยังไม่ได้กรอกจำนวนค่ะ','err'); return; }
   for (const m of rows) {
     const actual = parseFloat(dscData[m.code].actual)||0;
