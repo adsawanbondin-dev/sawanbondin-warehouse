@@ -2666,8 +2666,9 @@ function renderMasterContent(){
   const alertCount = masterDB.filter(m => m.min > 0 && m.stock <= m.min).length;
   const whTabDefs = [
     { pg: 'finish',   icon: 'ti-package' },
+    { pg: 'raw',      icon: 'ti-leaf' },
     { pg: 'equip_th', icon: 'ti-tool' },
-    { pg: 'teahouse',   icon: 'ti-building-store' },
+    { pg: 'teahouse', icon: 'ti-building-store' },
   ];
   const whTabs = whTabDefs.map(({pg, icon}) => {
     const label = WAREHOUSE_CONFIG[pg]?.label || pg;
