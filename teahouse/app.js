@@ -4628,7 +4628,9 @@ async function dscSaveCat(cat, isStore2) {
     const mi = masterDB.find(x=>x.code===m.code); if(mi) mi.stock = actual;
   }
   await dbGenerateDailyList();
-  showToast(`บันทึก ${rows.length} รายการแล้วค่ะ`);
+  await dbLoadDailyWithdrawals();
+  if (typeof dwRenderContent === 'function') dwRenderContent();
+  showToast(`บันทึก ${rows.length} รายการ — อัปเดตเบิกประจำวันแล้วค่ะ`);
 }
 
 async function dscSaveAll() {
@@ -4640,8 +4642,10 @@ async function dscSaveAll() {
     await sb.from('items').update({ stock: actual, updated_at: new Date().toISOString() }).eq('code', m.code);
     const mi = masterDB.find(x=>x.code===m.code); if(mi) mi.stock = actual;
   }
-  showToast(`บันทึกทั้งหมด ${rows.length} รายการแล้วค่ะ`);
   await dbGenerateDailyList();
+  await dbLoadDailyWithdrawals();
+  if (typeof dwRenderContent === 'function') dwRenderContent();
+  showToast(`บันทึกทั้งหมด ${rows.length} รายการ — อัปเดตเบิกประจำวันแล้วค่ะ`);
 }
 
 
