@@ -20,6 +20,8 @@ window.WMS_CONFIG = {
     equip_th:   { label:'Stock Store 2',   prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:false, hasItemLot:true },
     teahouse:     { label:'Stock Tea House', prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:false, hasItemLot:true },
   },
+  WAREHOUSE_PAGES: ['finish', 'raw', 'equip_th', 'teahouse'],
+  },
 
   ALERT_GROUPS: {
     purchase: ['equip_th'],
