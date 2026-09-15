@@ -3330,7 +3330,7 @@ async function renderStockCountPage() {
   const today = new Date().toLocaleDateString('th-TH',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
 
   const finishItems = masterDB.filter(m => m.pg==='finish' && m.is_active!==false);
-  const store2Items = masterDB.filter(m => m.pg==='store2' && m.is_active!==false);
+  const store2Items = masterDB.filter(m => m.pg==='equip_th' && m.is_active!==false);
   const allItems    = [...finishItems, ...store2Items];
 
   const counted  = allItems.filter(m=>scData[m.code]!==undefined).length;
@@ -4421,7 +4421,7 @@ function dscUpdateContent() {
   if (!content) return;
 
   const finishItems = masterDB.filter(m => m.pg==='finish' && m.is_active!==false);
-  const store2Items = masterDB.filter(m => m.pg==='store2' && m.is_active!==false);
+  const store2Items = masterDB.filter(m => m.pg==='equip_th' && m.is_active!==false);
   const allItems    = [...finishItems, ...store2Items];
 
   const subcats   = [...new Set(finishItems.map(m=>m.subcat||'ไม่มีหมวดหมู่'))].sort();
@@ -4550,7 +4550,7 @@ function dscUpdateContent() {
     <div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:16px">
       <div style="padding:8px 16px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:12px;font-weight:500">${dscS2Cat} · ${s2CatCount}/${s2CatItems.length} <span style="color:var(--ink4);font-weight:400;font-size:10px">(รวม ${s2Counted}/${store2Items.length})</span></span>
-        <button class="btn btn-sm" onclick="dscSaveCat('store2',true)" style="font-size:10px">
+        <button class="btn btn-sm" onclick="dscSaveCat('equip_th',true)" style="font-size:10px">
           <i class="ti ti-check"></i> บันทึกหมวดนี้
         </button>
       </div>
@@ -4585,7 +4585,7 @@ function dscCalc(code, val) {
     if (hint) hint.textContent='';
   }
   // อัปเดต counter
-  const allItems   = masterDB.filter(m=>['finish','store2'].includes(m.pg)&&m.is_active!==false);
+  const allItems   = masterDB.filter(m=>['finish','equip_th'].includes(m.pg)&&m.is_active!==false);
   const allCounted = Object.keys(dscData).filter(k=>dscData[k]?.actual!=='').length;
   const cntEl = document.getElementById('dsc-counted');
   const remEl = document.getElementById('dsc-remain');
@@ -4618,7 +4618,7 @@ function dscClearRow(code) {
 
 async function dscSaveCat(cat, isStore2) {
   const items = isStore2
-    ? masterDB.filter(m=>m.pg==='store2'&&m.is_active!==false&&(m.subcat||'ไม่มีหมวดหมู่')===dscS2Cat)
+    ? masterDB.filter(m=>m.pg==='equip_th'&&m.is_active!==false&&(m.subcat||'ไม่มีหมวดหมู่')===dscS2Cat)
     : masterDB.filter(m=>m.pg==='finish'&&m.is_active!==false&&(m.subcat||'ไม่มีหมวดหมู่')===cat);
   const rows = items.filter(m=>dscData[m.code]?.actual!=='');
   if (!rows.length) { showToast('ยังไม่ได้กรอกจำนวนค่ะ','err'); return; }
@@ -4634,7 +4634,7 @@ async function dscSaveCat(cat, isStore2) {
 }
 
 async function dscSaveAll() {
-  const allItems = masterDB.filter(m=>['finish','store2'].includes(m.pg)&&m.is_active!==false);
+  const allItems = masterDB.filter(m=>['finish','equip_th'].includes(m.pg)&&m.is_active!==false);
   const rows = allItems.filter(m=>dscData[m.code]?.actual!=='');
   if (!rows.length) { showToast('ยังไม่ได้กรอกจำนวนค่ะ','err'); return; }
   for (const m of rows) {
