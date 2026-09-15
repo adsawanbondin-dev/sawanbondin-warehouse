@@ -17,7 +17,7 @@ window.WMS_CONFIG = {
   WAREHOUSE_CONFIG: {
     finish:     { label:'คลังสินค้าสำเร็จรูป',     prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:true },
     equip_th:   { label:'Stock Store 2',   prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:false, hasItemLot:true },
-    store2:     { label:'Stock Tea House', prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:false, hasItemLot:true },
+    teahouse:     { label:'Stock Tea House', prefix:'TH', hasLot:true,  lotSupplier:false, rawFields:false, depts:['คลัง'], hasSpec:false, hasItemLot:true },
   },
 
   ALERT_GROUPS: {
