@@ -3269,11 +3269,32 @@ function renderMasterContent(){
     if(!showAll&&cat!==pg)return;
     const cfg=WAREHOUSE_CONFIG[pg];
     const pgItems=masterDB.filter(m=>m.pg===pg);
-    const subcats=[...new Set(pgItems.map(m=>m.subcat||''))];
-    subcats.forEach(sub=>{
-      const items=pgItems.filter(m=>(m.subcat||'')===sub);
-      html+=renderSection(items,sub?`${cfg.label} — ${sub}`:cfg.label);
-    });
+    const subcats=[...new Set(pgItems.map(m=>m.subcat||''))].filter(Boolean).sort();
+
+    // raw: แสดงแท็บย่อยแบบกดได้
+    if(pg==='raw' && !showAll) {
+      if(!window._rawSubFilter||!subcats.includes(window._rawSubFilter)) window._rawSubFilter=subcats[0]||'';
+      const subTabs = subcats.map(sub=>{
+        const cnt = pgItems.filter(m=>(m.subcat||'')===sub).length;
+        const isActive = sub===window._rawSubFilter;
+        return `<button onclick="window._rawSubFilter='${sub}';renderMasterContent()"
+          style="padding:4px 12px;border-radius:20px;border:0.5px solid ${isActive?'var(--ink)':'var(--line)'};font-size:11px;cursor:pointer;font-family:inherit;background:${isActive?'var(--ink)':'transparent'};color:${isActive?'var(--surface)':'var(--ink4)'};margin:2px">
+          ${sub} <span style="font-size:10px;opacity:.6">${cnt}</span>
+        </button>`;
+      }).join('');
+      html += `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">${subTabs}</div>`;
+      const items = pgItems.filter(m=>(m.subcat||'')===window._rawSubFilter);
+      html += renderSection(items, `${cfg.label} — ${window._rawSubFilter}`);
+    } else {
+      subcats.forEach(sub=>{
+        const items=pgItems.filter(m=>(m.subcat||'')===sub);
+        html+=renderSection(items,sub?`${cfg.label} — ${sub}`:cfg.label);
+      });
+      if(!subcats.length) {
+        const items=pgItems;
+        html+=renderSection(items,cfg.label);
+      }
+    }
   });
   content.innerHTML=html||'<div class="empty" style="padding:32px"><i class="ti ti-search"></i><div class="empty-text">ไม่พบรายการ</div></div>';
 }
