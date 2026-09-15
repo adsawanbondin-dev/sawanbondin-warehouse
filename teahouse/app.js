@@ -4951,24 +4951,39 @@ function dwCopyForPrep(pg) {
   const finish = pending.filter(x=>x.pg==='finish');
   const store2 = pending.filter(x=>x.pg==='store2');
 
+  function getUnit(name) {
+    // LL = กรัม
+    if (/^LL\./i.test(name)) return 'กรัม';
+    const n = name.toLowerCase();
+    if (n.includes('กิโล') || n.includes(' kg')) return 'กิโลกรัม';
+    if (n.includes(' g)') || n.includes(' g ') || n.endsWith(' g') || / \d+ g/.test(n)) return 'ถุง';
+    if (n.includes('กล่อง')) return 'กล่อง';
+    if (n.includes('ซอง')) return 'ซอง';
+    if (n.includes('กระปุก')) return 'กระปุก';
+    if (n.includes('ห่อ')) return 'ห่อ';
+    if (n.includes('แพค') || n.includes('pack')) return 'แพค';
+    if (n.includes('ขวด')) return 'ขวด';
+    if (n.includes('แกลลอน')) return 'แกลลอน';
+    const m = masterDB.find(x=>x.name===name);
+    return m?.unit || '';
+  }
+
+  function buildLines(items) {
+    return items.map(x=>`-${x.item_name} จำนวน ${x.suggested_qty||0} ${getUnit(x.item_name)}`);
+  }
+
   const lines = [`รายการเบิกประจำวัน — ${today}`,'─'.repeat(30)];
 
   if (pg === 'finish' || !pg) {
     if (finish.length) {
       if (!pg) lines.push('\n【 สินค้าสำเร็จรูป 】');
-      finish.forEach((x,i)=>{
-        const note = x.preparer_note ? `  (${x.preparer_note})` : '';
-        lines.push(`${i+1}. ${x.item_name}  ${x.suggested_qty||0}${note}`);
-      });
+      lines.push(...buildLines(finish));
     }
   }
   if (pg === 'store2' || !pg) {
     if (store2.length) {
       if (!pg) lines.push('\n【 Stock Tea House 】');
-      store2.forEach((x,i)=>{
-        const note = x.preparer_note ? `  (${x.preparer_note})` : '';
-        lines.push(`${i+1}. ${x.item_name}  ${x.suggested_qty||0}${note}`);
-      });
+      lines.push(...buildLines(store2));
     }
   }
 
