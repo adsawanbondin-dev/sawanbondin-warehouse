@@ -3329,29 +3329,16 @@ async function renderStockCountPage() {
 
   const today = new Date().toLocaleDateString('th-TH',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
 
-  // โหลด lot ถ้าจำเป็น
-  const allItems = masterDB.filter(m => SC_GROUPS[m.pg]);
-  const lotsNeeded = allItems.filter(m => WAREHOUSE_CONFIG[m.pg]?.hasLot);
-  if (lotsNeeded.length) {
-    const codes = lotsNeeded.map(m=>m.code);
-    const { data } = await sb.from('lots').select('*').in('item_code', codes).order('lot_sw',{ascending:true});
-    if (data) data.forEach(r => {
-      if (!lotDB[r.item_code]) lotDB[r.item_code] = [];
-      if (!lotDB[r.item_code].find(l=>l.id===r.id))
-        lotDB[r.item_code].push({ id:r.id, lot_sw:r.lot_sw, stock:parseFloat(r.stock)||0 });
-    });
-  }
+  const finishItems = masterDB.filter(m => m.pg==='finish' && m.is_active!==false);
+  const store2Items = masterDB.filter(m => m.pg==='store2' && m.is_active!==false);
+  const allItems    = [...finishItems, ...store2Items];
 
-  // สถิติ
-  const counted   = allItems.filter(m => scData[m.code] !== undefined).length;
-  const diffItems = allItems.filter(m => scData[m.code] !== undefined && scData[m.code] !== m.stock);
+  const counted  = allItems.filter(m=>scData[m.code]!==undefined).length;
 
-  // copy text สินค้า
   const copyFinish = () => {
-    const items = masterDB.filter(m=>m.pg==='finish');
     const lines = ['ตรวจนับสินค้าสำเร็จรูป '+today,''];
     const byLoc = {};
-    items.forEach(m=>{ const loc=locationDB[m.code]||'ยังไม่ระบุ'; if(!byLoc[loc])byLoc[loc]=[]; byLoc[loc].push(m); });
+    finishItems.forEach(m=>{ const loc=locationDB[m.code]||'ยังไม่ระบุ'; if(!byLoc[loc])byLoc[loc]=[]; byLoc[loc].push(m); });
     Object.entries(byLoc).forEach(([loc,ms])=>{
       lines.push('── '+loc+' ──');
       ms.forEach((m,i)=>lines.push((i+1)+'. '+m.name+' (ระบบ: '+m.stock+') จริง: ___'));
@@ -3360,27 +3347,17 @@ async function renderStockCountPage() {
     navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกรายการสินค้าแล้ว'));
   };
 
-  // copy text อุปกรณ์
-  const copyEquip = () => {
-    const items = masterDB.filter(m=>m.pg==='equip_th');
-    const lines = ['ตรวจนับอุปกรณ์ '+today,''];
-    const byLoc = {};
-    items.forEach(m=>{ const loc=locationDB[m.code]||'ยังไม่ระบุ'; if(!byLoc[loc])byLoc[loc]=[]; byLoc[loc].push(m); });
-    Object.entries(byLoc).forEach(([loc,ms])=>{
-      lines.push('── '+loc+' ──');
-      ms.forEach((m,i)=>lines.push((i+1)+'. '+m.name+' (ระบบ: '+m.stock+') จริง: ___'));
-      lines.push('');
-    });
-    navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกรายการอุปกรณ์แล้ว'));
+  const copyStore2 = () => {
+    const lines = ['ตรวจนับ Stock Store '+today,''];
+    store2Items.forEach((m,i)=>lines.push((i+1)+'. '+m.name+' (ระบบ: '+m.stock+') จริง: ___'));
+    navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกรายการ Store แล้ว'));
   };
 
-  // สร้าง group ตามพิกัด แยกตามคลัง
-  function buildLocGroups(pg) {
-    const items = masterDB.filter(m => m.pg === pg && (!scSearch || m.name.toLowerCase().includes(scSearch.toLowerCase())));
+  function buildLocGroups(items) {
     if (!items.length) return '';
-
+    const filtered = scSearch ? items.filter(m=>m.name.toLowerCase().includes(scSearch.toLowerCase())) : items;
     const byLoc = {};
-    items.forEach(m => {
+    filtered.forEach(m => {
       const loc = locationDB[m.code] || 'ยังไม่ระบุพิกัด';
       if (!byLoc[loc]) byLoc[loc] = [];
       byLoc[loc].push(m);
@@ -3388,41 +3365,42 @@ async function renderStockCountPage() {
 
     return Object.entries(byLoc).map(([loc, locItems]) => {
       const rows = locItems.map(m => {
-        const actual = scData[m.code];
-        const hasVal = actual !== undefined;
-        const isLow  = hasVal && actual < m.stock;
-        const isOk   = hasVal && actual >= m.stock;
-        const inputCls = !hasVal ? '' : isLow ? 'border:0.5px solid #b03030;background:#fdf0f0' : 'border:0.5px solid #2d6a4f;background:#edf5f0';
-        return `<div style="display:grid;grid-template-columns:1fr 64px 64px;padding:9px 14px;border-bottom:0.5px solid var(--line);align-items:center;gap:8px">
+        const actual  = scData[m.code];
+        const hasVal  = actual !== undefined;
+        const isLow   = hasVal && actual < m.stock;
+        const inpStyle = hasVal
+          ? (isLow ? 'border:0.5px solid #b03030;background:#fdf0f0' : 'border:0.5px solid #2d6a4f;background:#edf5f0')
+          : 'border:0.5px solid var(--line);background:var(--surface)';
+        return `<div style="display:grid;grid-template-columns:1fr 60px 70px;padding:9px 14px;border-bottom:0.5px solid var(--line);align-items:center;gap:8px">
           <div>
             <div style="font-size:12px;font-weight:500">${m.name}</div>
             <div style="font-size:10px;color:var(--ink4)">${m.code}</div>
           </div>
-          <div style="text-align:right;font-size:12px;font-weight:500;color:var(--ink4)">${m.stock.toLocaleString()}</div>
+          <div style="text-align:right;font-size:12px;font-weight:500;color:var(--ink4)">${m.stock}</div>
           <input type="number" min="0" step="0.01" inputmode="decimal" placeholder="—"
             value="${hasVal?actual:''}"
-            style="padding:4px 8px;border-radius:6px;font-size:12px;text-align:right;width:100%;${inputCls||'border:0.5px solid var(--line);background:var(--surface)'};outline:none;font-family:inherit"
-            onchange="scSetVal('${m.code}',this.value);const v=parseFloat(this.value);if(!isNaN(v)){this.style.border=v<${m.stock}?'0.5px solid #b03030':'0.5px solid #2d6a4f';this.style.background=v<${m.stock}?'#fdf0f0':'#edf5f0';}else{this.style.border='0.5px solid var(--line)';this.style.background='var(--surface)'}">
+            style="padding:4px 8px;border-radius:6px;font-size:12px;text-align:right;width:100%;${inpStyle};outline:none;font-family:inherit"
+            oninput="scSetVal('${m.code}',this.value);const v=parseFloat(this.value);if(!isNaN(v)){this.style.border=v<${m.stock}?'0.5px solid #b03030':'0.5px solid #2d6a4f';this.style.background=v<${m.stock}?'#fdf0f0':'#edf5f0';}else{this.style.border='0.5px solid var(--line)';this.style.background='var(--surface)'}"
+            onkeydown="scNavRow(event,'${m.code}','${locItems.map(i=>i.code).join(',')}')">
         </div>`;
       }).join('');
 
       const locCounted = locItems.filter(m=>scData[m.code]!==undefined).length;
-      const locDone = locCounted === locItems.length;
+      const locDone    = locCounted === locItems.length && locItems.length > 0;
 
-      return `<div style="margin-bottom:12px;border:0.5px solid var(--line);border-radius:10px;overflow:hidden">
-        <div style="padding:8px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between;cursor:pointer"
-          onclick="const rows=this.nextElementSibling.querySelectorAll(':scope>div,table');const tbl=this.parentElement.querySelector('.sc-rows');if(tbl){tbl.style.display=tbl.style.display==='none'?'':'none';}">
-          <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500">
-            <i class="ti ti-map-pin" style="font-size:13px;color:var(--ink4)"></i>
-            ${loc}
+      return `<div style="margin-bottom:0;border-bottom:0.5px solid var(--line)">
+        <div style="padding:7px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+          onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='none'?'':'none'">
+          <div style="display:flex;align-items:center;gap:7px;font-size:11px;font-weight:500;color:var(--ink4)">
+            <i class="ti ti-map-pin" style="font-size:11px"></i>${loc}
           </div>
-          <div style="display:flex;align-items:center;gap:8px">
+          <div style="display:flex;align-items:center;gap:6px">
             <span style="font-size:10px;color:var(--ink4)">${locCounted}/${locItems.length}</span>
             ${locDone?'<span style="font-size:9px;padding:1px 6px;border-radius:8px;background:#edf5f0;color:#2d6a4f;border:0.5px solid #2d6a4f">ครบแล้ว</span>':''}
           </div>
         </div>
         <div>
-          <div style="display:grid;grid-template-columns:1fr 64px 64px;padding:5px 14px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
+          <div style="display:grid;grid-template-columns:1fr 60px 70px;padding:4px 14px;font-size:9px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
             <span>รายการ</span><span style="text-align:right">ระบบ</span><span style="text-align:right">จริง</span>
           </div>
           ${rows}
@@ -3431,194 +3409,86 @@ async function renderStockCountPage() {
     }).join('');
   }
 
-  const sectionFinish = buildLocGroups('finish');
-  const sectionEquip  = buildLocGroups('equip_th');
-  const sectionStore2 = buildLocGroups('store2');
+  function buildSection(pg, label, items, saveFn) {
+    const cnt     = items.filter(m=>scData[m.code]!==undefined).length;
+    const locHtml = buildLocGroups(items);
+    return `<div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:14px">
+      <div style="padding:9px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:8px">
+          <i class="ti ${pg==='finish'?'ti-package':'ti-building-warehouse'}" style="font-size:13px;color:var(--ink4)"></i>
+          <span style="font-size:12px;font-weight:500">${label}</span>
+          <span style="font-size:10px;color:var(--ink4)">${cnt}/${items.length} นับแล้ว</span>
+        </div>
+        <div style="display:flex;gap:5px">
+          <button class="btn btn-sm" onclick="${pg==='finish'?'scCopyFinish()':'scCopyStore2()'}" style="font-size:10px">
+            <i class="ti ti-copy"></i>
+          </button>
+          <button class="btn btn-sm btn-primary" onclick="${saveFn}" style="font-size:10px">
+            <i class="ti ti-check"></i> บันทึก (${cnt})
+          </button>
+        </div>
+      </div>
+      ${locHtml||`<div style="padding:24px;text-align:center;font-size:11px;color:var(--ink4)">ไม่พบรายการค่ะ</div>`}
+      <div style="padding:8px 14px;background:var(--s2);border-top:0.5px solid var(--line);display:flex;justify-content:flex-end">
+        <button class="btn btn-sm btn-primary" onclick="${saveFn}" style="font-size:11px">
+          <i class="ti ti-check"></i> บันทึก${pg==='finish'?'สินค้าสำเร็จรูป':'Stock Store'} (${cnt})
+        </button>
+      </div>
+    </div>`;
+  }
 
   div.innerHTML = `
     <div class="page-header">
       <div><div class="page-title">ตรวจนับสต็อก</div>
         <div class="page-sub">${today}</div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-sm" id="sc-copy-finish" style="font-size:11px">
-          <i class="ti ti-copy"></i> คัดลอกสินค้า
-        </button>
-        <button class="btn btn-sm" id="sc-copy-equip" style="font-size:11px">
-          <i class="ti ti-copy"></i> คัดลอกอุปกรณ์
-        </button>
         <button class="btn btn-sm" onclick="renderScHistoryPage()" style="font-size:11px">
           <i class="ti ti-history"></i> ประวัติ
         </button>
-        <button class="btn btn-sm" onclick="scData={};renderStockCountPage()" style="font-size:11px">
-          <i class="ti ti-eraser"></i> ล้าง
+        <button class="btn btn-sm" onclick="renderStockCountPage()" style="font-size:11px">
+          <i class="ti ti-refresh"></i>
         </button>
       </div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
+
+    <div style="display:flex;gap:8px;margin-bottom:14px">
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:18px;font-weight:600">${allItems.length}</div>
-        <div style="font-size:10px;color:var(--ink4)">ทั้งหมด</div>
+        <div style="font-size:18px;font-weight:500">${allItems.length}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:1px">ทั้งหมด</div>
       </div>
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:18px;font-weight:600;color:var(--acc)">${counted}</div>
-        <div style="font-size:10px;color:var(--ink4)">นับแล้ว</div>
+        <div style="font-size:18px;font-weight:500;color:var(--acc)">${counted}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:1px">นับแล้ว</div>
       </div>
       <div class="card" style="flex:1;padding:8px 12px;text-align:center">
-        <div style="font-size:18px;font-weight:600;color:${diffItems.length?'var(--red)':'var(--ink)'}">${diffItems.length}</div>
-        <div style="font-size:10px;color:var(--ink4)">ยอดต่าง</div>
+        <div style="font-size:18px;font-weight:500">${allItems.length-counted}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:1px">ยังไม่นับ</div>
       </div>
     </div>
+
     <div style="margin-bottom:12px">
-      <input class="fi" placeholder="ค้นหารายการ..." value="${scSearch}"
-        oninput="scSearch=this.value;renderStockCountPage()" style="max-width:280px">
+      <input class="fi" placeholder="ค้นหาทุกคลัง..." value="${scSearch}"
+        oninput="scSearch=this.value;renderStockCountPage()" style="max-width:260px;font-size:11px">
     </div>
-    ${sectionFinish?`<div style="font-size:11px;font-weight:500;color:var(--ink4);margin:0 0 6px;text-transform:uppercase;letter-spacing:.3px">สินค้าสำเร็จรูป</div>${sectionFinish}`:''}
-    ${sectionStore2?`<div style="font-size:11px;font-weight:500;color:var(--ink4);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.3px">Stock Tea House</div>${sectionStore2}`:''}
-    ${sectionEquip?`<div style="font-size:11px;font-weight:500;color:var(--ink4);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.3px">อุปกรณ์ Tea House</div>${sectionEquip}`:''}
-    <div style="margin-top:16px;padding-top:12px;border-top:0.5px solid var(--line);display:flex;gap:8px;justify-content:flex-end">
-      <button class="btn" onclick="scData={};renderStockCountPage()">ล้างทั้งหมด</button>
-      <button class="btn btn-primary" onclick="scSaveAll()">
-        <i class="ti ti-check"></i> ยืนยันปรับยอดทั้งหมด (${counted})
-      </button>
-    </div>`;
 
-  document.getElementById('sc-copy-finish')?.addEventListener('click', copyFinish);
-  document.getElementById('sc-copy-equip')?.addEventListener('click', copyEquip);
+    ${buildSection('finish','สินค้าสำเร็จรูป',finishItems,"scSavePg('finish')")}
+    ${buildSection('store2','Stock Store',store2Items,"scSavePg('store2')")}`;
+
+  // bind copy functions
+  window.scCopyFinish = copyFinish;
+  window.scCopyStore2 = copyStore2;
 }
 
-
-async function scSaveAll() {
-  const allItems = masterDB.filter(m => SC_GROUPS[m.pg]);
-  const toUpdate = allItems.filter(m => scData[m.code] !== undefined);
-  if (!toUpdate.length) { showToast('กรุณากรอกยอดจริงก่อน','err'); return; }
-
-  const diffCount = toUpdate.filter(m => scData[m.code] !== m.stock).length;
-  if (!confirm(`ยืนยันปรับยอด stock ${toUpdate.length} รายการ (${diffCount} รายการที่ต่างจากระบบ)?`)) return;
-
-  const btn = document.querySelector('#page-stockcount .btn-primary');
-  if (btn) { btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> กำลังบันทึก...'; }
-
-  const logRows = [];
-  let ok = 0;
-
-  for (const m of toUpdate) {
-    const actual = scData[m.code];
-    const diff   = actual - m.stock;
-
-    // บันทึก log ทุกรายการที่กรอก (ไม่ว่าจะต่างหรือไม่)
-    logRows.push({
-      pg: m.pg, item_code: m.code, item_name: m.name,
-      system_stock: m.stock, actual_stock: actual,
-      counted_by: window._operatorName || '',
-    });
-
-    if (diff === 0) { ok++; continue; }
-
-    const { error } = await sb.from('items').update({ stock: actual }).eq('code', m.code);
-    if (error) { console.error('scSaveAll:', error.message); continue; }
-
-    await dbInsertTransaction({
-      item_code: m.code, item_name: m.name, pg: m.pg,
-      action_type: diff > 0 ? 'receive' : 'withdraw',
-      quantity: Math.abs(diff),
-      operator_name: window._operatorName || '',
-      note: `ตรวจนับสิ้นวัน: ระบบ ${m.stock} → จริง ${actual}`,
-      via: 'stockcount'
-    });
-
-    m.stock = actual;
-    ok++;
+async function scSavePg(pg) {
+  const items = masterDB.filter(m=>m.pg===pg&&m.is_active!==false);
+  const rows  = items.filter(m=>scData[m.code]!==undefined);
+  if (!rows.length) { showToast('ยังไม่ได้กรอกจำนวนค่ะ','err'); return; }
+  for (const m of rows) {
+    const actual = parseFloat(scData[m.code])||0;
+    await sb.from('items').update({ stock: actual, updated_at: new Date().toISOString() }).eq('code', m.code);
+    const mi = masterDB.find(x=>x.code===m.code); if(mi) mi.stock = actual;
   }
-
-  // บันทึก log ทั้งหมดพร้อมกัน
-  if (logRows.length) {
-    await sb.from('stock_count_logs').insert(logRows);
-  }
-
-  showToast(`ปรับยอด stock เรียบร้อย ${ok} รายการ`);
-  scData = {};
-  renderStockCountPage();
-}
-
-async function renderScHistoryPage() {
-  const div = document.getElementById('page-stockcount');
-  if (!div) return;
-
-  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
-
-  const { data } = await sb.from('stock_count_logs')
-    .select('*')
-    .order('counted_at', { ascending: false })
-    .limit(200);
-
-  if (!data || !data.length) {
-    div.innerHTML = `<div class="page-header">
-      <div><div class="page-title">ประวัติการตรวจนับ</div></div>
-      <button class="btn btn-sm" onclick="renderStockCountPage()"><i class="ti ti-arrow-left"></i> กลับ</button>
-    </div>
-    <div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-history" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3"></i>ยังไม่มีประวัติ</div>`;
-    return;
-  }
-
-  // จัดกลุ่มตามวันที่
-  const byDate = {};
-  data.forEach(r => {
-    const d = new Date(r.counted_at).toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
-    if (!byDate[d]) byDate[d] = [];
-    byDate[d].push(r);
-  });
-
-  const sections = Object.entries(byDate).map(([date, rows]) => {
-    const diffCount = rows.filter(r => r.diff !== 0).length;
-    const countedBy = [...new Set(rows.map(r=>r.counted_by).filter(Boolean))].join(', ') || '—';
-
-    const tableRows = rows.map(r => {
-      const diff = r.diff || 0;
-      const diffColor = diff > 0 ? '#2d6a4f' : diff < 0 ? '#b03030' : 'var(--ink4)';
-      const diffTxt = diff > 0 ? `+${diff}` : diff < 0 ? `${diff}` : '0';
-      const time = new Date(r.counted_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
-      return `<tr>
-        <td style="padding:7px 12px;font-size:12px;font-weight:500">${r.item_name}</td>
-        <td style="padding:7px 12px;font-size:10px;color:var(--ink4)">${r.pg}</td>
-        <td style="padding:7px 12px;text-align:right;font-size:12px">${r.system_stock}</td>
-        <td style="padding:7px 12px;text-align:right;font-size:12px;font-weight:500">${r.actual_stock}</td>
-        <td style="padding:7px 12px;text-align:right;font-size:12px;font-weight:600;color:${diffColor}">${diffTxt}</td>
-        <td style="padding:7px 12px;font-size:10px;color:var(--ink4)">${time}</td>
-      </tr>`;
-    }).join('');
-
-    return `<div style="margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--s2);border:0.5px solid var(--line);border-radius:8px;margin-bottom:6px">
-        <div>
-          <div style="font-size:12px;font-weight:500">${date}</div>
-          <div style="font-size:10px;color:var(--ink4);margin-top:2px">นับโดย ${countedBy} · ${rows.length} รายการ · ต่างจากระบบ ${diffCount} รายการ</div>
-        </div>
-      </div>
-      <div class="sc-table-wrap">
-        <table class="sc-table">
-          <thead><tr>
-            <th>รายการ</th>
-            <th>คลัง</th>
-            <th style="text-align:right">ยอดระบบ</th>
-            <th style="text-align:right">ยอดจริง</th>
-            <th style="text-align:right">ต่าง</th>
-            <th>เวลา</th>
-          </tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-      </div>
-    </div>`;
-  }).join('');
-
-  div.innerHTML = `
-    <div class="page-header">
-      <div><div class="page-title">ประวัติการตรวจนับ</div>
-        <div class="page-sub">${data.length} รายการล่าสุด</div></div>
-      <button class="btn btn-sm" onclick="renderStockCountPage()">
-        <i class="ti ti-arrow-left"></i> กลับ
-      </button>
-    </div>
-    ${sections}`;
+  showToast(`บันทึก ${rows.length} รายการแล้วค่ะ`);
 }
 
 function scSetVal(code, val) {
