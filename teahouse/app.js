@@ -3659,7 +3659,7 @@ async function dbGenerateDailyList() {
     carriedByCode[x.item_code].push(x);
   });
 
-  const pgs = ['finish', 'store2'];
+  const pgs = ['finish', 'equip_th'];
   const needWithdraw = masterDB.filter(m =>
     pgs.includes(m.pg) && m.is_active !== false && (m.stock <= (m.min||0) || m.stock === 0) && m.max > 0
   );
@@ -3893,7 +3893,7 @@ async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
     const m = masterDB.find(x=>x.code===item.item_code);
     if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
 
-  } else if (item.pg === 'store2') {
+  } else if (item.pg === 'equip_th') {
     // store2 (Stock Tea House) — หัก equip_th (Stock Store 2) ก่อน แล้วบวก store2
     // หา equip_th code จาก mapping
     const { data: map } = await sb.from('item_factory_map')
@@ -4088,7 +4088,7 @@ function dwRenderContent() {
             style="margin-top:3px;width:100%;padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;font-family:inherit;background:var(--surface);color:var(--ink4);outline:none"
             onchange="dwSetPreparerNote(${item.id},this.value)">`;
 
-      return `<div style="display:grid;grid-template-columns:1fr 56px 56px 36px ${item.pg==='store2'?'28px':''};border-bottom:0.5px solid var(--line);align-items:start" id="dwrow-${item.id}">
+      return `<div style="display:grid;grid-template-columns:1fr 56px 56px 36px ${item.pg==='equip_th'?'28px':''};border-bottom:0.5px solid var(--line);align-items:start" id="dwrow-${item.id}">
         <div style="padding:9px 14px">
           <div style="font-size:12px;font-weight:500">${item.item_name}${isCarried?` <span style="font-size:9px;color:var(--ink4)">ค้างมา</span>`:''}</div>
           <div style="font-size:10px;color:var(--ink4);margin-top:1px">${m?.subcat||''}</div>
@@ -4114,7 +4114,7 @@ function dwRenderContent() {
             <i class="ti ti-check"></i>
           </button>
         </div>
-        ${item.pg==='store2'?`<div style="padding:9px 4px 0">
+        ${item.pg==='equip_th'?`<div style="padding:9px 4px 0">
           <button onclick="dwDeleteItem(${item.id})"
             style="padding:4px 6px;border-radius:6px;border:0.5px solid #e8a0a0;background:none;color:#b03030;font-size:11px;cursor:pointer">
             <i class="ti ti-trash"></i>
@@ -4196,7 +4196,7 @@ function dwRenderContent() {
     </div>`;
   }
 
-  content.innerHTML = buildSection('finish','สินค้าสำเร็จรูป') + buildSection('store2','Stock Tea House');
+  content.innerHTML = buildSection('finish','สินค้าสำเร็จรูป') + buildSection('equip_th','Stock Tea House');
 }
 
 async function dwDeleteItem(id) {
@@ -4670,7 +4670,7 @@ async function renderDwHistoryPage() {
 
   const byPg = {
     finish: rows.filter(r=>r.pg==='finish'),
-    store2: rows.filter(r=>r.pg==='store2'),
+    store2: rows.filter(r=>r.pg==='equip_th'),
   };
 
   function buildTable(items, label) {
@@ -4758,7 +4758,7 @@ function dwCopyForPrep(pg) {
   const pending = dwItems.filter(x=>x.status==='pending'||x.status==='preparing');
 
   const finish = pending.filter(x=>x.pg==='finish');
-  const store2 = pending.filter(x=>x.pg==='store2');
+  const store2 = pending.filter(x=>x.pg==='equip_th');
 
   function getUnit(name) {
     if (/^LL\./i.test(name)) return 'กรัม';
