@@ -3906,7 +3906,11 @@ async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
       const m = masterDB.find(x=>x.code===item.item_code);
       if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns, updated_at: new Date().toISOString() }).eq('code', item.item_code); m.stock = ns; }
     }
-  } // end NO_STOCK_CODES check
+  } else {
+    // NO_STOCK_CODES: บวก stock teahouse อย่างเดียว ไม่ตัดจากที่ไหน
+    const m = masterDB.find(x=>x.code===item.item_code);
+    if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns, updated_at: new Date().toISOString() }).eq('code', item.item_code); m.stock = ns; }
+  }
 
   await sb.from('daily_withdrawals').update({
     status: 'received', received_qty: recvQty,
