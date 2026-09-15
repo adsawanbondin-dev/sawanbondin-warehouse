@@ -4222,7 +4222,7 @@ switchPage = async function(p) {
 
 const sbTH = window.supabase.createClient(
   'https://zdeasnvrntcakyccwlsq.supabase.co',
-  'sb_publishable_TlOb9MhP5wJKlQVIZ7PHSQ_sVXMdIGW',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkZWFzbnZybnRjYWt5Y2N3bHNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE5NTU5NzcsImV4cCI6MjA5NzUzMTk3N30.blvUX2UYOxv9OZvMDtLCzLjDmxNcsiXfwYYihQd076E',
 );
 
 async function renderThWithdrawPage() {
