@@ -3636,6 +3636,12 @@ async function dbLoadDailyWithdrawals() {
     .order('pg').order('item_name');
   dwItems = data || [];
 
+  // restore _lotId และ _lotSw จาก DB สำหรับรายการที่เตรียมแล้ว
+  dwItems.forEach(x => {
+    if (x.factory_lot_id) x._lotId = x.factory_lot_id;
+    if (x.factory_lot_sw) x._lotSw = x.factory_lot_sw;
+  });
+
   // ลบรายการที่ stock กลับมาเกิน min แล้ว (ป้องกันค้างโดยไม่จำเป็น)
   const toDelete = dwItems.filter(x => {
     const m = masterDB.find(i=>i.code===x.item_code);
@@ -4221,16 +4227,23 @@ async function dwDeleteItem(id) {
 async function dwSavePreparedNoReload(id) {
   const item = dwItems.find(x=>x.id===id);
   if (!item) return;
-  const inp = document.querySelector(`#dwrow-${id} input[type=number]:nth-child(1)`);
+
+  // บังคับเลือก Lot สำหรับ finish items
+  if (item.pg === 'finish' && !item._lotId) {
+    showToast('กรุณาเลือก Lot ก่อนบันทึกเตรียมค่ะ','err');
+    return;
+  }
+
   const inputs = document.querySelectorAll(`#dwrow-${id} input[type=number]`);
-  // อ่านจาก DOM โดยตรง
   let prepQty = item._prepQty;
   inputs.forEach(i=>{ if(i.oninput&&i.oninput.toString().includes('SetPrepQty')) prepQty = parseFloat(i.value)||0; });
-
   if (prepQty === undefined || prepQty === null) prepQty = item.suggested_qty||0;
+
   await sb.from('daily_withdrawals').update({
     status:'ready', prepared_qty:prepQty,
-    prepared_at:new Date().toISOString(), updated_at:new Date().toISOString()
+    prepared_at:new Date().toISOString(), updated_at:new Date().toISOString(),
+    factory_lot_id: item._lotId || null,
+    factory_lot_sw: item._lotSw || null,
   }).eq('id',id);
   item.status='ready'; item.prepared_qty=prepQty; item._prepQty=undefined;
 
