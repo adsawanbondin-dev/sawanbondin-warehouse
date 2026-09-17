@@ -4230,7 +4230,14 @@ async function dwSavePreparedNoReload(id) {
 
   const inputs = document.querySelectorAll(`#dwrow-${id} input[type=number]`);
   let prepQty = item._prepQty;
-  inputs.forEach(i=>{ if(i.oninput&&i.oninput.toString().includes('SetPrepQty')) prepQty = parseFloat(i.value)||0; });
+  let prepInputVal = null;
+  inputs.forEach(i=>{
+    if(i.oninput && i.oninput.toString().includes('SetPrepQty')) {
+      prepInputVal = i.value;
+      if (i.value !== '') prepQty = parseFloat(i.value)||0;
+    }
+  });
+  // ถ้าไม่ได้กรอกเลข ใช้ suggested_qty
   if (prepQty === undefined || prepQty === null) prepQty = item.suggested_qty||0;
 
   await sb.from('daily_withdrawals').update({
