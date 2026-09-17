@@ -4056,7 +4056,7 @@ function dwRenderContent() {
   function buildRow(item, mode) {
     const m = masterDB.find(x=>x.code===item.item_code);
     const isCarried = item.date && item.date !== todayStr;
-    const prepQty = (item.prepared_qty!==null&&item.prepared_qty!==undefined&&item.prepared_qty>=0&&item.prepared_qty<(item.suggested_qty||0))
+    const prepQty = (item.prepared_qty!==null&&item.prepared_qty!==undefined&&item.prepared_qty>=0)
       ? item.prepared_qty : (item.suggested_qty||0);
 
     if (mode==='pending') {
