@@ -3391,9 +3391,8 @@ function toggleLotSub(subId,code){
   const isOpen=sub.style.display!=='none';
   if(isOpen){sub.style.display='none';return;}
   sub.style.display='block';
-  if(!lotDB[code]){
-    sub.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด...</div>';
-    dbLoadLotsForItem(code).then(()=>{
+  sub.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด...</div>';
+  dbLoadLotsForItem(code).then(()=>{
       const lots=lotDB[code]||[];
       const m=masterDB.find(x=>x.code===code);
       sub.innerHTML=lots.length
@@ -3414,7 +3413,6 @@ function toggleLotSub(subId,code){
           }).join('')
         :'<div class="lot-empty">ยังไม่มี Lot</div>';
     });
-  }
 }
 
 
