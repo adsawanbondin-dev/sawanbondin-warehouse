@@ -4228,12 +4228,6 @@ async function dwSavePreparedNoReload(id) {
   const item = dwItems.find(x=>x.id===id);
   if (!item) return;
 
-  // บังคับเลือก Lot สำหรับ finish items
-  if (item.pg === 'finish' && !item._lotId) {
-    showToast('กรุณาเลือก Lot ก่อนบันทึกเตรียมค่ะ','err');
-    return;
-  }
-
   const inputs = document.querySelectorAll(`#dwrow-${id} input[type=number]`);
   let prepQty = item._prepQty;
   inputs.forEach(i=>{ if(i.oninput&&i.oninput.toString().includes('SetPrepQty')) prepQty = parseFloat(i.value)||0; });
