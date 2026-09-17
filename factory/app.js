@@ -3393,7 +3393,7 @@ function toggleLotSub(subId,code){
   sub.style.display='block';
   sub.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด...</div>';
   dbLoadLotsForItem(code).then(()=>{
-      const lots=lotDB[code]||[];
+      const lots=(lotDB[code]||[]).filter(l=>l.stock>0);
       const m=masterDB.find(x=>x.code===code);
       sub.innerHTML=lots.length
         ?lots.map(l=>{
