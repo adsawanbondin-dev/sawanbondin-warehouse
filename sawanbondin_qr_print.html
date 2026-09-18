@@ -517,9 +517,13 @@ function renderPreview(){
       div.insertBefore(badge, div.firstChild);
     }
     if(item.type==='lot'&&item.lotSW){
-      const row=document.createElement('div'); row.className='sticker-loc';
-      const lbl=document.createElement('span'); lbl.className='sticker-loc-label'; lbl.textContent='Lot';
-      const val=document.createElement('span'); val.className='sticker-loc-val';
+      const row=document.createElement('div');
+      row.style.cssText='width:100%;text-align:center;margin:4px 0 2px;padding:3px 6px;background:rgba(0,0,0,.07);border-radius:4px';
+      const lbl=document.createElement('span');
+      lbl.style.cssText='font-size:9px;color:#666;text-transform:uppercase;letter-spacing:.5px;margin-right:4px';
+      lbl.textContent='Lot';
+      const val=document.createElement('span');
+      val.style.cssText='font-size:13px;font-weight:700;color:#111;font-family:monospace';
       val.textContent=new Date(item.lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'});
       row.appendChild(lbl); row.appendChild(val); div.appendChild(row);
     }
@@ -544,8 +548,8 @@ function renderPreview(){
     div.appendChild(cd);
     if(showBrand){const br=document.createElement('div');br.className='sticker-brand';br.textContent='SAWANBONDIN';div.appendChild(br);}
     if(showSpec && item.spec){const sp=document.createElement('div');sp.className='sticker-spec';sp.textContent=item.spec;div.appendChild(sp);}
-    if(showNote && item.remark){const nt=document.createElement('div');nt.className='sticker-spec';nt.textContent=item.remark;div.appendChild(nt);}
-    if(showNote && !item.remark && item.note && item.note !== item.location){const nt=document.createElement('div');nt.className='sticker-spec';nt.textContent=item.note;div.appendChild(nt);}
+    if(showNote && item.remark){const nt=document.createElement('div');nt.style.cssText='font-size:10px;font-weight:600;text-align:center;width:100%;padding:3px 6px;background:#fff8e1;border-radius:4px;color:#7a5900;border:1px solid #f0d060;word-break:break-word;margin-top:2px';nt.textContent=item.remark;div.appendChild(nt);}
+    if(showNote && !item.remark && item.note && item.note !== item.location){const nt=document.createElement('div');nt.style.cssText='font-size:10px;font-weight:600;text-align:center;width:100%;padding:3px 6px;background:#fff8e1;border-radius:4px;color:#7a5900;border:1px solid #f0d060;word-break:break-word;margin-top:2px';nt.textContent=item.note;div.appendChild(nt);}
 
     const pair=document.createElement('div');
     pair.className='sticker-pair';
