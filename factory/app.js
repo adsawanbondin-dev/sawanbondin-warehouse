@@ -1951,6 +1951,15 @@ async function submitTransform(pg) {
 
   setLoading(pg+'-tf-submit-btn', true, 'กำลังบันทึก...');
 
+  // sync stock จาก lots ก่อนแปรรูป เพื่อให้ RPC คำนวณถูกต้อง
+  await dbLoadLotsForItem(code);
+  const totalLotStock = (lotDB[code]||[]).reduce((s,l)=>s+l.stock,0);
+  const m = masterDB.find(x=>x.code===code);
+  if (m && m.stock !== totalLotStock) {
+    await sb.from('items').update({ stock: totalLotStock, updated_at: new Date().toISOString() }).eq('code', code);
+    m.stock = totalLotStock;
+  }
+
   const fromLotSW = fromOpt?.dataset?.sw || '';
   const fromDateStr = fromLotSW ? new Date(fromLotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
   const baseTx = { item_code:code, item_name:name, pg, operator_name:opName, department:opDept, via:'manual' };
