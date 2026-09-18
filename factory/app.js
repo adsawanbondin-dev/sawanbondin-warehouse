@@ -1913,6 +1913,16 @@ function updateTransformSummary(pg) {
 }
 
 async function submitTransform(pg) {
+  if (window._tfSubmitting) return;
+  window._tfSubmitting = true;
+  try {
+    await _submitTransformCore(pg);
+  } finally {
+    window._tfSubmitting = false;
+  }
+}
+
+async function _submitTransformCore(pg) {
   const code   = document.getElementById(pg+'-tf-ival')?.value;
   const itemEl = document.getElementById(pg+'-tf-idisplay');
   const name   = itemEl?.value || '';
