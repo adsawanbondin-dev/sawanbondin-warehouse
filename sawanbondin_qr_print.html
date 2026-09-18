@@ -548,8 +548,8 @@ function renderPreview(){
     div.appendChild(cd);
     if(showBrand){const br=document.createElement('div');br.className='sticker-brand';br.textContent='SAWANBONDIN';div.appendChild(br);}
     if(showSpec && item.spec){const sp=document.createElement('div');sp.className='sticker-spec';sp.textContent=item.spec;div.appendChild(sp);}
-    if(showNote && item.remark){const nt=document.createElement('div');nt.style.cssText='font-size:11px;font-weight:700;text-align:center;width:100%;word-break:break-word;margin-top:3px';nt.textContent=item.remark;div.appendChild(nt);}
-    if(showNote && !item.remark && item.note && item.note !== item.location){const nt=document.createElement('div');nt.style.cssText='font-size:11px;font-weight:700;text-align:center;width:100%;word-break:break-word;margin-top:3px';nt.textContent=item.note;div.appendChild(nt);}
+    if(showNote && item.remark){const nt=document.createElement('div');nt.style.cssText='font-size:15px;font-weight:800;text-align:center;width:100%;word-break:break-word;margin-top:3px';nt.textContent=item.remark;div.appendChild(nt);}
+    if(showNote && !item.remark && item.note && item.note !== item.location){const nt=document.createElement('div');nt.style.cssText='font-size:15px;font-weight:800;text-align:center;width:100%;word-break:break-word;margin-top:3px';nt.textContent=item.note;div.appendChild(nt);}
 
     const pair=document.createElement('div');
     pair.className='sticker-pair';
