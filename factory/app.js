@@ -3883,7 +3883,10 @@ async function renderStockCountPage() {
         <td style="text-align:right" class="${diffCls}">${diffTxt}</td>
         <td>${status}</td>
         <td><input style="border:none;background:none;outline:none;font-size:11px;color:var(--ink3);width:100px" placeholder="หมายเหตุ..." value="${scData[m.code+'_note']||''}" onchange="scSetNote('${m.code}',this.value)"></td>
-        <td><button onclick="scSaveRow('${m.code}',null)" style="padding:3px 8px;border-radius:5px;border:none;background:var(--ink);color:var(--surface);font-size:11px;cursor:pointer"><i class="ti ti-check"></i></button></td>
+        <td style="white-space:nowrap">
+          <button onclick="scSaveRow('${m.code}',null)" style="padding:3px 8px;border-radius:5px;border:none;background:var(--ink);color:var(--surface);font-size:11px;cursor:pointer"><i class="ti ti-check"></i></button>
+          ${hasLotPg?`<button onclick="scAddLotModal('${m.code}')" style="padding:3px 8px;border-radius:5px;border:0.5px solid var(--line);background:transparent;color:var(--ink4);font-size:11px;cursor:pointer;margin-left:3px"><i class="ti ti-plus"></i> Lot</button>`:''}
+        </td>
       </tr>`;
     }
 
@@ -3985,7 +3988,6 @@ async function renderStockCountPage() {
 async function scSaveRow(code, lotId) {
   const m = masterDB.find(x=>x.code===code);
   if (!m) return;
-  const hasLotPg = !!WAREHOUSE_CONFIG[m.pg]?.hasLot;
 
   if (lotId) {
     const key    = code+'_lot_'+lotId;
@@ -3994,6 +3996,7 @@ async function scSaveRow(code, lotId) {
     const lot = (lotDB[code]||[]).find(l=>String(l.id)===String(lotId));
     if (!lot) return;
     const note = scData[key+'_note']||'';
+    const diff = actual - lot.stock;
     // อัปเดต lot stock
     await sb.from('lots').update({ stock: actual, updated_at: new Date().toISOString() }).eq('id', lotId);
     lot.stock = actual;
@@ -4001,13 +4004,36 @@ async function scSaveRow(code, lotId) {
     const totalStock = (lotDB[code]||[]).reduce((s,l)=>s+l.stock,0);
     await sb.from('items').update({ stock: totalStock, updated_at: new Date().toISOString() }).eq('code', code);
     m.stock = totalStock;
+    // บันทึก transaction
+    if (diff !== 0) {
+      await sb.from('transactions').insert({
+        item_code: code, item_name: m.name, pg: m.pg,
+        action: diff > 0 ? 'receive' : 'withdraw',
+        qty: Math.abs(diff), stock_before: lot.stock + (diff > 0 ? -diff : diff),
+        stock_after: actual, lot_id: lotId, lot_sw: lot.lot_sw,
+        note: `ปรับจากตรวจนับ: ${diff>0?'+':''}${diff}${note?` (${note})`:''}`,
+        created_at: new Date().toISOString()
+      });
+    }
     showToast(`บันทึก ${m.name} [Lot ${lot.lot_sw}] แล้วค่ะ`);
   } else {
     const actual = scData[code];
     if (actual === undefined) { showToast('กรุณากรอกยอดจริงก่อนค่ะ','err'); return; }
     const note = scData[code+'_note']||'';
+    const diff = actual - m.stock;
+    const stockBefore = m.stock;
     await sb.from('items').update({ stock: actual, updated_at: new Date().toISOString() }).eq('code', code);
     m.stock = actual;
+    // บันทึก transaction
+    if (diff !== 0) {
+      await sb.from('transactions').insert({
+        item_code: code, item_name: m.name, pg: m.pg,
+        action: diff > 0 ? 'receive' : 'withdraw',
+        qty: Math.abs(diff), stock_before: stockBefore, stock_after: actual,
+        note: `ปรับจากตรวจนับ: ${diff>0?'+':''}${diff}${note?` (${note})`:''}`,
+        created_at: new Date().toISOString()
+      });
+    }
     showToast(`บันทึก ${m.name} แล้วค่ะ`);
   }
   renderStockCountPage();
