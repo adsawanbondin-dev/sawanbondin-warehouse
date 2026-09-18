@@ -524,7 +524,7 @@ function renderPreview(){
       lbl.textContent='Lot';
       const val=document.createElement('span');
       val.style.cssText='font-size:15px;font-weight:800;color:#000;font-family:monospace';
-      val.textContent=new Date(item.lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'});
+      const d=new Date(item.lotSW);val.textContent=`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
       row.appendChild(lbl); row.appendChild(val); div.appendChild(row);
     }
     if(item.weight_kg || item.bagNum){
