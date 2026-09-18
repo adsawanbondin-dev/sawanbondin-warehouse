@@ -3883,6 +3883,7 @@ async function renderStockCountPage() {
         <td style="text-align:right" class="${diffCls}">${diffTxt}</td>
         <td>${status}</td>
         <td><input style="border:none;background:none;outline:none;font-size:11px;color:var(--ink3);width:100px" placeholder="หมายเหตุ..." value="${scData[m.code+'_note']||''}" onchange="scSetNote('${m.code}',this.value)"></td>
+        <td><button onclick="scSaveRow('${m.code}',null)" style="padding:3px 8px;border-radius:5px;border:none;background:var(--ink);color:var(--surface);font-size:11px;cursor:pointer"><i class="ti ti-check"></i></button></td>
       </tr>`;
     }
 
@@ -3920,6 +3921,10 @@ async function renderStockCountPage() {
         <td style="text-align:right" class="${diffCls}" id="sc-diff-${key}">${diffTxt}</td>
         <td id="sc-status-${key}">${status}</td>
         <td><input style="border:none;background:none;outline:none;font-size:11px;color:var(--ink3);width:100px" placeholder="หมายเหตุ..." value="${scData[key+'_note']||''}" onchange="scSetNote('${key}',this.value)"></td>
+        <td style="white-space:nowrap">
+          <button onclick="scSaveRow('${m.code}','${l.id}')" style="padding:3px 8px;border-radius:5px;border:none;background:var(--ink);color:var(--surface);font-size:11px;cursor:pointer"><i class="ti ti-check"></i></button>
+          ${li===activeLots.length-1?`<button onclick="scAddLotModal('${m.code}')" style="padding:3px 8px;border-radius:5px;border:0.5px solid var(--line);background:transparent;color:var(--ink4);font-size:11px;cursor:pointer;margin-left:3px"><i class="ti ti-plus"></i> Lot</button>`:''}
+        </td>
       </tr>`;
     }).join('');
     return lotRows;
@@ -3976,6 +3981,95 @@ async function renderStockCountPage() {
     </div>`;
 }
 
+
+async function scSaveRow(code, lotId) {
+  const m = masterDB.find(x=>x.code===code);
+  if (!m) return;
+  const hasLotPg = !!WAREHOUSE_CONFIG[m.pg]?.hasLot;
+
+  if (lotId) {
+    const key    = code+'_lot_'+lotId;
+    const actual = scData[key];
+    if (actual === undefined) { showToast('กรุณากรอกยอดจริงก่อนค่ะ','err'); return; }
+    const lot = (lotDB[code]||[]).find(l=>String(l.id)===String(lotId));
+    if (!lot) return;
+    const note = scData[key+'_note']||'';
+    // อัปเดต lot stock
+    await sb.from('lots').update({ stock: actual, updated_at: new Date().toISOString() }).eq('id', lotId);
+    lot.stock = actual;
+    // อัปเดต item stock รวม
+    const totalStock = (lotDB[code]||[]).reduce((s,l)=>s+l.stock,0);
+    await sb.from('items').update({ stock: totalStock, updated_at: new Date().toISOString() }).eq('code', code);
+    m.stock = totalStock;
+    showToast(`บันทึก ${m.name} [Lot ${lot.lot_sw}] แล้วค่ะ`);
+  } else {
+    const actual = scData[code];
+    if (actual === undefined) { showToast('กรุณากรอกยอดจริงก่อนค่ะ','err'); return; }
+    const note = scData[code+'_note']||'';
+    await sb.from('items').update({ stock: actual, updated_at: new Date().toISOString() }).eq('code', code);
+    m.stock = actual;
+    showToast(`บันทึก ${m.name} แล้วค่ะ`);
+  }
+  renderStockCountPage();
+}
+
+function scAddLotModal(code) {
+  const m = masterDB.find(x=>x.code===code);
+  if (!m) return;
+  const today = new Date().toISOString().split('T')[0];
+  const modal = document.createElement('div');
+  modal.className = 'modal-wrap show';
+  modal.id = 'sc-add-lot-modal';
+  modal.innerHTML = `<div class="modal" style="max-width:380px;width:95%">
+    <div style="font-size:13px;font-weight:500;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      เพิ่ม Lot ใหม่ — ${m.name}
+      <button class="btn btn-sm" onclick="document.getElementById('sc-add-lot-modal').remove()">ยกเลิก</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div>
+        <label style="font-size:10px;color:var(--ink4);display:block;margin-bottom:4px">วันที่ Lot <span style="color:var(--red)">*</span></label>
+        <input class="fi" id="sc-lot-date" type="date" value="${today}">
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--ink4);display:block;margin-bottom:4px">จำนวน (stock) <span style="color:var(--red)">*</span></label>
+        <input class="fi" id="sc-lot-stock" type="number" min="0" step="0.01" placeholder="0">
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--ink4);display:block;margin-bottom:4px">หมายเหตุ</label>
+        <input class="fi" id="sc-lot-note" placeholder="เช่น อบ 95 องศา 15 นาที">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+      <button class="btn btn-sm" onclick="document.getElementById('sc-add-lot-modal').remove()">ยกเลิก</button>
+      <button class="btn btn-primary btn-sm" onclick="scConfirmAddLot('${code}')"><i class="ti ti-plus"></i> เพิ่ม Lot</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function scConfirmAddLot(code) {
+  const m       = masterDB.find(x=>x.code===code);
+  const lotDate = document.getElementById('sc-lot-date')?.value;
+  const stock   = parseFloat(document.getElementById('sc-lot-stock')?.value)||0;
+  const note    = document.getElementById('sc-lot-note')?.value||'';
+  if (!lotDate) { showToast('กรุณาเลือกวันที่ Lot ค่ะ','err'); return; }
+  if (stock <= 0) { showToast('กรุณากรอกจำนวนมากกว่า 0 ค่ะ','err'); return; }
+
+  const { data, error } = await sb.from('lots').insert({
+    item_code: code, lot_sw: lotDate, stock, note: note||null,
+    updated_at: new Date().toISOString()
+  }).select().single();
+  if (error) { showToast('เพิ่ม Lot ไม่สำเร็จค่ะ','err'); return; }
+
+  // อัปเดต item stock รวม
+  const newTotal = m.stock + stock;
+  await sb.from('items').update({ stock: newTotal, updated_at: new Date().toISOString() }).eq('code', code);
+  if (m) m.stock = newTotal;
+
+  document.getElementById('sc-add-lot-modal')?.remove();
+  showToast(`เพิ่ม Lot ${lotDate} (${stock}) ให้ ${m?.name} แล้วค่ะ`);
+  renderStockCountPage();
+}
 
 async function scSave() {
   const cfg      = WAREHOUSE_CONFIG[scPg];
