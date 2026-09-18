@@ -4082,7 +4082,7 @@ async function scConfirmAddLot(code) {
   if (stock <= 0) { showToast('กรุณากรอกจำนวนมากกว่า 0 ค่ะ','err'); return; }
 
   const { data, error } = await sb.from('lots').insert({
-    item_code: code, lot_sw: lotDate, stock, note: note||null,
+    item_code: code, item_name: m.name, lot_sw: lotDate, stock, note: note||null,
     updated_at: new Date().toISOString()
   }).select().single();
   if (error) { showToast('เพิ่ม Lot ไม่สำเร็จค่ะ','err'); return; }
