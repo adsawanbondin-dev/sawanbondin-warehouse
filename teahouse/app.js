@@ -3583,7 +3583,7 @@ function scExportCSV() {
 const _scOrigSwitch = switchPage;
 switchPage = async function(p) {
   const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
-  const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'daily-withdraw', 'daily-stockcount', 'booth-borrow', ...alertGroupPages];
+  const allPages = [...WAREHOUSE_PAGES, 'master', 'stockcount', 'dashboard', 'daily-withdraw', 'daily-stockcount', 'booth-borrow', 'suppliers', ...alertGroupPages];
 
   // ถ้า page ไม่มีใน allPages ให้ไปหน้าแรก
   if (!allPages.includes(p)) p = WAREHOUSE_PAGES[0] || 'master';
@@ -3604,6 +3604,8 @@ switchPage = async function(p) {
     await renderDailyStockcountPage();
   } else if (p === 'booth-borrow') {
     await renderBoothBorrowPage();
+  } else if (p === 'suppliers') {
+    await renderThSuppliersPage();
   } else if (p.startsWith('alert-')) {
     renderAlertGroupPage(p.replace('alert-',''));
   } else {
@@ -5669,4 +5671,169 @@ async function bbConfirmReturn(borrowId) {
   await sb.from('booth_borrows').update({ status: allReturned?'returned':'partial', updated_at: new Date().toISOString() }).eq('id', borrowId);
   showToast('บวกสต็อกเรียบร้อยค่ะ');
   await bbLoadBorrows(); bbRender();
+}
+
+/* ═══════════════════════════════════════════
+   SUPPLIERS PAGE — ผู้จำหน่าย (Tea House)
+═══════════════════════════════════════════ */
+
+let thSuppliers = [];
+
+async function renderThSuppliersPage() {
+  const div = document.getElementById('page-suppliers');
+  if (!div) return;
+  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
+
+  // โหลดจาก purchase_suppliers
+  const { data } = await sb.from('purchase_suppliers').select('*').eq('is_active', true).order('name');
+  thSuppliers = data || [];
+
+  thRenderSuppliers();
+}
+
+function thRenderSuppliers(q='') {
+  const div = document.getElementById('page-suppliers');
+  if (!div) return;
+
+  const search = q || document.getElementById('th-sup-search')?.value || '';
+  const filtered = search
+    ? thSuppliers.filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
+    : thSuppliers;
+
+  const cards = filtered.map(s => {
+    // หารายการที่ assign ซัพพลายเออร์นี้
+    const items = masterDB.filter(m => m.pg === 'teahouse' && m.supplier_name === s.name && m.is_active !== false);
+    return `<div style="background:var(--surface);border-radius:10px;border:0.5px solid var(--line);padding:12px 14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:500">${s.name}</div>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-sm" onclick="thEditSupplier(${s.id})"><i class="ti ti-pencil"></i></button>
+          <button class="btn btn-sm" style="color:#b03030" onclick="thDeleteSupplier(${s.id})"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--ink4);display:flex;flex-direction:column;gap:2px">
+        ${s.phone?`<span><i class="ti ti-phone" style="font-size:10px"></i> ${s.phone}</span>`:''}
+        ${s.line_id?`<span><i class="ti ti-brand-line" style="font-size:10px"></i> ${s.line_id}</span>`:''}
+        ${s.pay_type?`<span><i class="ti ti-credit-card" style="font-size:10px"></i> ${s.pay_type}${s.bank?' — '+s.bank:''}</span>`:''}
+        ${s.acc_num?`<span><i class="ti ti-hash" style="font-size:10px"></i> ${s.acc_num} ${s.acc_name||''}</span>`:''}
+        ${s.note?`<span><i class="ti ti-note" style="font-size:10px"></i> ${s.note}</span>`:''}
+      </div>
+      ${items.length?`<div style="margin-top:8px;padding-top:8px;border-top:0.5px solid var(--line)">
+        <div style="font-size:10px;color:var(--ink4);margin-bottom:4px">รายการ (${items.length})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          ${items.slice(0,5).map(m=>`<span style="font-size:10px;padding:1px 7px;border-radius:8px;background:var(--s2);color:var(--ink4)">${m.name}</span>`).join('')}
+          ${items.length>5?`<span style="font-size:10px;color:var(--ink4)">+${items.length-5}</span>`:''}
+        </div>
+      </div>`:''}
+    </div>`;
+  }).join('') || `<div style="padding:40px;text-align:center;color:var(--ink4);grid-column:1/-1">
+    <i class="ti ti-building-store" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>
+    ยังไม่มีผู้จำหน่าย — กด "+ เพิ่มผู้จำหน่าย" ได้เลยค่ะ</div>`;
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">ผู้จำหน่าย</div>
+        <div class="page-sub">${filtered.length} ราย · อ้างอิงจากรายการจัดซื้อ</div></div>
+      <button class="btn btn-primary btn-sm" onclick="thOpenAddSupplier()">
+        <i class="ti ti-plus"></i> เพิ่มผู้จำหน่าย
+      </button>
+    </div>
+    <div style="margin-bottom:12px">
+      <input id="th-sup-search" class="fi" placeholder="ค้นหาชื่อผู้จำหน่าย..."
+        style="max-width:320px;font-size:12px" oninput="thRenderSuppliers(this.value)" value="${search}">
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">${cards}</div>
+
+    <!-- Modal -->
+    <div id="th-sup-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:600;align-items:center;justify-content:center">
+      <div style="background:var(--surface);border-radius:12px;border:0.5px solid var(--line);padding:20px;width:340px;max-width:95vw">
+        <div style="font-size:13px;font-weight:500;margin-bottom:14px" id="th-sup-modal-title">เพิ่มผู้จำหน่าย</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div><label style="font-size:11px;color:var(--ink4);display:block;margin-bottom:3px">ชื่อผู้จำหน่าย *</label>
+            <input id="th-sup-name" class="fi" placeholder="เช่น Sale Meiji พี่ตี๋"></div>
+          <div><label style="font-size:11px;color:var(--ink4);display:block;margin-bottom:3px">เบอร์โทร</label>
+            <input id="th-sup-phone" class="fi" placeholder="0812345678"></div>
+          <div><label style="font-size:11px;color:var(--ink4);display:block;margin-bottom:3px">Line ID</label>
+            <input id="th-sup-line" class="fi" placeholder="@supplier"></div>
+          <div><label style="font-size:11px;color:var(--ink4);display:block;margin-bottom:3px">ช่องทางชำระเงิน</label>
+            <input id="th-sup-pay" class="fi" placeholder="พร้อมเพย์ / โอนธนาคาร"></div>
+          <div><label style="font-size:11px;color:var(--ink4);display:block;margin-bottom:3px">ธนาคาร / เลขบัญชี</label>
+            <input id="th-sup-bank" class="fi" placeholder="กสิกร 123-4-56789-0"></div>
+          <div><label style="font-size:11px;color:var(--ink4);display:block;margin-bottom:3px">ชื่อบัญชี</label>
+            <input id="th-sup-acc-name" class="fi" placeholder="ชื่อเจ้าของบัญชี"></div>
+          <div><label style="font-size:11px;color:var(--ink4);display:block;margin-bottom:3px">หมายเหตุ</label>
+            <input id="th-sup-note" class="fi" placeholder="หมายเหตุเพิ่มเติม"></div>
+        </div>
+        <input type="hidden" id="th-sup-id">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+          <button class="btn btn-sm" onclick="thCloseSupModal()">ยกเลิก</button>
+          <button class="btn btn-sm btn-primary" onclick="thSaveSupplier()"><i class="ti ti-check"></i> บันทึก</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function thOpenAddSupplier() {
+  document.getElementById('th-sup-modal-title').textContent = 'เพิ่มผู้จำหน่าย';
+  ['th-sup-id','th-sup-name','th-sup-phone','th-sup-line','th-sup-pay','th-sup-bank','th-sup-acc-name','th-sup-note'].forEach(id=>{
+    document.getElementById(id).value='';
+  });
+  document.getElementById('th-sup-modal').style.display = 'flex';
+  setTimeout(()=>document.getElementById('th-sup-name').focus(), 100);
+}
+
+function thEditSupplier(id) {
+  const s = thSuppliers.find(x=>x.id===id);
+  if (!s) return;
+  document.getElementById('th-sup-modal-title').textContent = 'แก้ไขผู้จำหน่าย';
+  document.getElementById('th-sup-id').value = id;
+  document.getElementById('th-sup-name').value = s.name||'';
+  document.getElementById('th-sup-phone').value = s.phone||'';
+  document.getElementById('th-sup-line').value = s.line_id||'';
+  document.getElementById('th-sup-pay').value = s.pay_type||'';
+  document.getElementById('th-sup-bank').value = s.bank||'';
+  document.getElementById('th-sup-acc-name').value = s.acc_name||'';
+  document.getElementById('th-sup-note').value = s.note||'';
+  document.getElementById('th-sup-modal').style.display = 'flex';
+}
+
+function thCloseSupModal() {
+  document.getElementById('th-sup-modal').style.display = 'none';
+}
+
+async function thSaveSupplier() {
+  const id   = document.getElementById('th-sup-id').value;
+  const name = document.getElementById('th-sup-name').value.trim();
+  if (!name) { showToast('กรุณาใส่ชื่อผู้จำหน่ายค่ะ','err'); return; }
+  const fields = {
+    name,
+    phone:    document.getElementById('th-sup-phone').value.trim()||null,
+    line_id:  document.getElementById('th-sup-line').value.trim()||null,
+    pay_type: document.getElementById('th-sup-pay').value.trim()||null,
+    bank:     document.getElementById('th-sup-bank').value.trim()||null,
+    acc_name: document.getElementById('th-sup-acc-name').value.trim()||null,
+    note:     document.getElementById('th-sup-note').value.trim()||null,
+    is_active: true,
+  };
+  if (id) {
+    await sb.from('purchase_suppliers').update(fields).eq('id', parseInt(id));
+    const idx = thSuppliers.findIndex(x=>x.id===parseInt(id));
+    if (idx>=0) thSuppliers[idx] = {...thSuppliers[idx],...fields};
+    showToast('แก้ไขผู้จำหน่ายแล้วค่ะ');
+  } else {
+    const { data } = await sb.from('purchase_suppliers').insert(fields).select().single();
+    if (data) thSuppliers.push(data);
+    showToast(`เพิ่ม "${name}" แล้วค่ะ`);
+  }
+  thCloseSupModal();
+  thRenderSuppliers();
+}
+
+async function thDeleteSupplier(id) {
+  const s = thSuppliers.find(x=>x.id===id);
+  if (!confirm(`ลบ "${s?.name}" ออกจากผู้จำหน่าย?`)) return;
+  await sb.from('purchase_suppliers').update({ is_active: false }).eq('id', id);
+  thSuppliers = thSuppliers.filter(x=>x.id!==id);
+  thRenderSuppliers();
+  showToast('ลบผู้จำหน่ายแล้วค่ะ');
 }
