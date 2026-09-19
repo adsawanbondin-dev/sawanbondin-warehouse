@@ -5152,7 +5152,7 @@ function poFilterItems(key, q) {
   }).join('');
 }
 
-function poAddItemToCard(key, code) {
+async function poAddItemToCard(key, code) {
   const m = masterDB.find(x=>x.code===code);
   if (!m) return;
   if (!poGroups[key]) poGroups[key] = [];
