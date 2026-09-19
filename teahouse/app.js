@@ -5101,11 +5101,11 @@ function poToggleAddRow(key) {
 }
 
 function poFilterItems(key, q) {
-  const existingCodes = new Set((poGroups[key]||[]).map(i=>i.code));
+  const existingThCodes = new Set((poGroups[key]||[]).map(i=>i.code));
+  // ดึงจาก equip_th (Stock Store 2) แสดง min/max/stock จาก equip_th
   const items = masterDB.filter(m =>
-    m.pg === 'teahouse' && m.is_active !== false &&
-    !PO_EXCLUDE_SUBCATS.includes(m.subcat||'') &&
-    !existingCodes.has(m.code) &&
+    m.pg === 'equip_th' && m.is_active !== false &&
+    !existingThCodes.has(m.code.replace('SWBD_EQ_','SWBD_TH_')) &&
     (!q || m.name.toLowerCase().includes(q.toLowerCase()) || (m.subcat||'').toLowerCase().includes(q.toLowerCase()))
   ).slice(0, 20);
   const dropId = 'po-drop-' + key.replace(/[^a-zA-Z0-9]/g,'_');
@@ -5119,7 +5119,8 @@ function poFilterItems(key, q) {
   drop.innerHTML = items.map(m => {
     const sc = m.stock === 0 ? '#b03030' : m.stock <= (m.min||0) ? 'var(--acc)' : '#2d6a0f';
     const ek = key.replace(/'/g,"\'");
-    return `<div onclick="poAddItemToCard('${ek}','${m.code}')"
+    const thCode = m.code.replace('SWBD_EQ_','SWBD_TH_');
+    return `<div onclick="poAddItemToCard('${ek}','${thCode}')"
       style="padding:8px 12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:0.5px solid var(--line)"
       onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
       <div>
