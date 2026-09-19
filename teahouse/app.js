@@ -4908,7 +4908,8 @@ async function renderPurchaseOrderPage() {
     const useStock = eq ? eq.stock : m.stock;
     const belowMin = useStock <= useMin;
     const qty = Math.max(0, useMax - useStock);
-    if (!belowMin) return; // ไม่แสดงรายการที่ยังไม่ถึง min
+    // แสดงเฉพาะ belowMin หรือรายการที่ถูก assign supplier โดยตรง (manual)
+    if (!belowMin && !m.supplier_name) return;
     poGroups[key].push({
       code: m.code, name: m.name, subcat: m.subcat||'', unit: m.unit||'',
       stock: useStock, min: useMin, max: useMax, qty, belowMin
