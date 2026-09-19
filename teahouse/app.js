@@ -4929,7 +4929,7 @@ async function renderPurchaseOrderPage() {
 }
 
 function poRenderCards(div) {
-  const supKeys  = Object.keys(poGroups).filter(k=>k!=='__noSup__' && (poGroups[k]||[]).length > 0).sort((a,b)=>a.localeCompare(b,'th'));
+  const supKeys  = Object.keys(poGroups).filter(k=>k!=='__noSup__').sort((a,b)=>a.localeCompare(b,'th'));
   const noSup    = poGroups['__noSup__'] || [];
   const allKeys  = [...supKeys, ...(noSup.length?['__noSup__']:[])];
 
@@ -5120,7 +5120,6 @@ function poFilterItems(key, q) {
   // ดึงเฉพาะรายการ teahouse ที่มี supplier_name ตรงกับการ์ดนี้
   const thItems = masterDB.filter(m =>
     m.pg === 'teahouse' && m.is_active !== false &&
-    m.supplier_name === supName &&
     !existingCodes.has(m.code) &&
     (!q || m.name.toLowerCase().includes(q.toLowerCase()) || (m.subcat||'').toLowerCase().includes(q.toLowerCase()))
   ).slice(0, 20);
