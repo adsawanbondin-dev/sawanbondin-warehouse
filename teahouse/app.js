@@ -4867,7 +4867,8 @@ const PO_EXCLUDE_SUBCATS = [
   'อุปกรณ์ทำขนม','อุปกรณ์สำนักงาน','อุปกรณ์ส่องสว่าง','เครื่องใช้ไฟฟ้า'
 ];
 
-let poGroups   = {}; // { supplierName: [items] }
+let poGroups      = {}; // { supplierName: [items] }
+let poManualItems = {}; // { supplierName: [items] } รายการที่เพิ่มด้วยตนเอง
 let poDragSup  = null, poDragCode = null;
 let poCtxSupKey = null, poCtxCode = null;
 let poEditingSupKey = null;
@@ -4888,18 +4889,6 @@ async function renderPurchaseOrderPage() {
   // รวม suppliers จาก items ด้วย
   const itemSuppliers = [...new Set(masterDB.filter(m=>m.pg==='teahouse'&&m.supplier_name).map(m=>m.supplier_name))];
   const allSuppliers  = [...new Set([...dbSuppliers, ...itemSuppliers])].sort((a,b)=>a.localeCompare(b,'th'));
-
-  // เก็บรายการที่เพิ่มด้วยตนเอง (ไม่มี supplier_name ใน masterDB หรือเพิ่มมาเอง)
-  const manualItems = {};
-  Object.entries(poGroups).forEach(([key, items]) => {
-    const autoItems = masterDB.filter(m=>m.pg==='teahouse'&&m.supplier_name===key).map(m=>m.code);
-    items.forEach(item => {
-      if (!autoItems.includes(item.code)) {
-        if (!manualItems[key]) manualItems[key] = [];
-        manualItems[key].push(item);
-      }
-    });
-  });
 
   // สร้าง poGroups ใหม่ทุกครั้ง — items อ้างอิงจาก masterDB ล่าสุด
   poGroups = {};
@@ -4927,7 +4916,7 @@ async function renderPurchaseOrderPage() {
   });
 
   // merge รายการที่เพิ่มด้วยตนเองกลับเข้า poGroups
-  Object.entries(manualItems).forEach(([key, items]) => {
+  Object.entries(poManualItems).forEach(([key, items]) => {
     if (!poGroups[key]) poGroups[key] = [];
     items.forEach(item => {
       if (!poGroups[key].find(i=>i.code===item.code)) {
@@ -5166,10 +5155,14 @@ function poAddItemToCard(key, code) {
   const useStock = eq ? eq.stock : m.stock;
   const belowMin = useStock <= useMin;
   const qty = Math.max(0, useMax - useStock);
-  poGroups[key].push({
+  const itemData = {
     code:m.code, name:m.name, subcat:m.subcat||'', unit:m.unit||'',
     stock:useStock, min:useMin, max:useMax, qty, belowMin
-  });
+  };
+  poGroups[key].push(itemData);
+  // เก็บไว้ใน poManualItems เพื่อไม่ให้หายตอน re-render
+  if (!poManualItems[key]) poManualItems[key] = [];
+  if (!poManualItems[key].find(i=>i.code===m.code)) poManualItems[key].push(itemData);
   // บันทึก supplier_name ลง items
   const newSup = key === '__noSup__' ? null : key;
   sb.from('items').update({ supplier_name: newSup }).eq('code', code);
@@ -5256,6 +5249,10 @@ async function poConfirmMove() {
   const [item] = fromItems.splice(idx, 1);
   if (!poGroups[targetKey]) poGroups[targetKey] = [];
   poGroups[targetKey].push(item);
+  // อัปเดต poManualItems ด้วย
+  if (poManualItems[poCtxSupKey]) poManualItems[poCtxSupKey] = poManualItems[poCtxSupKey].filter(i=>i.code!==item.code);
+  if (!poManualItems[targetKey]) poManualItems[targetKey] = [];
+  if (!poManualItems[targetKey].find(i=>i.code===item.code)) poManualItems[targetKey].push(item);
   const newSup = targetKey === '__noSup__' ? null : targetKey;
   await sb.from('items').update({ supplier_name: newSup }).eq('code', item.code);
   poCloseMoveModal();
