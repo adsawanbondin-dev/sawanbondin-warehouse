@@ -5156,9 +5156,11 @@ function poAddItemToCard(key, code) {
   showToast(`เพิ่ม ${m.name} แล้วค่ะ`);
   setTimeout(()=>{
     const rowEl = document.getElementById('po-addrow-'+key.replace(/[^a-zA-Z0-9]/g,'_'));
-    if (rowEl) rowEl.style.display = 'block';
+    if (rowEl) rowEl.style.display = 'none';
     const inp = document.getElementById('po-search-'+key.replace(/[^a-zA-Z0-9]/g,'_'));
-    if (inp) { inp.value=''; inp.focus(); poFilterItems(key,''); }
+    if (inp) inp.value='';
+    const dropEl = document.getElementById('po-drop-'+key.replace(/[^a-zA-Z0-9]/g,'_'));
+    if (dropEl) dropEl.style.display = 'none';
   }, 80);
 }
 
