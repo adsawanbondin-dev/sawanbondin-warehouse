@@ -5172,9 +5172,10 @@ function poAddItemToCard(key, code) {
   // เก็บไว้ใน poManualItems เพื่อไม่ให้หายตอน re-render
   if (!poManualItems[key]) poManualItems[key] = [];
   if (!poManualItems[key].find(i=>i.code===m.code)) poManualItems[key].push(itemData);
-  // บันทึก supplier_name ลง items
+  // บันทึก supplier_name ลง items และ update masterDB
   const newSup = key === '__noSup__' ? null : key;
-  sb.from('items').update({ supplier_name: newSup }).eq('code', code);
+  await sb.from('items').update({ supplier_name: newSup }).eq('code', code);
+  if (m) m.supplier_name = newSup;
   const div = document.getElementById('page-alert-purchase');
   poRenderCards(div);
   showToast(`เพิ่ม ${m.name} แล้วค่ะ`);
