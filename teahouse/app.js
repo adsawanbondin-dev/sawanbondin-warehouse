@@ -5115,33 +5115,39 @@ function poToggleAddRow(key) {
 }
 
 function poFilterItems(key, q) {
-  const existingThCodes = new Set((poGroups[key]||[]).map(i=>i.code));
-  // ดึงจาก equip_th (Stock Store 2) แสดง min/max/stock จาก equip_th
-  const items = masterDB.filter(m =>
-    m.pg === 'equip_th' && m.is_active !== false &&
-    !existingThCodes.has(m.code.replace('SWBD_EQ_','SWBD_TH_')) &&
+  const existingCodes = new Set((poGroups[key]||[]).map(i=>i.code));
+  const supName = key === '__noSup__' ? null : key;
+  // ดึงเฉพาะรายการ teahouse ที่มี supplier_name ตรงกับการ์ดนี้
+  const thItems = masterDB.filter(m =>
+    m.pg === 'teahouse' && m.is_active !== false &&
+    m.supplier_name === supName &&
+    !existingCodes.has(m.code) &&
     (!q || m.name.toLowerCase().includes(q.toLowerCase()) || (m.subcat||'').toLowerCase().includes(q.toLowerCase()))
   ).slice(0, 20);
+
   const dropId = 'po-drop-' + key.replace(/[^a-zA-Z0-9]/g,'_');
   const drop = document.getElementById(dropId);
   if (!drop) return;
   drop.style.display = 'block';
-  if (!items.length) {
+  if (!thItems.length) {
     drop.innerHTML = `<div style="padding:12px;text-align:center;font-size:11px;color:var(--ink4)">ไม่พบรายการค่ะ</div>`;
     return;
   }
-  drop.innerHTML = items.map(m => {
-    const sc = m.stock === 0 ? '#b03030' : m.stock <= (m.min||0) ? 'var(--acc)' : '#2d6a0f';
+  drop.innerHTML = thItems.map(m => {
+    const eq = masterDB.find(x=>x.code===m.code.replace('SWBD_TH_','SWBD_EQ_')&&x.pg==='equip_th');
+    const useStock = eq ? eq.stock : m.stock;
+    const useMin   = eq ? (eq.min||0) : (m.min||0);
+    const useMax   = eq ? (eq.max||0) : (m.max||0);
+    const sc = useStock === 0 ? '#b03030' : useStock <= useMin ? 'var(--acc)' : '#2d6a0f';
     const ek = key.replace(/'/g,"\'");
-    const thCode = m.code.replace('SWBD_EQ_','SWBD_TH_');
-    return `<div onclick="poAddItemToCard('${ek}','${thCode}')"
+    return `<div onclick="poAddItemToCard('${ek}','${m.code}')"
       style="padding:8px 12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:0.5px solid var(--line)"
       onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
       <div>
         <div style="font-size:12px;font-weight:500">${m.name}</div>
-        <div style="font-size:10px;color:var(--ink4)">${m.subcat||''} · ${m.unit||''} · Min ${m.min||0} / Max ${m.max||0}</div>
+        <div style="font-size:10px;color:var(--ink4)">${m.subcat||''} · Min ${useMin} / Max ${useMax}</div>
       </div>
-      <div style="font-size:11px;font-weight:500;color:${sc};flex-shrink:0;margin-left:8px">Stock ${m.stock}</div>
+      <div style="font-size:11px;font-weight:500;color:${sc};flex-shrink:0;margin-left:8px">Stock ${useStock}</div>
     </div>`;
   }).join('');
 }
