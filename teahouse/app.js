@@ -5071,6 +5071,9 @@ function posBuildCard(key) {
         <button class="btn btn-sm" onclick="poCopyCardByKey('${ek2}')" style="font-size:10px">
           <i class="ti ti-copy"></i> คัดลอก
         </button>
+        <button class="btn btn-sm" onclick="poDeleteCard('${ek2}')" style="font-size:10px;color:#b03030;border-color:#e8a0a0">
+          <i class="ti ti-trash"></i>
+        </button>
       </div>
     </div>
     <!-- ช่องค้นหา -->
@@ -5185,6 +5188,19 @@ function poShowAddSupModal() {
   document.getElementById('po-sup-inp').value = '';
   document.getElementById('po-sup-modal').style.display = 'flex';
   setTimeout(()=>document.getElementById('po-sup-inp').focus(), 100);
+}
+
+async function poDeleteCard(key) {
+  const displayName = key === '__noSup__' ? 'ไม่มีซัพพลายเออร์' : key;
+  if (!confirm(`ลบการ์ด "${displayName}" ออกจากรายการจัดซื้อ?\n(รายการในการ์ดจะยังคงอยู่ใน master)`)) return;
+  delete poGroups[key];
+  delete poManualItems[key];
+  if (key !== '__noSup__') {
+    await sb.from('purchase_suppliers').update({ is_active: false }).eq('name', key);
+  }
+  const div = document.getElementById('page-alert-purchase');
+  poRenderCards(div);
+  showToast(`ลบการ์ด "${displayName}" แล้วค่ะ`);
 }
 
 function poEditSup(key) {
