@@ -3904,8 +3904,7 @@ async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
       if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
 
     } else if (item.pg === 'teahouse') {
-      const eqCode = item.item_code.replace('SWBD_TH_', 'SWBD_EQ_');
-      const eqItem = masterDB.find(x=>x.code===eqCode && x.pg==='equip_th');
+      const eqItem = masterDB.find(x=>x.pg==='equip_th' && x.name===masterDB.find(m=>m.code===item.item_code)?.name);
       if (eqItem) {
         const newEqStock = Math.max(0, eqItem.stock - recvQty);
         await sb.from('items').update({ stock: newEqStock, updated_at: new Date().toISOString() }).eq('code', eqCode);
@@ -4903,8 +4902,7 @@ async function renderPurchaseOrderPage() {
     const key = m.supplier_name || '__noSup__';
     if (!poGroups[key]) poGroups[key] = [];
     // หา equip_th item ที่ตรงกัน (code SWBD_EQ_xxxx)
-    const eqCode = m.code.replace('SWBD_TH_', 'SWBD_EQ_');
-    const eq = masterDB.find(x=>x.code===eqCode && x.pg==='equip_th');
+    const eq = masterDB.find(x=>x.pg==='equip_th' && x.name===m.name);
     const useMin = eq ? (eq.min||0) : (m.min||0);
     const useMax = eq ? (eq.max||0) : (m.max||0);
     const useStock = eq ? eq.stock : m.stock;
@@ -5135,7 +5133,7 @@ function poFilterItems(key, q) {
     return;
   }
   drop.innerHTML = thItems.map(m => {
-    const eq = masterDB.find(x=>x.code===m.code.replace('SWBD_TH_','SWBD_EQ_')&&x.pg==='equip_th');
+    const eq = masterDB.find(x=>x.pg==='equip_th' && x.name===m.name);
     const useStock = eq ? eq.stock : m.stock;
     const useMin   = eq ? (eq.min||0) : (m.min||0);
     const useMax   = eq ? (eq.max||0) : (m.max||0);
@@ -5158,8 +5156,7 @@ async function poAddItemToCard(key, code) {
   if (!m) return;
   if (!poGroups[key]) poGroups[key] = [];
   if (poGroups[key].find(i=>i.code===code)) return;
-  const eqCode = m.code.replace('SWBD_TH_', 'SWBD_EQ_');
-  const eq = masterDB.find(x=>x.code===eqCode && x.pg==='equip_th');
+  const eq = masterDB.find(x=>x.pg==='equip_th' && x.name===m.name);
   const useMin = eq ? (eq.min||0) : (m.min||0);
   const useMax = eq ? (eq.max||0) : (m.max||0);
   const useStock = eq ? eq.stock : m.stock;
