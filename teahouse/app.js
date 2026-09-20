@@ -4929,7 +4929,10 @@ async function renderPurchaseOrderPage() {
 }
 
 function poRenderCards(div) {
-  const supKeys  = Object.keys(poGroups).filter(k=>k!=='__noSup__' && (poGroups[k]||[]).length > 0).sort((a,b)=>a.localeCompare(b,'th'));
+  // รวม keys จาก poGroups และ purchase_suppliers ทั้งหมด
+  const dbSupKeys = Object.keys(poGroups).filter(k=>k!=='__noSup__');
+  const allSupKeys = [...new Set([...dbSupKeys])].sort((a,b)=>a.localeCompare(b,'th'));
+  const supKeys  = allSupKeys; // แสดงทุก supplier card เสมอ
   const noSup    = poGroups['__noSup__'] || [];
   const allKeys  = [...supKeys, ...(noSup.length?['__noSup__']:[])];
 
