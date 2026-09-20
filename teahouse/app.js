@@ -4929,8 +4929,10 @@ async function renderPurchaseOrderPage() {
 
 function poRenderCards(div) {
   const dbSupKeys = Object.keys(poGroups).filter(k=>k!=='__noSup__');
-  const supKeys   = [...new Set(dbSupKeys)].sort((a,b)=>a.localeCompare(b,'th'));
-  const noSup     = poGroups['__noSup__'] || [];
+  const supKeys   = [...new Set(dbSupKeys)]
+    .filter(k=>(poGroups[k]||[]).some(i=>i.belowMin))
+    .sort((a,b)=>a.localeCompare(b,'th'));
+  const noSup     = (poGroups['__noSup__']||[]).filter(i=>i.belowMin);
   const allKeys   = [...supKeys, ...(noSup.length?['__noSup__']:[])];
 
   const totalSups  = supKeys.length;
