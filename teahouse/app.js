@@ -5029,6 +5029,11 @@ function posBuildCard(key) {
   const displayName = isNoSup ? 'ยังไม่มีซัพพลายเออร์' : key;
   const urgentCount = groupItems.filter(i=>i.belowMin).length;
   const ek2 = key.replace(/'/g,"\\'");
+  const cardId = 'po-card-' + key.replace(/[^a-zA-Z0-9]/g,'_');
+  const bodyId = 'po-body-' + key.replace(/[^a-zA-Z0-9]/g,'_');
+  // พับถ้าไม่มีรายการ belowMin
+  const collapsed = urgentCount === 0;
+  const bodyDisplay = collapsed ? 'none' : '';
 
   const rows = groupItems.map(item => {
     const sc = item.stock === 0 ? '#b03030' : item.belowMin ? 'var(--acc)' : 'var(--ink4)';
@@ -5059,18 +5064,19 @@ function posBuildCard(key) {
   }).join('') || `<div style="padding:14px;text-align:center;font-size:11px;color:var(--ink4)">ยังไม่มีรายการ — ลากมาวางได้เลยค่ะ</div>`;
 
   return `<div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:12px"
-    id="po-card-${key.replace(/[^a-zA-Z0-9]/g,'_')}"
+    id="${cardId}"
     ondragover="poDragOver(event,'${ek2}');event.preventDefault()"
     ondrop="poDrop(event,'${ek2}');event.preventDefault()"
     ondragleave="poDragLeave(event)">
-    <div style="padding:9px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+    <div style="padding:9px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+      onclick="const b=document.getElementById('${bodyId}');b.style.display=b.style.display==='none'?'':'none'">
       <div style="display:flex;align-items:center;gap:8px">
         <i class="ti ${isNoSup?'ti-help-circle':'ti-building-store'}" aria-hidden="true" style="font-size:13px;color:var(--ink4)"></i>
         <span style="font-size:12px;font-weight:500">${displayName}</span>
         <span style="font-size:10px;background:var(--s2);border:0.5px solid var(--line);padding:1px 7px;border-radius:10px;color:var(--ink4)">${groupItems.length} รายการ</span>
-        ${urgentCount?`<span style="font-size:9px;padding:1px 6px;border-radius:5px;background:#fde8e8;color:#b03030">${urgentCount} ด่วน</span>`:''}
+        ${urgentCount?`<span style="font-size:9px;padding:1px 6px;border-radius:5px;background:#fde8e8;color:#b03030">${urgentCount} ด่วน</span>`:'<span style="font-size:9px;padding:1px 6px;border-radius:5px;background:#edf5ec;color:#2d6a0f">ครบ ✓</span>'}
       </div>
-      <div style="display:flex;gap:5px">
+      <div style="display:flex;gap:5px" onclick="event.stopPropagation()">
         ${!isNoSup?`<button class="btn btn-sm" onclick="poEditSup('${ek2}')" style="font-size:10px"><i class="ti ti-edit"></i></button>`:''}
         <button class="btn btn-sm" onclick="poCopyCardByKey('${ek2}');" style="font-size:10px">
           <i class="ti ti-copy"></i> คัดลอก
@@ -5081,26 +5087,28 @@ function posBuildCard(key) {
         </button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:20px 1fr 52px 60px 62px 28px;padding:4px 14px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
-      <span></span><span>รายการ</span><span style="text-align:right">Stock</span><span style="text-align:right">Min/Max</span><span style="text-align:right">สั่ง</span><span></span>
-    </div>
-    <div style="padding:6px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;gap:6px;align-items:center">
-      <div style="position:relative;flex:1">
-        <input type="text" placeholder="ค้นหาเพิ่มรายการ..."
-          style="width:100%;padding:5px 10px;border:0.5px solid var(--line);border-radius:7px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--ink);outline:none"
-          oninput="poFilterItems('${ek2}',this.value)"
-          onfocus="poFilterItems('${ek2}',this.value)"
-          id="po-search-${key.replace(/[^a-zA-Z0-9]/g,'_')}">
-        <div id="po-drop-${key.replace(/[^a-zA-Z0-9]/g,'_')}"
-          style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:0.5px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:400;max-height:200px;overflow-y:auto;margin-top:2px">
+    <div id="${bodyId}" style="display:${bodyDisplay}">
+      <div style="display:grid;grid-template-columns:20px 1fr 52px 60px 62px 28px;padding:4px 14px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
+        <span></span><span>รายการ</span><span style="text-align:right">Stock</span><span style="text-align:right">Min/Max</span><span style="text-align:right">สั่ง</span><span></span>
+      </div>
+      <div style="padding:6px 14px;background:var(--s2);border-bottom:0.5px solid var(--line);display:flex;gap:6px;align-items:center">
+        <div style="position:relative;flex:1">
+          <input type="text" placeholder="ค้นหาเพิ่มรายการ..."
+            style="width:100%;padding:5px 10px;border:0.5px solid var(--line);border-radius:7px;font-size:11px;font-family:inherit;background:var(--surface);color:var(--ink);outline:none"
+            oninput="poFilterItems('${ek2}',this.value)"
+            onfocus="poFilterItems('${ek2}',this.value)"
+            id="po-search-${key.replace(/[^a-zA-Z0-9]/g,'_')}">
+          <div id="po-drop-${key.replace(/[^a-zA-Z0-9]/g,'_')}"
+            style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:0.5px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:400;max-height:200px;overflow-y:auto;margin-top:2px">
+          </div>
         </div>
       </div>
-    </div>
-    ${rows}
-    <div style="padding:7px 14px;background:var(--s2);border-top:0.5px solid var(--line);display:flex;justify-content:space-between;align-items:center">
-      <button class="btn btn-sm" onclick="poCopyCardByKey('${ek2}')" style="font-size:11px">
-        <i class="ti ti-copy"></i> คัดลอกใบสั่ง
-      </button>
+      ${rows}
+      <div style="padding:7px 14px;background:var(--s2);border-top:0.5px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+        <button class="btn btn-sm" onclick="poCopyCardByKey('${ek2}')" style="font-size:11px">
+          <i class="ti ti-copy"></i> คัดลอกใบสั่ง
+        </button>
+      </div>
     </div>
   </div>`;
 }
