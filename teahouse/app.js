@@ -4907,8 +4907,8 @@ async function renderPurchaseOrderPage() {
     const useMax   = eq ? (eq.max||0) : (m.max||0);
     const belowMin = useStock <= useMin;
     const qty = Math.max(0, useMax - useStock);
-    // โหลดทุกรายการที่มี supplier_name หรือ belowMin
-    if (!belowMin && !m.supplier_name) return;
+    // โหลดเฉพาะรายการที่ belowMin
+    if (!belowMin) return;
     const key = m.supplier_name || '__noSup__';
     if (!poGroups[key]) poGroups[key] = [];
     poGroups[key].push({
