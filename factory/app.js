@@ -3232,6 +3232,7 @@ function renderMasterContent(){
       <div class="ir-main">
         <div class="ir-name" title="${m.name}">${m.name}</div>
         <div class="ir-code">${m.code}</div>
+        ${remarkDB[m.code]?`<div style="font-size:11px;color:var(--ink3);margin-top:2px;margin-bottom:2px;line-height:1.5;white-space:pre-wrap">${remarkDB[m.code]}</div>`:''}
         ${(WAREHOUSE_CONFIG[m.pg]?.hasSpec && specDB[m.code])?`<div style="font-size:11px;color:var(--ink3);margin-top:2px;margin-bottom:4px;line-height:1.5;white-space:pre-wrap">${specDB[m.code]}</div>`:''}
         <div class="ir-meta">
           <span class="ir-stock"><strong>${m.stock}</strong></span>
