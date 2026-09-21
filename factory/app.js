@@ -5801,36 +5801,45 @@ async function renderPurchaseWorkflowPage(div) {
 }
 
 function pwBuildNeedOrderCard(supName, items) {
-  const sup = paymentSuppliers.find(s=>s.name===supName);
   const totalNeeded = items.length;
+  const ek = supName.replace(/'/g,"\\'");
+
   const rows = items.map(m => {
+    const st = stockStatus(m);
+    const pct = m.max>0 ? Math.min(100, Math.round(m.stock/m.max*100)) : 0;
+    const fC = st==='out'?'fill-out':st==='low'?'fill-low':'fill-ok';
+    const sC = st==='out'?'si-out':st==='low'?'si-low':'si-ok';
+    const sL = st==='out'?'หมด':st==='low'?'ต่ำ':'ปกติ';
+    const sI = st==='out'?'ti-circle-x':st==='low'?'ti-alert-triangle':'ti-check';
+    const cls = st==='out'?'out-stock':st==='low'?'low-stock':'';
     const need = Math.max(0, (m.max||0) - m.stock);
-    const sc = m.stock === 0 ? '#b03030' : 'var(--acc)';
-    return `<div style="display:grid;grid-template-columns:1fr 60px 60px 70px;gap:6px;padding:5px 0;border-bottom:0.5px solid var(--line);font-size:11px;align-items:center">
-      <div style="font-weight:500">${m.name}</div>
-      <div style="text-align:right;font-weight:600;color:${sc}">${m.stock}</div>
-      <div style="text-align:right;color:var(--ink4)">${m.min}/${m.max}</div>
-      <div style="text-align:right;color:var(--ink)">สั่ง ${need} ${m.unit||''}</div>
+    return `<div class="item-row ${cls}" style="cursor:default">
+      <div class="ir-main">
+        <div class="ir-name">${m.name}</div>
+        <div class="ir-code">${m.code}</div>
+        ${remarkDB[m.code]?`<div style="font-size:11px;color:var(--ink3);margin-top:2px;line-height:1.5">${remarkDB[m.code]}</div>`:''}
+        <div class="ir-meta">
+          <span class="ir-stock"><strong>${m.stock}</strong></span>
+          <div class="stock-bar" style="width:80px"><div class="stock-bar-fill ${fC}" style="width:${pct}%"></div></div>
+          <span class="ir-si ${sC}"><i class="ti ${sI}" style="font-size:10px"></i> ${sL}</span>
+          <span class="ir-minmax">Min ${m.min} · Max ${m.max}</span>
+          <span style="font-size:10px;padding:1px 7px;border-radius:8px;background:#fef6ec;color:#e28c3a;border:0.5px solid #f5c98a">สั่ง ${need} ${m.unit||''}</span>
+        </div>
+      </div>
     </div>`;
   }).join('');
 
-  const ek = supName.replace(/'/g,"\\'");
-  return `<div style="border:0.5px solid var(--acc);border-radius:12px;overflow:hidden;margin-bottom:12px">
+  return `<div style="border:0.5px solid var(--acc);border-radius:12px;overflow:hidden;margin-bottom:14px">
     <div style="padding:9px 14px;background:#fef6ec;border-bottom:0.5px solid var(--acc);display:flex;align-items:center;justify-content:space-between">
       <div>
         <div style="font-size:12px;font-weight:500">${supName}</div>
-        <div style="font-size:10px;color:var(--ink4)">${totalNeeded} รายการต้องสั่ง</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:1px">${totalNeeded} รายการต้องสั่งซื้อ</div>
       </div>
-      <button class="btn btn-sm btn-primary" style="font-size:11px" onclick="pwOpenFromMaster('${ek}')">
+      <button class="btn btn-sm btn-primary" onclick="pwOpenFromMaster('${ek}')">
         <i class="ti ti-plus"></i> สร้างใบสั่งซื้อ
       </button>
     </div>
-    <div style="padding:8px 14px">
-      <div style="display:grid;grid-template-columns:1fr 60px 60px 70px;gap:6px;font-size:10px;color:var(--ink4);margin-bottom:4px">
-        <span>รายการ</span><span style="text-align:right">Stock</span><span style="text-align:right">Min/Max</span><span style="text-align:right">ต้องสั่ง</span>
-      </div>
-      ${rows}
-    </div>
+    <div class="item-list">${rows}</div>
   </div>`;
 }
 
