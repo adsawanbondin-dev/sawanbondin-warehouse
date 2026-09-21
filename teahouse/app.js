@@ -5703,7 +5703,7 @@ function thRenderSuppliers(q='') {
 
   const cards = filtered.map(s => {
     // หารายการที่ assign ซัพพลายเออร์นี้
-    const items = masterDB.filter(m => m.pg === 'teahouse' && m.supplier_name === s.name && m.is_active !== false);
+    const items = masterDB.filter(m => (m.pg === 'teahouse' || m.pg === 'equip_th') && m.supplier_name === s.name && m.is_active !== false);
     return `<div style="background:var(--surface);border-radius:10px;border:0.5px solid var(--line);padding:12px 14px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
         <div style="font-size:13px;font-weight:500">${s.name}</div>
