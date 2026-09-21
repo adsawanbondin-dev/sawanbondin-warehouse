@@ -4896,6 +4896,7 @@ async function renderPurchaseOrderPage() {
 
   const existingCodes = new Set(Object.values(poGroups).flat().map(i=>i.code));
 
+  // โหลดจาก teahouse items
   masterDB.filter(m =>
     m.pg === 'teahouse' && m.is_active !== false &&
     !PO_EXCLUDE_SUBCATS.includes(m.subcat||'')
@@ -4907,9 +4908,28 @@ async function renderPurchaseOrderPage() {
     const useMax   = eq ? (eq.max||0) : (m.max||0);
     const belowMin = useStock <= useMin;
     const qty = Math.max(0, useMax - useStock);
-    // โหลดเฉพาะรายการที่ belowMin
     if (!belowMin) return;
     const key = m.supplier_name || '__noSup__';
+    if (!poGroups[key]) poGroups[key] = [];
+    poGroups[key].push({
+      code: m.code, name: m.name, subcat: m.subcat||'', unit: m.unit||'',
+      stock: useStock, min: useMin, max: useMax, qty, belowMin
+    });
+  });
+
+  // โหลดจาก equip_th items ที่มี supplier_name (เช่น ice cream)
+  masterDB.filter(m =>
+    m.pg === 'equip_th' && m.is_active !== false && m.supplier_name &&
+    !masterDB.find(t=>t.pg==='teahouse' && t.name===m.name) // ไม่ซ้ำกับ teahouse
+  ).forEach(m => {
+    if (existingCodes.has(m.code)) return;
+    const useStock = m.stock;
+    const useMin   = m.min||0;
+    const useMax   = m.max||0;
+    const belowMin = useStock <= useMin;
+    const qty = Math.max(0, useMax - useStock);
+    if (!belowMin) return;
+    const key = m.supplier_name;
     if (!poGroups[key]) poGroups[key] = [];
     poGroups[key].push({
       code: m.code, name: m.name, subcat: m.subcat||'', unit: m.unit||'',
