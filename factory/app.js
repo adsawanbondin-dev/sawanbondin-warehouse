@@ -5433,6 +5433,11 @@ async function renderAlertGroupPage(group) {
   if (!ALERT_GROUPS || !ALERT_GROUPS[group]) { div.innerHTML = ''; return; }
   const withdrawLabel = _CFG.WITHDRAW_ALERT_LABEL || 'รายการเบิก';
 
+  if (group === 'purchase') {
+    await renderPurchaseWorkflowPage(div);
+    return;
+  }
+
   if (group === 'withdraw') {
   const WD_GROUPS = [
     { pg: 'raw',    label: 'วัตถุดิบ' },
@@ -5673,3 +5678,441 @@ switchPage = async function(p) {
     _dbOrigSwitch(p);
   }
 };
+
+/* ═══════════════════════════════════════════════
+   PURCHASE WORKFLOW — 4 ขั้นตอน
+   1. สั่งซื้อ (order)
+   2. ส่งเบิก (payment)
+   3. ติดตามพัสดุ (tracking)
+   4. รับเข้าคลัง (receive)
+═══════════════════════════════════════════════ */
+
+let pwOrders = []; // cache purchase orders
+
+const PW_STATUS = {
+  order:    { label: 'สั่งซื้อแล้ว',       color: '#5b8fe8', bg: '#eef3fc' },
+  payment:  { label: 'ส่งเบิกแล้ว',        color: '#e28c3a', bg: '#fef6ec' },
+  paid:     { label: 'ชำระแล้ว',           color: '#2d9e6b', bg: '#edfaf4' },
+  tracking: { label: 'กำลังจัดส่ง',        color: '#9b59b6', bg: '#f5eefb' },
+  received: { label: 'รับเข้าคลังแล้ว',    color: '#7f8c8d', bg: '#f4f6f7' },
+};
+
+async function renderPurchaseWorkflowPage(div) {
+  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px;animation:spin 1s linear infinite"></i></div>`;
+  await dbLoadPaymentSuppliers();
+  const { data } = await sb.from('purchase_orders')
+    .select('*, payment_suppliers(name,pay_type,acc_num,acc_name,bank)')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false });
+  pwOrders = data || [];
+
+  // จัดกลุ่มตาม po_group_id หรือ supplier_id + วันที่
+  const groups = {};
+  pwOrders.forEach(po => {
+    const key = po.po_group_id || `${po.supplier_id}_${po.created_at?.slice(0,10)}`;
+    if (!groups[key]) groups[key] = { key, supplier: po.payment_suppliers, items: [], status: po.pay_status||'order', created_at: po.created_at };
+    groups[key].items.push(po);
+    // ใช้ status ล่าสุดของกลุ่ม
+    const stOrder = ['order','payment','paid','tracking','received'];
+    if (stOrder.indexOf(po.pay_status||'order') > stOrder.indexOf(groups[key].status)) {
+      groups[key].status = po.pay_status||'order';
+    }
+  });
+
+  const groupList = Object.values(groups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+
+  // แยกตาม step
+  const stepGroups = {
+    order:    groupList.filter(g => g.status === 'order'),
+    payment:  groupList.filter(g => g.status === 'payment'),
+    paid:     groupList.filter(g => g.status === 'paid'),
+    tracking: groupList.filter(g => g.status === 'tracking'),
+    received: groupList.filter(g => g.status === 'received'),
+  };
+
+  const stepBadge = (count, color) => count
+    ? `<span style="background:${color};color:#fff;font-size:10px;padding:1px 7px;border-radius:10px;margin-left:6px">${count}</span>` : '';
+
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">รายการจัดซื้อ</div>
+        <div class="page-sub">${groupList.length} รายการ</div></div>
+      <button class="btn btn-primary btn-sm" onclick="pwOpenNewOrder()">
+        <i class="ti ti-plus"></i> สร้างใบสั่งซื้อ
+      </button>
+    </div>
+
+    <!-- Step tabs -->
+    <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+      ${Object.entries(PW_STATUS).map(([k,v]) => `
+        <button onclick="pwFilterStep('${k}')" id="pw-tab-${k}"
+          style="padding:5px 12px;border-radius:20px;border:1px solid ${v.color};font-size:11px;cursor:pointer;font-family:inherit;
+          background:${stepGroups[k]?.length?v.bg:'transparent'};color:${v.color};transition:.15s">
+          ${v.label}${stepBadge(stepGroups[k]?.length, v.color)}
+        </button>`).join('')}
+      <button onclick="pwFilterStep('all')" id="pw-tab-all"
+        style="padding:5px 12px;border-radius:20px;border:1px solid var(--line);font-size:11px;cursor:pointer;font-family:inherit;background:var(--s2);color:var(--ink4)">
+        ทั้งหมด
+      </button>
+    </div>
+
+    <!-- Cards -->
+    <div id="pw-cards"></div>
+
+    <!-- Modal สร้างใบสั่งซื้อ -->
+    <div id="pw-new-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:600;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px">
+      <div style="background:var(--surface);border-radius:14px;border:0.5px solid var(--line);padding:20px;width:480px;max-width:95vw;margin:auto">
+        <div style="font-size:14px;font-weight:500;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+          <span>สร้างใบสั่งซื้อใหม่</span>
+          <button class="btn btn-sm" onclick="document.getElementById('pw-new-modal').style.display='none'"><i class="ti ti-x"></i></button>
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;color:var(--ink4);display:block;margin-bottom:4px">ผู้จำหน่าย *</label>
+          <select id="pw-sup-sel" class="fi" onchange="pwSupChange()">
+            <option value="">— เลือกผู้จำหน่าย —</option>
+            ${paymentSuppliers.map(s=>`<option value="${s.id}" data-pay="${s.pay_type||''}" data-bank="${s.bank||''}" data-acc="${s.acc_num||''}" data-name="${s.acc_name||''}">${s.name}</option>`).join('')}
+          </select>
+        </div>
+        <div id="pw-items-wrap">
+          <div style="font-size:11px;color:var(--ink4);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+            <span>รายการสั่งซื้อ</span>
+            <button class="btn btn-sm" onclick="pwAddItemRow()"><i class="ti ti-plus"></i> เพิ่มรายการ</button>
+          </div>
+          <div id="pw-item-rows">
+            ${pwItemRowHtml(0)}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:0.5px solid var(--line)">
+          <button class="btn btn-sm" onclick="document.getElementById('pw-new-modal').style.display='none'">ยกเลิก</button>
+          <button class="btn btn-sm btn-primary" onclick="pwSaveNewOrder()"><i class="ti ti-device-floppy"></i> บันทึกคำสั่งซื้อ</button>
+        </div>
+      </div>
+    </div>`;
+
+  pwFilterStep('order');
+}
+
+function pwItemRowHtml(idx) {
+  return `<div class="pw-item-row" id="pw-item-row-${idx}" style="display:grid;grid-template-columns:1fr 70px 80px 90px 28px;gap:6px;margin-bottom:6px;align-items:center">
+    <input class="fi" placeholder="ชื่อรายการ" style="font-size:11px" id="pw-name-${idx}">
+    <input class="fi" type="number" placeholder="จำนวน" style="font-size:11px;text-align:right" id="pw-qty-${idx}">
+    <input class="fi" placeholder="หน่วย" style="font-size:11px" id="pw-unit-${idx}">
+    <input class="fi" type="number" placeholder="ราคา/หน่วย" style="font-size:11px;text-align:right" id="pw-price-${idx}" oninput="pwCalcRow(${idx})">
+    <button style="background:none;border:none;cursor:pointer;color:#b03030;font-size:16px" onclick="document.getElementById('pw-item-row-${idx}')?.remove()"><i class="ti ti-x"></i></button>
+  </div>`;
+}
+
+let _pwItemIdx = 1;
+function pwAddItemRow() {
+  const wrap = document.getElementById('pw-item-rows');
+  if (!wrap) return;
+  const div = document.createElement('div');
+  div.innerHTML = pwItemRowHtml(_pwItemIdx++);
+  wrap.appendChild(div.firstChild);
+}
+
+function pwCalcRow(idx) { /* placeholder */ }
+
+function pwSupChange() {
+  const sel = document.getElementById('pw-sup-sel');
+  const opt = sel?.options[sel.selectedIndex];
+  // แสดงข้อมูลบัญชีให้ดู
+}
+
+function pwOpenNewOrder() {
+  _pwItemIdx = 1;
+  document.getElementById('pw-sup-sel').value = '';
+  document.getElementById('pw-item-rows').innerHTML = pwItemRowHtml(0);
+  document.getElementById('pw-new-modal').style.display = 'flex';
+}
+
+async function pwSaveNewOrder() {
+  const supId = parseInt(document.getElementById('pw-sup-sel').value);
+  if (!supId) { showToast('กรุณาเลือกผู้จำหน่ายค่ะ','err'); return; }
+  const groupId = `grp_${Date.now()}`;
+  const rows = document.querySelectorAll('.pw-item-row');
+  const items = [];
+  rows.forEach(row => {
+    const idx = row.id.replace('pw-item-row-','');
+    const name  = document.getElementById(`pw-name-${idx}`)?.value.trim();
+    const qty   = parseFloat(document.getElementById(`pw-qty-${idx}`)?.value)||0;
+    const unit  = document.getElementById(`pw-unit-${idx}`)?.value.trim()||'';
+    const price = parseFloat(document.getElementById(`pw-price-${idx}`)?.value)||0;
+    if (name) items.push({ item_name:name, qty, unit, price_per_unit:price, total_price:qty*price });
+  });
+  if (!items.length) { showToast('กรุณาเพิ่มรายการอย่างน้อย 1 รายการค่ะ','err'); return; }
+  const user = window._operatorName||'';
+  await Promise.all(items.map(item =>
+    sb.from('purchase_orders').insert({
+      supplier_id: supId, po_group_id: groupId,
+      item_name: item.item_name, qty: item.qty, unit: item.unit,
+      price_per_unit: item.price_per_unit, total_price: item.total_price,
+      pay_status: 'order', is_active: true, created_by: user,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+    })
+  ));
+  document.getElementById('pw-new-modal').style.display = 'none';
+  showToast('บันทึกคำสั่งซื้อแล้วค่ะ');
+  const div = document.getElementById('page-alert-purchase');
+  await renderPurchaseWorkflowPage(div);
+}
+
+let _pwCurrentStep = 'order';
+function pwFilterStep(step) {
+  _pwCurrentStep = step;
+  // highlight tab
+  Object.keys(PW_STATUS).concat(['all']).forEach(k => {
+    const t = document.getElementById(`pw-tab-${k}`);
+    if (t) t.style.fontWeight = k===step?'600':'400';
+  });
+
+  // จัดกลุ่ม
+  const groups = {};
+  pwOrders.forEach(po => {
+    const key = po.po_group_id || `${po.supplier_id}_${po.created_at?.slice(0,10)}`;
+    if (!groups[key]) groups[key] = { key, supplier: po.payment_suppliers, items: [], status: po.pay_status||'order', created_at: po.created_at };
+    groups[key].items.push(po);
+  });
+  let list = Object.values(groups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  if (step !== 'all') list = list.filter(g => (g.items[0]?.pay_status||'order') === step);
+
+  const cards = document.getElementById('pw-cards');
+  if (!cards) return;
+  cards.innerHTML = list.length ? list.map(g => pwBuildGroupCard(g)).join('') :
+    `<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-clipboard-off" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>ไม่มีรายการค่ะ</div>`;
+}
+
+function pwBuildGroupCard(g) {
+  const sup = g.supplier;
+  const status = g.items[0]?.pay_status || 'order';
+  const st = PW_STATUS[status] || PW_STATUS.order;
+  const total = g.items.reduce((s,i)=>s+(i.total_price||0),0);
+  const groupId = g.key;
+  const date = new Date(g.created_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'numeric'});
+
+  // Step indicator
+  const steps = ['order','payment','paid','tracking','received'];
+  const stepLabels = ['สั่งซื้อ','ส่งเบิก','ชำระแล้ว','จัดส่ง','รับแล้ว'];
+  const curIdx = steps.indexOf(status);
+  const stepBar = steps.map((s,i) => `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1">
+      <div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;
+        background:${i<=curIdx?PW_STATUS[s].color:'var(--line)'};color:${i<=curIdx?'#fff':'var(--ink4)'}">${i+1}</div>
+      <div style="font-size:9px;color:${i<=curIdx?PW_STATUS[s].color:'var(--ink4)'};white-space:nowrap">${stepLabels[i]}</div>
+    </div>
+    ${i<steps.length-1?`<div style="flex:1;height:2px;background:${i<curIdx?PW_STATUS[steps[i]].color:'var(--line)'};margin-top:10px;max-width:30px"></div>`:''}`
+  ).join('');
+
+  // รายการ
+  const itemRows = g.items.map(po => `
+    <div style="display:grid;grid-template-columns:1fr 60px 70px 80px;gap:6px;padding:6px 0;border-bottom:0.5px solid var(--line);font-size:12px;align-items:center">
+      <div style="font-weight:500">${po.item_name}</div>
+      <div style="text-align:right;color:var(--ink4)">${po.qty} ${po.unit||''}</div>
+      <div style="text-align:right;color:var(--ink4)">${po.price_per_unit?po.price_per_unit.toLocaleString()+' ฿':'-'}</div>
+      <div style="text-align:right;font-weight:500">${po.total_price?po.total_price.toLocaleString()+' ฿':'-'}</div>
+    </div>`).join('');
+
+  // Action buttons ตาม step
+  let actions = '';
+  if (status === 'order') {
+    actions = `
+      <button class="btn btn-sm" onclick="pwCopyOrder('${groupId}')"><i class="ti ti-copy"></i> คัดลอก</button>
+      <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','payment')">→ ส่งเบิก</button>`;
+  } else if (status === 'payment') {
+    actions = `
+      <button class="btn btn-sm" onclick="pwCopyPayment('${groupId}')"><i class="ti ti-copy"></i> คัดลอก</button>
+      <button class="btn btn-sm" onclick="pwMoveStep('${groupId}','paid')">✓ ชำระแล้ว</button>
+      <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','tracking')">→ ติดตาม</button>`;
+  } else if (status === 'paid') {
+    actions = `
+      <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','tracking')">→ ติดตามพัสดุ</button>`;
+  } else if (status === 'tracking') {
+    actions = `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <input class="fi" type="date" id="pw-arrive-${groupId}" value="${g.items[0]?.expected_arrival_date||''}" style="font-size:11px;width:140px" placeholder="วันที่รับของ">
+        <input class="fi" id="pw-track-${groupId}" value="${g.items[0]?.tracking_url||''}" style="font-size:11px;flex:1;min-width:120px" placeholder="Tracking URL/เลข">
+        <button class="btn btn-sm" onclick="pwSaveTracking('${groupId}')"><i class="ti ti-device-floppy"></i></button>
+      </div>
+      <button class="btn btn-sm btn-primary" style="margin-top:8px;width:100%" onclick="pwOpenReceive('${groupId}')"><i class="ti ti-package-import"></i> รับสินค้าเรียบร้อย</button>`;
+  } else if (status === 'received') {
+    actions = `<span style="font-size:11px;color:#2d9e6b"><i class="ti ti-check"></i> รับเข้าคลังแล้ว</span>`;
+  }
+
+  // ข้อมูลบัญชี (แสดงตอน payment/paid)
+  const bankInfo = (status === 'payment' || status === 'paid') && sup ? `
+    <div style="background:var(--s2);border-radius:8px;padding:8px 12px;font-size:11px;margin:8px 0;color:var(--ink3)">
+      <div>ธนาคาร: ${sup.bank||'-'} · เลขที่: ${sup.acc_num||'-'}</div>
+      <div>ชื่อบัญชี: ${sup.acc_name||'-'} · ${sup.pay_type||'-'}</div>
+    </div>` : '';
+
+  return `<div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:14px">
+    <!-- Header -->
+    <div style="padding:10px 14px;background:${st.bg};border-bottom:0.5px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:13px;font-weight:500">${sup?.name||'ไม่ระบุซัพพลายเออร์'}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:1px">${date} · ${g.items.length} รายการ${total?` · รวม ${total.toLocaleString()} ฿`:''}</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${st.color};color:#fff">${st.label}</span>
+        <button style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px" onclick="pwDeleteGroup('${groupId}')" title="ลบ"><i class="ti ti-trash"></i></button>
+      </div>
+    </div>
+
+    <!-- Step bar -->
+    <div style="padding:10px 14px;display:flex;align-items:center;border-bottom:0.5px solid var(--line)">${stepBar}</div>
+
+    <!-- Items -->
+    <div style="padding:8px 14px">
+      <div style="display:grid;grid-template-columns:1fr 60px 70px 80px;gap:6px;font-size:10px;color:var(--ink4);margin-bottom:4px">
+        <span>รายการ</span><span style="text-align:right">จำนวน</span><span style="text-align:right">ราคา/หน่วย</span><span style="text-align:right">รวม</span>
+      </div>
+      ${itemRows}
+      ${total?`<div style="text-align:right;font-size:12px;font-weight:600;margin-top:6px;color:var(--ink)">รวมทั้งหมด ${total.toLocaleString()} ฿</div>`:''}
+    </div>
+
+    ${bankInfo}
+
+    <!-- Actions -->
+    <div style="padding:10px 14px;background:var(--s2);border-top:0.5px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      ${actions}
+    </div>
+  </div>`;
+}
+
+async function pwMoveStep(groupId, newStatus) {
+  const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  await Promise.all(items.map(po =>
+    sb.from('purchase_orders').update({ pay_status: newStatus, updated_at: new Date().toISOString() }).eq('id', po.id)
+  ));
+  items.forEach(po => po.pay_status = newStatus);
+  showToast(`อัปเดตสถานะเป็น "${PW_STATUS[newStatus]?.label}" แล้วค่ะ`);
+  pwFilterStep(_pwCurrentStep);
+}
+
+async function pwSaveTracking(groupId) {
+  const date = document.getElementById(`pw-arrive-${groupId}`)?.value || null;
+  const url  = document.getElementById(`pw-track-${groupId}`)?.value.trim() || null;
+  const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  await Promise.all(items.map(po =>
+    sb.from('purchase_orders').update({ expected_arrival_date: date, tracking_url: url, updated_at: new Date().toISOString() }).eq('id', po.id)
+  ));
+  showToast('บันทึก tracking แล้วค่ะ');
+}
+
+function pwOpenReceive(groupId) {
+  const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  const sup = items[0]?.payment_suppliers;
+  const rowsHtml = items.map(po => `
+    <div style="display:grid;grid-template-columns:1fr 70px 100px 120px;gap:8px;align-items:center;padding:6px 0;border-bottom:0.5px solid var(--line);font-size:12px">
+      <div style="font-weight:500">${po.item_name}</div>
+      <div style="text-align:right;color:var(--ink4)">สั่ง ${po.qty}</div>
+      <input class="fi" type="number" placeholder="รับจริง" value="${po.qty}" style="font-size:11px;text-align:right" id="pw-recv-${po.id}">
+      <input class="fi" type="text" placeholder="Lot วันที่ (YYYY-MM-DD)" style="font-size:11px" id="pw-lot-${po.id}">
+    </div>`).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'pw-recv-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:700;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px';
+  modal.innerHTML = `<div style="background:var(--surface);border-radius:14px;border:0.5px solid var(--line);padding:20px;width:520px;max-width:95vw;margin:auto">
+    <div style="font-size:14px;font-weight:500;margin-bottom:14px;display:flex;justify-content:space-between">
+      <span>รับสินค้าเข้าคลัง — ${sup?.name||''}</span>
+      <button class="btn btn-sm" onclick="document.getElementById('pw-recv-modal')?.remove()"><i class="ti ti-x"></i></button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 70px 100px 120px;gap:8px;font-size:10px;color:var(--ink4);margin-bottom:4px">
+      <span>รายการ</span><span style="text-align:right">สั่ง</span><span style="text-align:right">รับจริง</span><span>Lot วันที่</span>
+    </div>
+    ${rowsHtml}
+    <div style="margin-top:12px">
+      <label style="font-size:11px;color:var(--ink4);display:block;margin-bottom:4px">เอกสาร</label>
+      <select id="pw-doc-sel" class="fi" style="font-size:11px">
+        <option value="receipt">มีใบเสร็จรับเงิน</option>
+        <option value="pending_doc">ติดตามเอกสารใบเสร็จ</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:0.5px solid var(--line)">
+      <button class="btn btn-sm" onclick="document.getElementById('pw-recv-modal')?.remove()">ยกเลิก</button>
+      <button class="btn btn-sm btn-primary" onclick="pwConfirmReceive('${groupId}')"><i class="ti ti-package-import"></i> รับเข้า</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function pwConfirmReceive(groupId) {
+  const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  const docStatus = document.getElementById('pw-doc-sel')?.value || 'receipt';
+  const today = new Date().toISOString().split('T')[0];
+
+  for (const po of items) {
+    const recvQty = parseFloat(document.getElementById(`pw-recv-${po.id}`)?.value) || po.qty;
+    const lotDate = document.getElementById(`pw-lot-${po.id}`)?.value || today;
+    // อัปเดต PO status
+    await sb.from('purchase_orders').update({
+      pay_status: 'received', received_qty: recvQty, doc_status: docStatus,
+      received_date: today, updated_at: new Date().toISOString()
+    }).eq('id', po.id);
+    po.pay_status = 'received'; po.received_qty = recvQty;
+
+    // ถ้ามี item_code → รับเข้า stock
+    if (po.item_code) {
+      const m = masterDB.find(x=>x.code===po.item_code);
+      if (m) {
+        const stockBefore = m.stock;
+        m.stock += recvQty;
+        await sb.from('items').update({ stock: m.stock, updated_at: new Date().toISOString() }).eq('code', po.item_code);
+        await sb.from('lots').insert({
+          item_code: po.item_code, item_name: m.name,
+          lot_sw: lotDate, stock: recvQty,
+          note: `จัดซื้อจาก ${po.payment_suppliers?.name||''}`,
+          updated_at: new Date().toISOString()
+        });
+        await sb.from('transactions').insert({
+          item_code: po.item_code, item_name: m.name, pg: m.pg,
+          action_type: 'receive', quantity: recvQty,
+          old_stock: stockBefore, new_stock: m.stock,
+          lot_sw: lotDate, operator_name: window._operatorName||'',
+          note: `รับจากจัดซื้อ PO-${po.id}`, via: 'purchase',
+          created_at: new Date().toISOString()
+        });
+      }
+    }
+  }
+
+  document.getElementById('pw-recv-modal')?.remove();
+  showToast('รับสินค้าเข้าคลังแล้วค่ะ');
+  const div = document.getElementById('page-alert-purchase');
+  await renderPurchaseWorkflowPage(div);
+}
+
+function pwCopyOrder(groupId) {
+  const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  const sup = items[0]?.payment_suppliers;
+  const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+  const lines = [`ใบสั่งซื้อ — ${sup?.name||''}`, `วันที่ ${today}`, '─'.repeat(30)];
+  items.forEach((po,i) => lines.push(`${i+1}. ${po.item_name}  จำนวน ${po.qty} ${po.unit||''}`));
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกใบสั่งซื้อแล้วค่ะ'));
+}
+
+function pwCopyPayment(groupId) {
+  const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  const sup = items[0]?.payment_suppliers;
+  const total = items.reduce((s,i)=>s+(i.total_price||0),0);
+  const lines = [
+    `เบิกค่าวัตถุดิบ ${sup?.name||''}`, '─'.repeat(30),
+    ...items.map((po,i)=>`${i+1}. ${po.item_name}  จำนวน ${po.qty} ${po.unit||''}  ราคา ${po.total_price?.toLocaleString()||'-'} บาท`),
+    '─'.repeat(30),
+    `รวมยอดโอนชำระทั้งหมด ${total.toLocaleString()} บาท`,
+    `ธนาคาร ${sup?.bank||'-'}  เลขที่บัญชี ${sup?.acc_num||'-'}  ชื่อบัญชี ${sup?.acc_name||'-'}`,
+  ];
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกใบส่งเบิกแล้วค่ะ'));
+}
+
+async function pwDeleteGroup(groupId) {
+  if (!confirm('ลบรายการจัดซื้อนี้ทั้งหมด?')) return;
+  const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  await Promise.all(items.map(po =>
+    sb.from('purchase_orders').update({ is_active: false }).eq('id', po.id)
+  ));
+  pwOrders = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) !== groupId);
+  showToast('ลบรายการแล้วค่ะ');
+  pwFilterStep(_pwCurrentStep);
+}
