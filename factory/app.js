@@ -3598,6 +3598,9 @@ async function boot(){
   banner.innerHTML='<i class="ti ti-loader" style="animation:spin 1s linear infinite"></i> กำลังโหลดข้อมูล...';
   document.body.appendChild(banner);
 
+  // Sync items.stock จาก lots ก่อนโหลด
+  await sb.rpc('sync_item_stock_from_lots').catch(()=>{});
+
   // Load items
   const ok=await dbLoadItems();
   if(!ok){
