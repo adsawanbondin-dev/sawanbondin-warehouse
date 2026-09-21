@@ -2400,6 +2400,9 @@ async function submitBatch(pg){
         if(!res.ok)continue;
         // sync stock จาก RPC result
         if(res.new_stock !== undefined) mi.stock = res.new_stock;
+        r.oldStock = res.old_stock;
+        r.newStock  = res.new_stock;
+        r.lotId     = res.lot_id || lotId;
       }
       if(r.action==='receive'&&r.loc)locationDB[code]=r.loc;
       await dbUpsertItem(mi);
