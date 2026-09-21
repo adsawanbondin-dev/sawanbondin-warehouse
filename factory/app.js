@@ -3599,7 +3599,7 @@ async function boot(){
   document.body.appendChild(banner);
 
   // Sync items.stock จาก lots ก่อนโหลด
-  await sb.rpc('sync_item_stock_from_lots').catch(()=>{});
+  try { await sb.rpc('sync_item_stock_from_lots'); } catch(e) {}
 
   // Load items
   const ok=await dbLoadItems();
