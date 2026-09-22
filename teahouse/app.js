@@ -3907,7 +3907,7 @@ async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
       const eqItem = masterDB.find(x=>x.pg==='equip_th' && x.name===masterDB.find(m=>m.code===item.item_code)?.name);
       if (eqItem) {
         const newEqStock = Math.max(0, eqItem.stock - recvQty);
-        await sb.from('items').update({ stock: newEqStock, updated_at: new Date().toISOString() }).eq('code', eqCode);
+        await sb.from('items').update({ stock: newEqStock, updated_at: new Date().toISOString() }).eq('code', eqItem.code);
         eqItem.stock = newEqStock;
       }
       const m = masterDB.find(x=>x.code===item.item_code);
