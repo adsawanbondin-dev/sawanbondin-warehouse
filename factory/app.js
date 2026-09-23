@@ -5747,6 +5747,33 @@ const PW_STATUS = {
   received: { label: 'รับเข้าคลังแล้ว',    color: '#7f8c8d', bg: '#f4f6f7' },
 };
 
+function pwItemRowHtml(idx) {
+  return `<div class="pw-item-row" id="pw-item-row-${idx}" style="display:grid;grid-template-columns:1fr 60px 70px 90px 28px;gap:4px;margin-bottom:4px;align-items:center">
+    <input class="fi" placeholder="ชื่อรายการ" style="font-size:11px" id="pw-name-${idx}">
+    <input class="fi" type="number" placeholder="จำนวน" style="font-size:11px;text-align:right" id="pw-qty-${idx}">
+    <input class="fi" placeholder="หน่วย" style="font-size:11px" id="pw-unit-${idx}">
+    <input class="fi" type="number" placeholder="ราคา/หน่วย" style="font-size:11px;text-align:right" id="pw-price-${idx}">
+    <button style="background:none;border:none;cursor:pointer;color:#b03030;font-size:16px" onclick="document.getElementById('pw-item-row-${idx}')?.remove()"><i class="ti ti-x"></i></button>
+  </div>`;
+}
+
+let _pwItemIdx = 1;
+function pwAddItemRow() {
+  const wrap = document.getElementById('pw-item-rows');
+  if (!wrap) return;
+  const div = document.createElement('div');
+  div.innerHTML = pwItemRowHtml(_pwItemIdx++);
+  wrap.appendChild(div.firstChild);
+}
+
+function pwOpenNewOrder() {
+  _pwItemIdx = 1;
+  document.getElementById('pw-modal-title').textContent = 'สร้างใบสั่งซื้อใหม่';
+  document.getElementById('pw-sup-sel').value = '';
+  document.getElementById('pw-item-rows').innerHTML = pwItemRowHtml(0);
+  document.getElementById('pw-new-modal').style.display = 'flex';
+}
+
 async function renderPurchaseWorkflowPage(div) {
   div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px;animation:spin 1s linear infinite"></i></div>`;
   await dbLoadPaymentSuppliers();
