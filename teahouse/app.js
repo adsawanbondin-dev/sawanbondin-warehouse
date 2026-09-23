@@ -3891,14 +3891,21 @@ async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
 
   if (!NO_STOCK_CODES.includes(item.item_code)) {
     if (item.pg === 'finish') {
-      if (lotId) {
+      // หา factory_code จาก item_factory_map
+      const { data: mapRow } = await sb.from('item_factory_map').select('factory_code').eq('th_code', item.item_code).single();
+      const factoryCode = mapRow?.factory_code;
+      if (lotId && factoryCode) {
         const { data: lot } = await sbFactory.from('lots').select('id,stock,item_code').eq('id', lotId).single();
         if (lot) {
           const newLotStock = Math.max(0, lot.stock - recvQty);
           await sbFactory.from('lots').update({ stock: newLotStock }).eq('id', lotId);
-          const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', lot.item_code).single();
-          if (fItem) await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', fItem.code);
+          const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', factoryCode).single();
+          if (fItem) await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', factoryCode);
         }
+      } else if (factoryCode && !lotId) {
+        // ไม่มี lot แต่มี mapping — หัก Factory stock ตรงๆ
+        const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', factoryCode).single();
+        if (fItem) await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', factoryCode);
       }
       const m = masterDB.find(x=>x.code===item.item_code);
       if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
