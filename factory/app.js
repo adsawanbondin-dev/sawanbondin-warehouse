@@ -5881,24 +5881,55 @@ function pwBuildNeedOrderCard(supName, items) {
   const totalNeeded = items.length;
   const ek = supName.replace(/'/g,"\\'");
   const cardId = 'pw-need-' + supName.replace(/[^a-zA-Z0-9]/g,'_');
+  const sup = paymentSuppliers.find(s=>s.name===supName);
+  const supId = sup?.id||'';
 
-  const rows = items.map(m => {
+  const rows = items.map((m,i) => {
     const need = Math.max(0, (m.max||0) - m.stock);
     const st = stockStatus(m);
     const sc = st==='out'?'var(--red)':st==='low'?'var(--acc)':'var(--ink)';
     const sI = st==='out'?'ti-circle-x':st==='low'?'ti-alert-triangle':'ti-check';
     const sC = st==='out'?'si-out':st==='low'?'si-low':'si-ok';
     const sL = st==='out'?'หมด':st==='low'?'ต่ำ':'ปกติ';
-    return `<div style="padding:7px 12px;border-bottom:0.5px solid var(--line)">
+    const rowId = `${cardId}-row-${i}`;
+    return `<div style="padding:8px 12px;border-bottom:0.5px solid var(--line)">
       <div class="ir-name">${m.name}</div>
       <div class="ir-code">${m.code}</div>
-      <div class="ir-meta">
+      <div class="ir-meta" style="margin-bottom:6px">
         <span class="ir-stock"><strong style="color:${sc}">${m.stock}</strong></span>
         <span class="ir-si ${sC}"><i class="ti ${sI}" style="font-size:9px"></i> ${sL}</span>
         <span class="ir-minmax">Min ${m.min} · Max ${m.max}</span>
-        <span style="font-size:10px;padding:1px 6px;border-radius:6px;background:var(--s2);color:var(--ink);font-weight:500">สั่ง ${need} ${m.unit||''}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 70px 90px;gap:6px;align-items:center">
+        <input class="fi" id="${rowId}-name" value="${m.name}" style="font-size:11px">
+        <input class="fi" type="number" id="${rowId}-qty" value="${need}" style="font-size:11px;text-align:right" placeholder="จำนวน">
+        <div style="display:grid;grid-template-columns:1fr 28px;gap:4px">
+          <input class="fi" type="number" id="${rowId}-price" value="${m.supplier_price||''}" style="font-size:11px;text-align:right" placeholder="ราคา/หน่วย">
+          <button style="background:none;border:none;cursor:pointer;color:#b03030;font-size:14px;padding:0" onclick="document.getElementById('${rowId}-name').closest('div[style*=border-bottom]')?.remove()"><i class="ti ti-x"></i></button>
+        </div>
       </div>
     </div>`;
+  }).join('');
+
+  return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)" id="${cardId}">
+    <div style="padding:7px 12px;border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:8px">
+        <i class="ti ti-building-store" style="font-size:12px;color:var(--ink4)"></i>
+        <span class="ir-name">${supName}</span>
+        <span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#fde8e8;color:#b03030">${totalNeeded} รายการ</span>
+      </div>
+      <button class="btn btn-sm" onclick="pwCopyNeedOrder('${ek}')" style="font-size:10px;padding:2px 7px"><i class="ti ti-copy"></i> คัดลอก</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 70px 90px;gap:6px;padding:4px 12px;font-size:10px;color:var(--ink4);background:var(--s2)">
+      <span>รายการ / ชื่อ</span><span style="text-align:right">จำนวน</span><span style="text-align:right">ราคา/หน่วย</span>
+    </div>
+    ${rows}
+    <div style="padding:8px 12px;background:var(--s2);border-top:0.5px solid var(--line);display:flex;justify-content:flex-end;gap:6px">
+      <button class="btn btn-sm btn-primary" onclick="pwSaveFromCard('${ek}','${supId}','${cardId}')">
+        <i class="ti ti-device-floppy"></i> บันทึกคำสั่งซื้อ
+      </button>
+    </div>
+  </div>`;
   }).join('');
 
   return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)">
@@ -6005,6 +6036,35 @@ function pwBuildGroupCard(g) {
       ${actions}
     </div>
   </div>`;
+}
+
+async function pwSaveFromCard(supName, supId, cardId) {
+  if (!supId) { showToast('ไม่พบข้อมูลซัพพลายเออร์ค่ะ','err'); return; }
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const rows = card.querySelectorAll('[id$="-name"]');
+  const items = [];
+  rows.forEach(inp => {
+    const rowId = inp.id.replace('-name','');
+    const name  = inp.value.trim();
+    const qty   = parseFloat(document.getElementById(`${rowId}-qty`)?.value)||0;
+    const price = parseFloat(document.getElementById(`${rowId}-price`)?.value)||0;
+    if (name && qty > 0) items.push({ item_name:name, qty, price_per_unit:price, total_price:qty*price });
+  });
+  if (!items.length) { showToast('กรุณาระบุรายการและจำนวนค่ะ','err'); return; }
+  const groupId = `grp_${Date.now()}`;
+  await Promise.all(items.map(item =>
+    sb.from('purchase_orders').insert({
+      supplier_id: parseInt(supId), po_group_id: groupId,
+      item_name: item.item_name, qty: item.qty,
+      price_per_unit: item.price_per_unit, total_price: item.total_price,
+      pay_status: 'order', is_active: true,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+    })
+  ));
+  showToast(`บันทึกคำสั่งซื้อ ${supName} แล้วค่ะ`);
+  const div = document.getElementById('page-alert-purchase');
+  await renderPurchaseWorkflowPage(div);
 }
 
 function pwCopyNeedOrder(supName) {
