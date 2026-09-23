@@ -4107,11 +4107,32 @@ async function scConfirmAddLot(code) {
   if (!lotDate) { showToast('กรุณาเลือกวันที่ Lot ค่ะ','err'); return; }
   if (stock <= 0) { showToast('กรุณากรอกจำนวนมากกว่า 0 ค่ะ','err'); return; }
 
-  const { data, error } = await sb.from('lots').insert({
-    item_code: code, item_name: m.name, lot_sw: lotDate, stock, note: note||null,
-    updated_at: new Date().toISOString()
-  }).select().single();
-  if (error) { showToast('เพิ่ม Lot ไม่สำเร็จค่ะ','err'); return; }
+  // ตรวจสอบว่ามี lot วันนี้อยู่แล้วไหม (เฉพาะ finish เท่านั้น raw อนุญาตซ้ำได้)
+  await dbLoadLotsForItem(code);
+  const existingLot = (m?.pg === 'finish') 
+    ? (lotDB[code]||[]).find(l => l.lot_sw === lotDate)
+    : null;
+
+  if (existingLot) {
+    // merge เข้า lot เดิม
+    const newLotStock = existingLot.stock + stock;
+    const { error } = await sb.from('lots').update({
+      stock: newLotStock,
+      note: note || existingLot.note || null,
+      updated_at: new Date().toISOString()
+    }).eq('id', existingLot.id);
+    if (error) { showToast('บันทึกไม่สำเร็จค่ะ','err'); return; }
+    existingLot.stock = newLotStock;
+    showToast(`รวมเข้า Lot ${lotDate} เดิม (+${stock}) รวม ${newLotStock} ค่ะ`);
+  } else {
+    // สร้าง lot ใหม่
+    const { data, error } = await sb.from('lots').insert({
+      item_code: code, item_name: m.name, lot_sw: lotDate, stock, note: note||null,
+      updated_at: new Date().toISOString()
+    }).select().single();
+    if (error) { showToast('เพิ่ม Lot ไม่สำเร็จค่ะ','err'); return; }
+    showToast(`เพิ่ม Lot ${lotDate} (${stock}) ให้ ${m?.name} แล้วค่ะ`);
+  }
 
   // อัปเดต item stock รวม
   const newTotal = m.stock + stock;
@@ -4119,8 +4140,6 @@ async function scConfirmAddLot(code) {
   if (m) m.stock = newTotal;
 
   document.getElementById('sc-add-lot-modal')?.remove();
-  showToast(`เพิ่ม Lot ${lotDate} (${stock}) ให้ ${m?.name} แล้วค่ะ`);
-  // reload lots ของรายการนี้ก่อน render ใหม่
   await dbLoadLotsForItem(code);
   renderStockCountPage();
 }
