@@ -5884,15 +5884,19 @@ function pwBuildNeedOrderCard(supName, items) {
 
   const rows = items.map(m => {
     const need = Math.max(0, (m.max||0) - m.stock);
-    const sc = m.stock === 0 ? '#b03030' : 'var(--acc)';
-    return `<div style="padding:7px 12px;border-bottom:0.5px solid var(--line);font-size:12px">
-      <div style="font-weight:500;margin-bottom:2px">${m.name}</div>
-      <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:var(--ink4)">
-        <span>Stock <strong style="color:${sc}">${m.stock}</strong></span>
-        <span>·</span>
-        <span>Min ${m.min} / Max ${m.max}</span>
-        <span>·</span>
-        <span style="color:var(--ink);font-weight:600">สั่ง ${need} ${m.unit||''}</span>
+    const st = stockStatus(m);
+    const sc = st==='out'?'var(--red)':st==='low'?'var(--acc)':'var(--ink)';
+    const sI = st==='out'?'ti-circle-x':st==='low'?'ti-alert-triangle':'ti-check';
+    const sC = st==='out'?'si-out':st==='low'?'si-low':'si-ok';
+    const sL = st==='out'?'หมด':st==='low'?'ต่ำ':'ปกติ';
+    return `<div style="padding:7px 12px;border-bottom:0.5px solid var(--line)">
+      <div class="ir-name">${m.name}</div>
+      <div class="ir-code">${m.code}</div>
+      <div class="ir-meta">
+        <span class="ir-stock"><strong style="color:${sc}">${m.stock}</strong></span>
+        <span class="ir-si ${sC}"><i class="ti ${sI}" style="font-size:9px"></i> ${sL}</span>
+        <span class="ir-minmax">Min ${m.min} · Max ${m.max}</span>
+        <span style="font-size:10px;padding:1px 6px;border-radius:6px;background:var(--s2);color:var(--ink);font-weight:500">สั่ง ${need} ${m.unit||''}</span>
       </div>
     </div>`;
   }).join('');
