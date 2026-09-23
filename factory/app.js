@@ -5930,24 +5930,9 @@ function pwBuildNeedOrderCard(supName, items) {
       </button>
     </div>
   </div>`;
-  }).join('');
-
-  return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)">
-    <div style="padding:7px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;border-bottom:0.5px solid var(--line)"
-      onclick="const b=document.getElementById('${cardId}-body');b.style.display=b.style.display==='none'?'':'none'">
-      <div style="display:flex;align-items:center;gap:8px">
-        <i class="ti ti-building-store" style="font-size:12px;color:var(--ink4)"></i>
-        <span style="font-size:12px;font-weight:500">${supName}</span>
-        <span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#fde8e8;color:#b03030">${totalNeeded} รายการ</span>
-      </div>
-      <div style="display:flex;gap:5px" onclick="event.stopPropagation()">
-        <button class="btn btn-sm" onclick="pwCopyNeedOrder('${ek}')" style="font-size:10px;padding:2px 7px"><i class="ti ti-copy"></i></button>
-        <button class="btn btn-sm btn-primary" onclick="pwOpenFromMaster('${ek}')" style="font-size:10px;padding:2px 8px"><i class="ti ti-plus"></i> สร้างใบสั่ง</button>
-      </div>
-    </div>
-    <div id="${cardId}-body">${rows}</div>
-  </div>`;
 }
+
+async function pwSaveFromCard(supName, supId, cardId) {
 
 function pwBuildGroupCard(g) {
   const sup = g.supplier;
