@@ -1109,7 +1109,7 @@ async function buildEditTxLotOptions(rec, pg) {
   const sel = document.getElementById('editTxLot');
   sel.innerHTML = `<option value="">กำลังโหลด...</option>`;
   await dbLoadLotsForItem(rec.code);
-  const lots = (lotDB[rec.code]||[]).slice().sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
+  const lots = (lotDB[rec.code]||[]).filter(l=>l.stock>0).slice().sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
   let opts = `<option value="">-- ไม่ระบุ Lot --</option>`;
   opts += lots.map(l=>{
     const dateStr = new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
