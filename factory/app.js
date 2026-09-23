@@ -5900,14 +5900,12 @@ function pwBuildNeedOrderCard(supName, items) {
         <span class="ir-si ${sC}"><i class="ti ${sI}" style="font-size:9px"></i> ${sL}</span>
         <span class="ir-minmax">Min ${m.min} · Max ${m.max}</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 70px 90px;gap:6px;align-items:center">
-        <input class="fi" id="${rowId}-name" value="${m.name}" style="font-size:11px">
+      <div style="display:grid;grid-template-columns:1fr 80px 28px;gap:6px;align-items:center;margin-top:4px">
         <input class="fi" type="number" id="${rowId}-qty" value="${need}" style="font-size:11px;text-align:right" placeholder="จำนวน">
-        <div style="display:grid;grid-template-columns:1fr 28px;gap:4px">
-          <input class="fi" type="number" id="${rowId}-price" value="${m.supplier_price||''}" style="font-size:11px;text-align:right" placeholder="ราคา/หน่วย">
-          <button style="background:none;border:none;cursor:pointer;color:#b03030;font-size:14px;padding:0" onclick="document.getElementById('${rowId}-name').closest('div[style*=border-bottom]')?.remove()"><i class="ti ti-x"></i></button>
-        </div>
+        <input class="fi" type="number" id="${rowId}-price" value="${m.supplier_price||''}" style="font-size:11px;text-align:right" placeholder="ราคา/หน่วย">
+        <button style="background:none;border:none;cursor:pointer;color:#b03030;font-size:14px;padding:0" onclick="this.closest('[style*=border-bottom]')?.remove()"><i class="ti ti-x"></i></button>
       </div>
+      <input type="hidden" id="${rowId}-name" value="${m.name}">
     </div>`;
   }).join('');
 
@@ -5920,8 +5918,8 @@ function pwBuildNeedOrderCard(supName, items) {
       </div>
       <button class="btn btn-sm" onclick="pwCopyNeedOrder('${ek}')" style="font-size:10px;padding:2px 7px"><i class="ti ti-copy"></i> คัดลอก</button>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 70px 90px;gap:6px;padding:4px 12px;font-size:10px;color:var(--ink4);background:var(--s2)">
-      <span>รายการ / ชื่อ</span><span style="text-align:right">จำนวน</span><span style="text-align:right">ราคา/หน่วย</span>
+    <div style="display:grid;grid-template-columns:1fr 80px 28px;gap:6px;padding:4px 12px;font-size:10px;color:var(--ink4);background:var(--s2)">
+      <span>จำนวน</span><span style="text-align:right">ราคา/หน่วย</span><span></span>
     </div>
     ${rows}
     <div style="padding:8px 12px;background:var(--s2);border-top:0.5px solid var(--line);display:flex;justify-content:flex-end;gap:6px">
