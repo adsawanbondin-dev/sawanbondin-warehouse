@@ -5921,8 +5921,6 @@ function pwBuildNeedOrderCard(supName, items) {
   </div>`;
 }
 
-async function pwSaveFromCard(supName, supId, cardId) {
-
 function pwBuildGroupCard(g) {
   const sup = g.supplier;
   const status = g.items[0]?.pay_status || 'order';
@@ -6011,6 +6009,28 @@ function pwBuildGroupCard(g) {
     </div>
   </div>`;
 }
+
+let _pwCurrentStep = 'order';
+function pwFilterStep(step) {
+  _pwCurrentStep = step;
+  Object.keys(PW_STATUS).concat(['all']).forEach(k => {
+    const t = document.getElementById(`pw-tab-${k}`);
+    if (t) t.style.fontWeight = k===step?'600':'400';
+  });
+  const groups = {};
+  pwOrders.forEach(po => {
+    const key = po.po_group_id || `${po.supplier_id}_${po.created_at?.slice(0,10)}`;
+    if (!groups[key]) groups[key] = { key, supplier: po.payment_suppliers, items: [], status: po.pay_status||'order', created_at: po.created_at };
+    groups[key].items.push(po);
+  });
+  let list = Object.values(groups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  if (step !== 'all') list = list.filter(g => (g.items[0]?.pay_status||'order') === step);
+  const cards = document.getElementById('pw-cards');
+  if (!cards) return;
+  cards.innerHTML = list.length ? list.map(g => pwBuildGroupCard(g)).join('') :
+    `<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-clipboard-off" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>ไม่มีรายการค่ะ</div>`;
+}
+
 
 async function pwSaveFromCard(supName, supId, cardId) {
   if (!supId) { showToast('ไม่พบข้อมูลซัพพลายเออร์ค่ะ','err'); return; }
@@ -6230,4 +6250,4 @@ async function pwDeleteGroup(groupId) {
   showToast('ลบรายการแล้วค่ะ');
   pwFilterStep(_pwCurrentStep);
 }
-}
+
