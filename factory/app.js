@@ -5942,20 +5942,31 @@ function pwBuildGroupCard(g) {
     ${i<steps.length-1?`<div style="flex:1;height:2px;background:${i<curIdx?PW_STATUS[steps[i]].color:'var(--line)'};margin-top:9px;max-width:24px"></div>`:''}`
   ).join('');
 
-  // รายการ
-  const itemRows = g.items.map(po => `
-    <div style="display:grid;grid-template-columns:1fr 60px 70px 80px;gap:6px;padding:6px 0;border-bottom:0.5px solid var(--line);font-size:12px;align-items:center">
+  // รายการ + ช่องราคาตอน payment
+  const itemRows = g.items.map((po,i) => {
+    const isPayment = status === 'payment';
+    return `<div style="display:grid;grid-template-columns:1fr 60px ${isPayment?'90px 80px':'70px 80px'};gap:6px;padding:6px 0;border-bottom:0.5px solid var(--line);font-size:12px;align-items:center" id="pw-po-row-${po.id}">
       <div style="font-weight:500">${po.item_name}</div>
       <div style="text-align:right;color:var(--ink4)">${po.qty} ${po.unit||''}</div>
-      <div style="text-align:right;color:var(--ink4)">${po.price_per_unit?po.price_per_unit.toLocaleString()+' ฿':'-'}</div>
-      <div style="text-align:right;font-weight:500">${po.total_price?po.total_price.toLocaleString()+' ฿':'-'}</div>
-    </div>`).join('');
+      ${isPayment ? `<input class="fi" type="number" placeholder="ราคา/หน่วย" value="${po.price_per_unit||''}"
+        style="font-size:11px;text-align:right" id="pw-price-${po.id}"
+        oninput="pwCalcTotal('${groupId}')">` : `<div style="text-align:right;color:var(--ink4)">${po.price_per_unit?po.price_per_unit.toLocaleString()+' ฿':'-'}</div>`}
+      <div style="text-align:right;font-weight:500" id="pw-total-${po.id}">${po.total_price?po.total_price.toLocaleString()+' ฿':'-'}</div>
+    </div>`;
+  }).join('');
 
   // ข้อมูลบัญชี
   const bankInfo = (status === 'payment' || status === 'paid') && sup ? `
-    <div style="background:var(--s2);border-radius:8px;padding:8px 12px;font-size:11px;margin:8px 0;color:var(--ink3)">
-      <div>ธนาคาร: ${sup.bank||'-'} · เลขที่: ${sup.acc_num||'-'}</div>
-      <div>ชื่อบัญชี: ${sup.acc_name||'-'} · ${sup.pay_type||'-'}</div>
+    <div style="margin:8px 14px;padding:10px 12px;background:var(--s2);border-radius:8px;font-size:11px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="color:var(--ink4)">ยอดรวมทั้งหมด</span>
+        <span style="font-size:14px;font-weight:600" id="pw-grand-total-${groupId}">${total?total.toLocaleString()+' ฿':'กรอกราคาเพื่อคำนวณ'}</span>
+      </div>
+      <div style="border-top:0.5px solid var(--line);padding-top:8px;color:var(--ink3)">
+        <div>ช่องทางชำระ: <strong>${sup.pay_type||'-'}</strong></div>
+        <div>ธนาคาร: <strong>${sup.bank||'-'}</strong> · เลขที่: <strong>${sup.acc_num||'-'}</strong></div>
+        <div>ชื่อบัญชี: <strong>${sup.acc_name||'-'}</strong></div>
+      </div>
     </div>` : '';
 
   // Actions
@@ -5966,6 +5977,7 @@ function pwBuildGroupCard(g) {
       <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','payment')"><i class="ti ti-check"></i> สั่งซื้อแล้ว → บันทึกไปเบิกเงิน</button>`;
   } else if (status === 'payment') {
     actions = `
+      <button class="btn btn-sm" onclick="pwSavePrices('${groupId}')"><i class="ti ti-device-floppy"></i> บันทึกราคา</button>
       <button class="btn btn-sm" onclick="pwCopyPayment('${groupId}')"><i class="ti ti-copy"></i> คัดลอกใบเบิก</button>
       <button class="btn btn-sm" onclick="pwMoveStep('${groupId}','paid')"><i class="ti ti-check"></i> ชำระแล้ว</button>
       <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','tracking')">→ ติดตามพัสดุ</button>`;
@@ -6112,6 +6124,33 @@ function pwCopyOrderFromModal() {
   navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกแล้วค่ะ'));
 }
 
+
+function pwCalcTotal(groupId) {
+  const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  let grand = 0;
+  items.forEach(po => {
+    const price = parseFloat(document.getElementById(`pw-price-${po.id}`)?.value)||0;
+    const total = price * po.qty;
+    const el = document.getElementById(`pw-total-${po.id}`);
+    if (el) el.textContent = total ? total.toLocaleString()+' ฿' : '-';
+    grand += total;
+  });
+  const grandEl = document.getElementById(`pw-grand-total-${groupId}`);
+  if (grandEl) grandEl.textContent = grand ? grand.toLocaleString()+' ฿' : 'กรอกราคาเพื่อคำนวณ';
+}
+
+async function pwSavePrices(groupId) {
+  const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  await Promise.all(items.map(po => {
+    const price = parseFloat(document.getElementById(`pw-price-${po.id}`)?.value)||0;
+    const total = price * po.qty;
+    po.price_per_unit = price; po.total_price = total;
+    return sb.from('purchase_orders').update({ price_per_unit: price, total_price: total, updated_at: new Date().toISOString() }).eq('id', po.id);
+  }));
+  showToast('บันทึกราคาแล้วค่ะ');
+  const div = document.getElementById('page-alert-purchase');
+  await renderPurchaseWorkflowPage(div);
+}
 
 async function pwMoveStep(groupId, newStatus) {
   const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
