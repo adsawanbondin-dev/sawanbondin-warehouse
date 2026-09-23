@@ -5740,8 +5740,8 @@ switchPage = async function(p) {
 let pwOrders = []; // cache purchase orders
 
 const PW_STATUS = {
-  order:    { label: 'สั่งซื้อแล้ว',       color: '#5b8fe8', bg: '#eef3fc' },
-  payment:  { label: 'ส่งเบิกแล้ว',        color: '#e28c3a', bg: '#fef6ec' },
+  ordered:  { label: 'สั่งซื้อแล้ว',       color: '#5b8fe8', bg: '#eef3fc' },
+  waiting:  { label: 'ส่งเบิกแล้ว',        color: '#e28c3a', bg: '#fef6ec' },
   paid:     { label: 'ชำระแล้ว',           color: '#2d9e6b', bg: '#edfaf4' },
   tracking: { label: 'กำลังจัดส่ง',        color: '#9b59b6', bg: '#f5eefb' },
   received: { label: 'รับเข้าคลังแล้ว',    color: '#7f8c8d', bg: '#f4f6f7' },
@@ -5787,7 +5787,7 @@ async function renderPurchaseWorkflowPage(div) {
   const poGroups = {};
   pwOrders.forEach(po => {
     const key = po.po_group_id || `${po.supplier_id}_${po.created_at?.slice(0,10)}`;
-    if (!poGroups[key]) poGroups[key] = { key, supplier: po.payment_suppliers, items: [], status: po.pay_status||'order', created_at: po.created_at };
+    if (!poGroups[key]) poGroups[key] = { key, supplier: po.payment_suppliers, items: [], status: po.pay_status||'ordered', created_at: po.created_at };
     poGroups[key].items.push(po);
   });
   const existingPOList = Object.values(poGroups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
@@ -5805,7 +5805,7 @@ async function renderPurchaseWorkflowPage(div) {
     ? `<span style="background:${color};color:#fff;font-size:10px;padding:1px 7px;border-radius:10px;margin-left:6px">${count}</span>` : '';
 
   const statusCounts = {};
-  Object.keys(PW_STATUS).forEach(k => statusCounts[k] = existingPOList.filter(g=>(g.items[0]?.pay_status||'order')===k).length);
+  Object.keys(PW_STATUS).forEach(k => statusCounts[k] = existingPOList.filter(g=>(g.items[0]?.pay_status||'ordered')===k).length);
 
   div.innerHTML = `
     <div class="page-header">
@@ -5874,7 +5874,7 @@ async function renderPurchaseWorkflowPage(div) {
       </div>
     </div>`;
 
-  pwFilterStep('order');
+  pwFilterStep('ordered');
 }
 
 function pwBuildNeedOrderCard(supName, items) {
@@ -5923,14 +5923,14 @@ function pwBuildNeedOrderCard(supName, items) {
 
 function pwBuildGroupCard(g) {
   const sup = g.supplier;
-  const status = g.items[0]?.pay_status || 'order';
-  const st = PW_STATUS[status] || PW_STATUS.order;
+  const status = g.items[0]?.pay_status || 'ordered';
+  const st = PW_STATUS[status] || PW_STATUS.ordered;
   const total = g.items.reduce((s,i)=>s+(i.total_price||0),0);
   const groupId = g.key;
   const date = new Date(g.created_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'numeric'});
 
   // Step indicator
-  const steps = ['order','payment','paid','tracking','received'];
+  const steps = ['ordered','payment','paid','tracking','received'];
   const stepLabels = ['สั่งซื้อ','ส่งเบิก','ชำระแล้ว','จัดส่ง','รับแล้ว'];
   const curIdx = steps.indexOf(status);
   const stepBar = steps.map((s,i) => `
@@ -5971,10 +5971,10 @@ function pwBuildGroupCard(g) {
 
   // Actions
   let actions = '';
-  if (status === 'order') {
+  if (status === 'ordered') {
     actions = `
       <button class="btn btn-sm" onclick="pwCopyOrder('${groupId}')"><i class="ti ti-copy"></i> คัดลอกใบสั่งซื้อ</button>
-      <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','payment')"><i class="ti ti-check"></i> สั่งซื้อแล้ว → บันทึกไปเบิกเงิน</button>`;
+      <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','waiting')"><i class="ti ti-check"></i> สั่งซื้อแล้ว → บันทึกไปเบิกเงิน</button>`;
   } else if (status === 'payment') {
     actions = `
       <button class="btn btn-sm" onclick="pwSavePrices('${groupId}')"><i class="ti ti-device-floppy"></i> บันทึกราคา</button>
@@ -6022,7 +6022,7 @@ function pwBuildGroupCard(g) {
   </div>`;
 }
 
-let _pwCurrentStep = 'order';
+let _pwCurrentStep = 'ordered';
 function pwFilterStep(step) {
   _pwCurrentStep = step;
   Object.keys(PW_STATUS).concat(['all']).forEach(k => {
@@ -6032,11 +6032,11 @@ function pwFilterStep(step) {
   const groups = {};
   pwOrders.forEach(po => {
     const key = po.po_group_id || `${po.supplier_id}_${po.created_at?.slice(0,10)}`;
-    if (!groups[key]) groups[key] = { key, supplier: po.payment_suppliers, items: [], status: po.pay_status||'order', created_at: po.created_at };
+    if (!groups[key]) groups[key] = { key, supplier: po.payment_suppliers, items: [], status: po.pay_status||'ordered', created_at: po.created_at };
     groups[key].items.push(po);
   });
   let list = Object.values(groups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-  if (step !== 'all') list = list.filter(g => (g.items[0]?.pay_status||'order') === step);
+  if (step !== 'all') list = list.filter(g => (g.items[0]?.pay_status||'ordered') === step);
   const cards = document.getElementById('pw-cards');
   if (!cards) return;
   cards.innerHTML = list.length ? list.map(g => pwBuildGroupCard(g)).join('') :
@@ -6064,7 +6064,7 @@ async function pwSaveFromCard(supName, supId, cardId) {
       supplier_id: parseInt(supId), po_group_id: groupId,
       item_name: item.item_name, qty: item.qty,
       price_per_unit: item.price_per_unit, total_price: item.total_price,
-      pay_status: 'order', is_active: true,
+      pay_status: 'ordered', is_active: true,
       created_at: new Date().toISOString(), updated_at: new Date().toISOString()
     })
   ));
