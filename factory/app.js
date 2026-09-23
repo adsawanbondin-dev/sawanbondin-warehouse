@@ -4120,6 +4120,8 @@ async function scConfirmAddLot(code) {
 
   document.getElementById('sc-add-lot-modal')?.remove();
   showToast(`เพิ่ม Lot ${lotDate} (${stock}) ให้ ${m?.name} แล้วค่ะ`);
+  // reload lots ของรายการนี้ก่อน render ใหม่
+  await dbLoadLotsForItem(code);
   renderStockCountPage();
 }
 
