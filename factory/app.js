@@ -5880,40 +5880,38 @@ async function renderPurchaseWorkflowPage(div) {
 function pwBuildNeedOrderCard(supName, items) {
   const totalNeeded = items.length;
   const ek = supName.replace(/'/g,"\\'");
+  const cardId = 'pw-need-' + supName.replace(/[^a-zA-Z0-9]/g,'_');
 
   const rows = items.map(m => {
     const need = Math.max(0, (m.max||0) - m.stock);
     const sc = m.stock === 0 ? '#b03030' : 'var(--acc)';
-    return `<div style="display:grid;grid-template-columns:1fr 60px 80px 80px;gap:6px;padding:7px 14px;border-bottom:0.5px solid var(--line);align-items:center;font-size:12px">
-      <div>
-        <div style="font-weight:500">${m.name}</div>
-        ${remarkDB[m.code]?`<div style="font-size:10px;color:var(--ink3);margin-top:1px">${remarkDB[m.code]}</div>`:''}
-      </div>
+    return `<div style="display:grid;grid-template-columns:1fr 48px 72px 72px;gap:4px;padding:5px 12px;border-bottom:0.5px solid var(--line);font-size:11px;align-items:center">
+      <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
       <div style="text-align:right;font-weight:600;color:${sc}">${m.stock}</div>
-      <div style="text-align:center;font-size:10px;color:var(--ink4)">Min ${m.min} / Max ${m.max}</div>
-      <div style="text-align:right;font-size:11px;font-weight:600;color:var(--ink)">สั่ง ${need} ${m.unit||''}</div>
+      <div style="text-align:center;color:var(--ink4);font-size:10px">${m.min}/${m.max}</div>
+      <div style="text-align:right;font-weight:600">สั่ง ${need} ${m.unit||''}</div>
     </div>`;
   }).join('');
 
-  return `<div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:12px;background:var(--surface)">
-    <div style="padding:9px 14px;border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-size:12px;font-weight:500">${supName}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-top:1px">${totalNeeded} รายการต้องสั่งซื้อ</div>
+  return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:8px;background:var(--surface)">
+    <div style="padding:7px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+      onclick="const b=document.getElementById('${cardId}-body');b.style.display=b.style.display==='none'?'':'none'">
+      <div style="display:flex;align-items:center;gap:8px">
+        <i class="ti ti-building-store" style="font-size:12px;color:var(--ink4)"></i>
+        <span style="font-size:12px;font-weight:500">${supName}</span>
+        <span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#fde8e8;color:#b03030">${totalNeeded} รายการ</span>
       </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-sm" onclick="pwCopyNeedOrder('${ek}')">
-          <i class="ti ti-copy"></i> คัดลอก
-        </button>
-        <button class="btn btn-sm btn-primary" onclick="pwOpenFromMaster('${ek}')">
-          <i class="ti ti-plus"></i> สร้างใบสั่งซื้อ
-        </button>
+      <div style="display:flex;gap:5px" onclick="event.stopPropagation()">
+        <button class="btn btn-sm" onclick="pwCopyNeedOrder('${ek}')" style="font-size:10px;padding:2px 7px"><i class="ti ti-copy"></i></button>
+        <button class="btn btn-sm btn-primary" onclick="pwOpenFromMaster('${ek}')" style="font-size:10px;padding:2px 8px"><i class="ti ti-plus"></i> สร้างใบสั่ง</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 60px 80px 80px;gap:6px;padding:4px 14px;font-size:10px;color:var(--ink4);border-bottom:0.5px solid var(--line);background:var(--s2)">
-      <span>รายการ</span><span style="text-align:right">Stock</span><span style="text-align:center">Min/Max</span><span style="text-align:right">ต้องสั่ง</span>
+    <div id="${cardId}-body" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 48px 72px 72px;gap:4px;padding:3px 12px;font-size:10px;color:var(--ink4);background:var(--s2)">
+        <span>รายการ</span><span style="text-align:right">Stock</span><span style="text-align:center">Min/Max</span><span style="text-align:right">ต้องสั่ง</span>
+      </div>
+      ${rows}
     </div>
-    ${rows}
   </div>`;
 }
 
