@@ -2781,6 +2781,8 @@ function renderMasterPage(){
       <div><div class="page-title">Master Data</div>
         <div class="page-sub">จัดการรายการ หมวดหมู่ และ QR Code</div></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="syncStockFromLots()" title="Sync items.stock จาก sum(lots.stock)">
+          <i class="ti ti-refresh"></i> Sync Stock</button>
         <button class="btn btn-sm" onclick="exportAllCsv()" title="Export ทุกอย่าง: สต็อก + ประวัติ + Lot">
           <i class="ti ti-table-export"></i> Export ทั้งหมด</button>
         ${canManageMaster() ? `<button class="btn btn-primary btn-sm" onclick="showAddForm()">
@@ -3463,6 +3465,20 @@ function downloadCsv(filename, rows) {
  * ออกเป็น 1 ไฟล์ CSV ต่อ sheet (3 tabs แต่ CSV เป็น 1 ไฟล์ต่อ type)
  * สำหรับ full export ใช้ exportAllCsv()
  */
+async function syncStockFromLots() {
+  const btn = document.querySelector('[onclick="syncStockFromLots()"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> กำลัง Sync...'; }
+  try {
+    await sb.rpc('sync_item_stock_from_lots');
+    // reload masterDB
+    await dbLoadItems();
+    renderMasterPage();
+    showToast('Sync Stock เรียบร้อยแล้วค่ะ ✓');
+  } catch(e) {
+    showToast('Sync ไม่สำเร็จค่ะ','err');
+  }
+}
+
 async function exportAllCsv() {
   showToast('กำลัง Export ข้อมูลทั้งหมด...');
   const d = new Date().toISOString().split('T')[0];
