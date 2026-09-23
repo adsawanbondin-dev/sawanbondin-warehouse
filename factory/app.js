@@ -5898,7 +5898,6 @@ function pwBuildNeedOrderCard(supName, items) {
       </div>
       <input type="hidden" id="${rowId}-unit" value="${m.unit||''}">
     </div>`;
-    </div>`;
   }).join('');
 
   return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)" id="${cardId}">
