@@ -5818,7 +5818,7 @@ async function renderPurchaseWorkflowPage(div) {
     <div style="font-size:12px;font-weight:500;margin-bottom:10px;color:var(--ink4);display:flex;align-items:center;gap:6px">
       <i class="ti ti-alert-triangle" style="color:var(--acc)"></i> ต้องสั่งซื้อ
     </div>
-    <div id="pw-need-order-cards">${Object.entries(belowMinBySup).map(([supName, items]) => pwBuildNeedOrderCard(supName, items)).join('')}</div>
+    <div id="pw-need-order-cards" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">${Object.entries(belowMinBySup).map(([supName, items]) => pwBuildNeedOrderCard(supName, items)).join('')}</div>
     ` : '<div style="padding:16px;text-align:center;font-size:12px;color:var(--ink4);background:var(--s2);border-radius:10px;margin-bottom:16px"><i class="ti ti-check" style="color:#2d9e6b"></i> ทุกรายการ stock ปกติค่ะ</div>'}
 
     <!-- รายการจัดซื้อที่สร้างแล้ว -->
@@ -5885,16 +5885,20 @@ function pwBuildNeedOrderCard(supName, items) {
   const rows = items.map(m => {
     const need = Math.max(0, (m.max||0) - m.stock);
     const sc = m.stock === 0 ? '#b03030' : 'var(--acc)';
-    return `<div style="display:grid;grid-template-columns:1fr 48px 72px 72px;gap:4px;padding:5px 12px;border-bottom:0.5px solid var(--line);font-size:11px;align-items:center">
-      <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</div>
-      <div style="text-align:right;font-weight:600;color:${sc}">${m.stock}</div>
-      <div style="text-align:center;color:var(--ink4);font-size:10px">${m.min}/${m.max}</div>
-      <div style="text-align:right;font-weight:600">สั่ง ${need} ${m.unit||''}</div>
+    return `<div style="padding:7px 12px;border-bottom:0.5px solid var(--line);font-size:12px">
+      <div style="font-weight:500;margin-bottom:2px">${m.name}</div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:var(--ink4)">
+        <span>Stock <strong style="color:${sc}">${m.stock}</strong></span>
+        <span>·</span>
+        <span>Min ${m.min} / Max ${m.max}</span>
+        <span>·</span>
+        <span style="color:var(--ink);font-weight:600">สั่ง ${need} ${m.unit||''}</span>
+      </div>
     </div>`;
   }).join('');
 
-  return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:8px;background:var(--surface)">
-    <div style="padding:7px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+  return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)">
+    <div style="padding:7px 12px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;border-bottom:0.5px solid var(--line)"
       onclick="const b=document.getElementById('${cardId}-body');b.style.display=b.style.display==='none'?'':'none'">
       <div style="display:flex;align-items:center;gap:8px">
         <i class="ti ti-building-store" style="font-size:12px;color:var(--ink4)"></i>
@@ -5906,12 +5910,7 @@ function pwBuildNeedOrderCard(supName, items) {
         <button class="btn btn-sm btn-primary" onclick="pwOpenFromMaster('${ek}')" style="font-size:10px;padding:2px 8px"><i class="ti ti-plus"></i> สร้างใบสั่ง</button>
       </div>
     </div>
-    <div id="${cardId}-body" style="display:none">
-      <div style="display:grid;grid-template-columns:1fr 48px 72px 72px;gap:4px;padding:3px 12px;font-size:10px;color:var(--ink4);background:var(--s2)">
-        <span>รายการ</span><span style="text-align:right">Stock</span><span style="text-align:center">Min/Max</span><span style="text-align:right">ต้องสั่ง</span>
-      </div>
-      ${rows}
-    </div>
+    <div id="${cardId}-body">${rows}</div>
   </div>`;
 }
 
