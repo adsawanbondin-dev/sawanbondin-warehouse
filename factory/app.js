@@ -5886,26 +5886,18 @@ function pwBuildNeedOrderCard(supName, items) {
 
   const rows = items.map((m,i) => {
     const need = Math.max(0, (m.max||0) - m.stock);
-    const st = stockStatus(m);
-    const sc = st==='out'?'var(--red)':st==='low'?'var(--acc)':'var(--ink)';
-    const sI = st==='out'?'ti-circle-x':st==='low'?'ti-alert-triangle':'ti-check';
-    const sC = st==='out'?'si-out':st==='low'?'si-low':'si-ok';
-    const sL = st==='out'?'หมด':st==='low'?'ต่ำ':'ปกติ';
     const rowId = `${cardId}-row-${i}`;
-    return `<div style="padding:8px 12px;border-bottom:0.5px solid var(--line)">
-      <div class="ir-name">${m.name}</div>
-      <div class="ir-code">${m.code}</div>
-      <div class="ir-meta" style="margin-bottom:6px">
-        <span class="ir-stock"><strong style="color:${sc}">${m.stock}</strong></span>
-        <span class="ir-si ${sC}"><i class="ti ${sI}" style="font-size:9px"></i> ${sL}</span>
-        <span class="ir-minmax">Min ${m.min} · Max ${m.max}</span>
+    return `<div style="padding:6px 12px;border-bottom:0.5px solid var(--line)">
+      <div class="ir-meta" style="margin-bottom:5px">
+        <span class="ir-minmax">Stock ${m.stock} · Min ${m.min} · Max ${m.max}</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 80px 28px;gap:6px;align-items:center;margin-top:4px">
+      <div style="display:grid;grid-template-columns:1fr 80px 28px;gap:6px;align-items:center">
+        <input class="fi" id="${rowId}-name" value="${m.name}" style="font-size:11px">
         <input class="fi" type="number" id="${rowId}-qty" value="${need}" style="font-size:11px;text-align:right" placeholder="จำนวน">
-        <input class="fi" type="number" id="${rowId}-price" value="${m.supplier_price||''}" style="font-size:11px;text-align:right" placeholder="ราคา/หน่วย">
-        <button style="background:none;border:none;cursor:pointer;color:#b03030;font-size:14px;padding:0" onclick="this.closest('[style*=border-bottom]')?.remove()"><i class="ti ti-x"></i></button>
+        <button style="background:none;border:none;cursor:pointer;color:#b03030;font-size:14px;padding:0" onclick="this.closest('[style*=padding]')?.remove()"><i class="ti ti-x"></i></button>
       </div>
-      <input type="hidden" id="${rowId}-name" value="${m.name}">
+      <input type="hidden" id="${rowId}-unit" value="${m.unit||''}">
+    </div>`;
     </div>`;
   }).join('');
 
@@ -5918,8 +5910,8 @@ function pwBuildNeedOrderCard(supName, items) {
       </div>
       <button class="btn btn-sm" onclick="pwCopyNeedOrder('${ek}')" style="font-size:10px;padding:2px 7px"><i class="ti ti-copy"></i> คัดลอก</button>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 80px 28px;gap:6px;padding:4px 12px;font-size:10px;color:var(--ink4);background:var(--s2)">
-      <span>จำนวน</span><span style="text-align:right">ราคา/หน่วย</span><span></span>
+    <div style="display:grid;grid-template-columns:1fr 80px 28px;gap:6px;padding:3px 12px;font-size:10px;color:var(--ink4);background:var(--s2)">
+      <span>ชื่อรายการ</span><span style="text-align:right">จำนวน</span><span></span>
     </div>
     ${rows}
     <div style="padding:8px 12px;background:var(--s2);border-top:0.5px solid var(--line);display:flex;justify-content:flex-end;gap:6px">
@@ -6031,8 +6023,8 @@ async function pwSaveFromCard(supName, supId, cardId) {
     const rowId = inp.id.replace('-name','');
     const name  = inp.value.trim();
     const qty   = parseFloat(document.getElementById(`${rowId}-qty`)?.value)||0;
-    const price = parseFloat(document.getElementById(`${rowId}-price`)?.value)||0;
-    if (name && qty > 0) items.push({ item_name:name, qty, price_per_unit:price, total_price:qty*price });
+    const unit  = document.getElementById(`${rowId}-unit`)?.value||'';
+    if (name && qty > 0) items.push({ item_name:name, qty, unit, price_per_unit:0, total_price:0 });
   });
   if (!items.length) { showToast('กรุณาระบุรายการและจำนวนค่ะ','err'); return; }
   const groupId = `grp_${Date.now()}`;
