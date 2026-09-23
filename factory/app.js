@@ -5521,6 +5521,16 @@ function openAlertReceiveModal(code, group) {
 }
 
 async function submitAlertReceiveModal() {
+  if (window._arSubmitting) return;
+  window._arSubmitting = true;
+  try {
+    await _submitAlertReceiveModalCore();
+  } finally {
+    window._arSubmitting = false;
+  }
+}
+
+async function _submitAlertReceiveModalCore() {
   const code  = document.getElementById('arCode').value;
   const qty   = parseFloat(document.getElementById('arQty').value);
   const lotSW = document.getElementById('arDate').value;
