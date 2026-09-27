@@ -1406,6 +1406,8 @@ function switchPage(p) {
   curPage = p;
   if (p==='master') {
     renderMasterPage();
+  } else if (p==='bom') {
+    renderBomPage();
   } else if (p==='suppliers') {
     renderSupplierPage();
   } else if (p.startsWith('alert-')) {
