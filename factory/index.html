@@ -536,6 +536,9 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
     <div class="nav-item" onclick="switchPage('alert-withdraw')" data-page="alert-withdraw">
       <i class="ti ti-clipboard-list"></i> รายการแจ้งผลิต
     </div>
+    <div class="nav-item" onclick="switchPage('bom')" data-page="bom">
+      <i class="ti ti-recipe"></i> สูตรการผลิต (BOM)
+    </div>
     <div class="nav-item" onclick="switchPage('suppliers')" data-page="suppliers">
       <i class="ti ti-building-store"></i> ผู้จำหน่าย
     </div>
@@ -557,6 +560,7 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   <div id="page-oem"         class="page-hidden"></div>
   <div id="page-sample"      class="page-hidden"></div>
   <div id="page-stockcount"  class="page-hidden"></div>
+  <div id="page-bom"        class="page-hidden"></div>
   <div id="page-th-withdraw" class="page-hidden"></div>
   <div id="page-alert-purchase" class="page-hidden"></div>
   <div id="page-alert-withdraw" class="page-hidden"></div>
@@ -1010,9 +1014,9 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 </div></div>
 
 <!-- SCRIPTS — โหลด config.js ก่อนสุด แล้วค่อย data.js แล้วค่อย app.js เสมอ -->
-<script src="config.js?v=202609230002"></script>
+<script src="config.js?v=202609230003"></script>
 <script src="data.js"></script>
-<script src="app.js?v=202609230002"></script>
+<script src="app.js?v=202609230003"></script>
 
 <script>
 // Helper สำหรับ assign pending modal
@@ -1200,3 +1204,60 @@ if ('serviceWorker' in navigator) {
 </div></div>
 
 </div></div></div><!-- /content-wrap /app-body /appRoot -->
+<!-- BOM Edit Modal -->
+<div class="modal-wrap" id="bomEditModal"><div class="modal" style="max-width:560px;width:95%">
+  <div class="modal-header">
+    <span id="bomEditTitle">สร้างสูตรการผลิต</span>
+    <button class="btn btn-sm" onclick="closeModal('bomEditModal')"><i class="ti ti-x"></i></button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
+    <div class="fg"><label class="fl">ชื่อสูตร *</label><input class="fi" id="bomEditName" placeholder="เช่น House of Magic"></div>
+    <div class="fg"><label class="fl">คำอธิบาย</label><input class="fi" id="bomEditDesc" placeholder="รายละเอียดสูตร"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="fg"><label class="fl">จำนวนที่ผลิต *</label><input class="fi" id="bomEditQty" type="number" min="0.001" step="0.001" placeholder="1"></div>
+      <div class="fg"><label class="fl">หน่วย *</label><input class="fi" id="bomEditUnit" placeholder="ชุด / กรัม / กก."></div>
+    </div>
+  </div>
+  <div style="font-size:12px;font-weight:500;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+    <span>วัตถุดิบในสูตร</span>
+    <button class="btn btn-sm" onclick="addBomItem()"><i class="ti ti-plus"></i> เพิ่มรายการ</button>
+  </div>
+  <div id="bomEditItems" style="max-height:300px;overflow-y:auto"></div>
+  <input type="hidden" id="bomEditId">
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;padding-top:12px;border-top:0.5px solid var(--line)">
+    <button class="btn" onclick="closeModal('bomEditModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="saveBomRecipe()"><i class="ti ti-device-floppy"></i> บันทึกสูตร</button>
+  </div>
+</div></div>
+
+<!-- BOM Package Modal -->
+<div class="modal-wrap" id="pkgModal"><div class="modal" style="max-width:600px;width:95%">
+  <div class="modal-header">
+    <span>ใช้สูตรผลิต: <strong id="pkgRecipeName"></strong></span>
+    <button class="btn btn-sm" onclick="closeModal('pkgModal')"><i class="ti ti-x"></i></button>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+    <div class="fg">
+      <label class="fl">จำนวนที่ผลิต *</label>
+      <input class="fi" id="pkgQty" type="number" min="0.001" step="0.001" placeholder="จำนวน batch" oninput="updatePkgPreview()">
+    </div>
+    <div class="fg">
+      <label class="fl">ผู้ดำเนินการ</label>
+      <input class="fi" id="pkgOperator" placeholder="ชื่อผู้ดำเนินการ">
+    </div>
+  </div>
+  <div class="fg" style="margin-bottom:12px">
+    <label class="fl">แผนก</label>
+    <div class="radio-group" id="pkgDept">
+      <div class="radio-opt active" onclick="selRadio(this,'pkgDept')">ผลิต</div>
+      <div class="radio-opt" onclick="selRadio(this,'pkgDept')">คลัง</div>
+      <div class="radio-opt" onclick="selRadio(this,'pkgDept')">บรรจุ</div>
+    </div>
+  </div>
+  <div id="pkgPreview"></div>
+  <input type="hidden" id="pkgRecipeId">
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;padding-top:12px;border-top:0.5px solid var(--line)">
+    <button class="btn" onclick="closeModal('pkgModal')">ยกเลิก</button>
+    <button class="btn btn-primary" onclick="submitPackaging()"><i class="ti ti-package"></i> เบิกวัตถุดิบ</button>
+  </div>
+</div></div>
