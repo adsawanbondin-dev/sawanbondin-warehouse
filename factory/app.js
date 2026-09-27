@@ -5495,27 +5495,38 @@ async function renderAlertGroupPage(group) {
     const items = allAlerts.filter(m => m.pg === pg);
     if (!items.length) return '';
     const rows = items.map((m,i) => {
-      const stockColor = m.stock <= 0 ? 'var(--red)' : 'var(--ink)';
-      return `<div style="display:flex;align-items:center;padding:8px 12px;border-bottom:0.5px solid var(--line);gap:8px">
-        <span style="font-size:10px;color:var(--ink4);width:16px;flex-shrink:0">${i+1}</span>
-        <span style="flex:1;font-size:12px;font-weight:500">${m.name}</span>
-        <span style="font-size:12px;font-weight:600;color:${stockColor}">${m.stock.toLocaleString()}</span>
+      const stockColor = m.stock <= 0 ? 'var(--red)' : 'var(--acc)';
+      const need = Math.max(0, (m.max||0) - m.stock);
+      return `<div style="display:grid;grid-template-columns:20px 1fr 56px 56px 56px 80px;align-items:center;padding:7px 12px;border-bottom:0.5px solid var(--line);gap:6px">
+        <span style="font-size:10px;color:var(--ink4)">${i+1}</span>
+        <span style="font-size:12px;font-weight:500">${m.name}</span>
+        <span style="text-align:right;font-size:12px;font-weight:600;color:${stockColor}">${m.stock.toLocaleString()}</span>
+        <span style="text-align:right;font-size:11px;color:var(--ink4)">${m.min.toLocaleString()}</span>
+        <span style="text-align:right;font-size:11px;color:var(--ink4)">${m.max.toLocaleString()}</span>
+        <span style="text-align:right;font-size:11px;font-weight:600;color:var(--ink)">ผลิต ${need.toLocaleString()} ${m.unit||''}</span>
       </div>`;
     }).join('');
     return `<div style="margin-bottom:12px;border:0.5px solid var(--line);border-radius:10px;overflow:hidden">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:var(--s2);border-bottom:0.5px solid var(--line)">
         <span style="font-size:11px;font-weight:500">${label}</span>
         <span style="font-size:10px;color:var(--ink4)">${items.length} รายการ</span>
-      </div>${rows}
+      </div>
+      <div style="display:grid;grid-template-columns:20px 1fr 56px 56px 56px 80px;padding:3px 12px;font-size:10px;color:var(--ink4);background:var(--s2);border-bottom:0.5px solid var(--line);gap:6px">
+        <span></span><span>รายการ</span><span style="text-align:right">คงเหลือ</span><span style="text-align:right">Min</span><span style="text-align:right">Max</span><span style="text-align:right">ต้องผลิต</span>
+      </div>
+      ${rows}
     </div>`;
   }).join('');
 
-  const copyLines = ['รายการแจ้งผลิต ' + today, ''];
+  const copyLines = ['รายการแจ้งผลิต ' + today, '─'.repeat(40), ''];
   WD_GROUPS.forEach(({pg, label}) => {
     const items = allAlerts.filter(m => m.pg === pg);
     if (!items.length) return;
-    copyLines.push('── ' + label + ' ──');
-    items.forEach((m,i) => copyLines.push((i+1) + '. ' + m.name + ' (' + m.stock + ')'));
+    copyLines.push('【 ' + label + ' 】');
+    items.forEach((m,i) => {
+      const need = Math.max(0, (m.max||0) - m.stock);
+      copyLines.push((i+1) + '. ' + m.name + '  คงเหลือ ' + m.stock + '  Min ' + m.min + '  Max ' + m.max + '  ผลิต ' + need + ' ' + (m.unit||''));
+    });
     copyLines.push('');
   });
   const copyText = copyLines.join('\n');
