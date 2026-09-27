@@ -5518,14 +5518,15 @@ async function renderAlertGroupPage(group) {
     </div>`;
   }).join('');
 
-  const copyLines = ['รายการแจ้งผลิต ' + today, '─'.repeat(40), ''];
+  const copyLines = ['รายการแจ้งผลิต ' + today, ''];
   WD_GROUPS.forEach(({pg, label}) => {
     const items = allAlerts.filter(m => m.pg === pg);
     if (!items.length) return;
-    copyLines.push('【 ' + label + ' 】');
+    copyLines.push(label);
+    copyLines.push(['#','รายการ','คงเหลือ','Min','Max','ต้องผลิต','หน่วย'].join('\t'));
     items.forEach((m,i) => {
       const need = Math.max(0, (m.max||0) - m.stock);
-      copyLines.push((i+1) + '. ' + m.name + '  คงเหลือ ' + m.stock + '  Min ' + m.min + '  Max ' + m.max + '  ผลิต ' + need + ' ' + (m.unit||''));
+      copyLines.push([i+1, m.name, m.stock, m.min, m.max, need, m.unit||''].join('\t'));
     });
     copyLines.push('');
   });
