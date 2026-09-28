@@ -684,7 +684,9 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
   </div>
   <div id="editMMSupplierFields" style="display:none;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
     <div class="fg"><label class="fl">ผู้จำหน่าย</label>
-      <input class="fi" id="editMMSupplier" type="text" placeholder="ชื่อผู้จำหน่าย"></div>
+      <select class="fi" id="editMMSupplier">
+        <option value="">— เลือกผู้จำหน่าย —</option>
+      </select></div>
     <div class="fg"><label class="fl" id="editMMLeadTimeLabel">Lead time (วัน)</label>
       <input class="fi" id="editMMLeadTime" type="number" min="0" step="1"></div>
   </div>
@@ -1014,9 +1016,9 @@ body{font-family:'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:
 </div></div>
 
 <!-- SCRIPTS — โหลด config.js ก่อนสุด แล้วค่อย data.js แล้วค่อย app.js เสมอ -->
-<script src="config.js?v=202609230003"></script>
+<script src="config.js?v=202609280001"></script>
 <script src="data.js"></script>
-<script src="app.js?v=202609230003"></script>
+<script src="app.js?v=202609280001"></script>
 
 <script>
 // Helper สำหรับ assign pending modal
