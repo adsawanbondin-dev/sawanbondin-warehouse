@@ -5837,19 +5837,18 @@ async function renderPurchaseWorkflowPage(div) {
 
     <!-- รายการจัดซื้อที่สร้างแล้ว -->
     ${existingPOList.length ? `
-    <div style="font-size:12px;font-weight:500;margin:16px 0 10px;color:var(--ink4);display:flex;align-items:center;gap:6px">
-      <i class="ti ti-clipboard-list"></i> ใบสั่งซื้อที่สร้างแล้ว
-      <div style="display:flex;gap:4px;margin-left:auto">
-        ${Object.entries(PW_STATUS).map(([k,v]) =>
-          `<button onclick="pwFilterStep('${k}')" id="pw-tab-${k}"
-            style="padding:3px 9px;border-radius:12px;border:1px solid ${v.color};font-size:10px;cursor:pointer;font-family:inherit;background:${statusCounts[k]?v.bg:'transparent'};color:${v.color}">
-            ${v.label}${stepBadge(statusCounts[k], v.color)}
-          </button>`).join('')}
-        <button onclick="pwFilterStep('all')" id="pw-tab-all"
-          style="padding:3px 9px;border-radius:12px;border:1px solid var(--line);font-size:10px;cursor:pointer;font-family:inherit;background:var(--s2);color:var(--ink4)">
-          ทั้งหมด
-        </button>
-      </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
+      ${[
+        {k:'ordered',  label:'จัดซื้อ',        icon:'ti-shopping-cart'},
+        {k:'waiting',  label:'รอชำระ',          icon:'ti-credit-card'},
+        {k:'tracking', label:'กำลังจัดส่ง',     icon:'ti-truck'},
+        {k:'received', label:'รับเข้า',         icon:'ti-package-import'},
+      ].map(({k,label,icon}) => `
+        <button onclick="pwFilterStep('${k}')" id="pw-tab-${k}"
+          style="display:flex;align-items:center;gap:5px;padding:6px 14px;border-radius:20px;border:1px solid var(--line);font-size:11px;cursor:pointer;font-family:inherit;background:var(--surface);color:var(--ink3);white-space:nowrap;flex-shrink:0">
+          <i class="ti ${icon}" style="font-size:12px"></i> ${label}
+          ${statusCounts[k]?`<span style="background:var(--acc);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px">${statusCounts[k]}</span>`:''}
+        </button>`).join('')}
     </div>
     <div id="pw-cards">${existingPOList.map(g => pwBuildGroupCard(g)).join('')}</div>
     ` : ''}
@@ -6021,7 +6020,6 @@ function pwBuildGroupCard(g) {
         <button style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px" onclick="pwDeleteGroup('${groupId}')"><i class="ti ti-trash"></i></button>
       </div>
     </div>
-    <div style="padding:8px 14px;display:flex;align-items:center;gap:4px;border-bottom:0.5px solid var(--line)">${stepBar}</div>
     <div style="padding:8px 14px">
       <div style="display:grid;grid-template-columns:1fr 60px 70px 80px;gap:6px;font-size:10px;color:var(--ink4);margin-bottom:4px">
         <span>รายการ</span><span style="text-align:right">จำนวน</span><span style="text-align:right">ราคา/หน่วย</span><span style="text-align:right">รวม</span>
@@ -6039,9 +6037,18 @@ function pwBuildGroupCard(g) {
 let _pwCurrentStep = 'ordered';
 function pwFilterStep(step) {
   _pwCurrentStep = step;
-  Object.keys(PW_STATUS).concat(['all']).forEach(k => {
+  ['ordered','waiting','tracking','received'].forEach(k => {
     const t = document.getElementById(`pw-tab-${k}`);
-    if (t) t.style.fontWeight = k===step?'600':'400';
+    if (!t) return;
+    if (k === step) {
+      t.style.background = 'var(--ink)';
+      t.style.color = 'var(--surface)';
+      t.style.borderColor = 'var(--ink)';
+    } else {
+      t.style.background = 'var(--surface)';
+      t.style.color = 'var(--ink3)';
+      t.style.borderColor = 'var(--line)';
+    }
   });
   const groups = {};
   pwOrders.forEach(po => {
