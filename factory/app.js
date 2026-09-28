@@ -47,8 +47,8 @@ const WAREHOUSE_CONFIG = _CFG.WAREHOUSE_CONFIG || {
 };
 const WAREHOUSE_PAGES = Object.keys(WAREHOUSE_CONFIG);
 
-const ACTION_LABELS = { receive:'รับเข้า', withdraw:'เบิก', return_good:'คืนดี', return_bad:'คืนเสีย', transform_lot:'แปรรูป' };
-const ACTION_BADGE  = { receive:'badge-receive', withdraw:'badge-withdraw', return_good:'badge-return-good', return_bad:'badge-return-bad', transform_lot:'badge-transform' };
+const ACTION_LABELS = { receive:'รับเข้า', withdraw:'เบิก', return_good:'คืนดี', return_bad:'คืนเสีย', transform_lot:'แปรรูป', transform_out:'แปรรูปออก', transform_in:'แปรรูปเข้า' };
+const ACTION_BADGE  = { receive:'badge-receive', withdraw:'badge-withdraw', return_good:'badge-return-good', return_bad:'badge-return-bad', transform_lot:'badge-transform', transform_out:'badge-transform', transform_in:'badge-transform' };
 const DEPT_PILL_CLS = { 'ผลิต':'dept-prod', 'คลัง':'dept-ware', 'บรรจุ':'dept-pack', 'Tea House':'dept-tea' };
 
 /* ═══════════════════════════════════════════
