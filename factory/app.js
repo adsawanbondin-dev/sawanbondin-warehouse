@@ -3638,6 +3638,9 @@ async function boot(){
   // Sync items.stock จาก lots ก่อนโหลด
   try { await sb.rpc('sync_item_stock_from_lots'); } catch(e) {}
 
+  // โหลด payment suppliers
+  await dbLoadPaymentSuppliers();
+
   // Load items
   const ok=await dbLoadItems();
   if(!ok){
