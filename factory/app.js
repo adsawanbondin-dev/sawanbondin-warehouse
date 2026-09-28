@@ -2989,7 +2989,14 @@ function editMinMax(code){
   const sf=document.getElementById('editMMSupplierFields');
   if(sf){
     sf.style.display=SUPPLIER_FIELDS?'grid':'none';
-    document.getElementById('editMMSupplier').value=m.supplier_name||'';
+    // โหลด payment_suppliers เข้า dropdown
+    const supSel = document.getElementById('editMMSupplier');
+    if (supSel && paymentSuppliers.length) {
+      supSel.innerHTML = '<option value="">— เลือกผู้จำหน่าย —</option>' +
+        paymentSuppliers.map(s=>`<option value="${s.name}"${m.supplier_name===s.name?' selected':''}>${s.name}</option>`).join('');
+    } else if (supSel) {
+      supSel.value = m.supplier_name||'';
+    }
     const leadLabel=document.getElementById('editMMLeadTimeLabel');
     const leadInput=document.getElementById('editMMLeadTime');
     if(SUPPLIER_FIELDS==='date'){
