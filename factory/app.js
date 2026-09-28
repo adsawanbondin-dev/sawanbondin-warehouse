@@ -2088,7 +2088,15 @@ function ddFilter(pg,v,isTransform=false){ buildDDList(pg,v,isTransform); docume
 function ddListFilter(pg,v,isTransform=false){ buildDDList(pg,v,isTransform); }
 function ddShow(pg)        { const idispId=document.getElementById(pg+'-tf-idisplay')?pg+'-tf-idisplay':pg+'-idisplay'; const isTransform=idispId.includes('-tf-'); buildDDList(pg,document.getElementById(idispId)?.value||'',isTransform); document.getElementById(pg+'-dd').style.display='block'; }
 function ddToggle(pg)      { const d=document.getElementById(pg+'-dd'); if(!d)return; d.style.display=d.style.display==='none'?'block':'none'; if(d.style.display==='block')ddShow(pg); }
-function selTransformItem(pg, item, code) {
+async function selTransformItem(pg, item, code) {
+  // sync stock จาก lots ก่อนเปิดฟอร์มแปรรูป
+  await dbLoadLotsForItem(code);
+  const totalLotStock = (lotDB[code]||[]).reduce((s,l)=>s+l.stock,0);
+  const m = masterDB.find(x=>x.code===code);
+  if (m && m.stock !== totalLotStock) {
+    await sb.from('items').update({ stock: totalLotStock, updated_at: new Date().toISOString() }).eq('code', code);
+    m.stock = totalLotStock;
+  }
   document.getElementById(pg+'-tf-idisplay').value = item;
   document.getElementById(pg+'-tf-ival').value = code;
   document.getElementById(pg+'-dd').style.display='none';
