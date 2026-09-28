@@ -1982,9 +1982,11 @@ async function _submitTransformCore(pg) {
   if (!result.ok) return;
 
   await dbInsertTransaction({
-    ...baseTx, action_type:'transform_out', quantity:qtyOut,
-    lot_sw:fromLotSW, note:`แปรรูปออก ${qtyOut.toLocaleString()} → ${batches.length} Batch`,
-    old_stock:result.old_stock, new_stock:result.new_stock,
+    code:code, item:name, pg, name:opName, dept:opDept, via:'manual',
+    type:'transform_out', qty:qtyOut,
+    lotSW:fromLotSW, lotId:parseInt(fromLotId),
+    note:`แปรรูปออก ${qtyOut.toLocaleString()} → ${batches.length} Batch`,
+    oldStock:result.old_stock, newStock:result.new_stock,
   });
 
   // บันทึก transform_in แยกตาม batch
@@ -1995,9 +1997,10 @@ async function _submitTransformCore(pg) {
       await dbTransformStockLot(code, parseInt(fromLotId), 0, b.date, b.qty, b.note);
     }
     await dbInsertTransaction({
-      ...baseTx, action_type:'transform_in', quantity:b.qty,
-      lot_sw:b.date, note:`${b.label} ← Lot ${fromDateStr}${b.note?' — '+b.note:''}`,
-      old_stock:result.old_stock, new_stock:result.new_stock,
+      code:code, item:name, pg, name:opName, dept:opDept, via:'manual',
+      type:'transform_in', qty:b.qty,
+      lotSW:b.date, note:`${b.label} ← Lot ${fromDateStr}${b.note?' — '+b.note:''}`,
+      oldStock:result.old_stock, newStock:result.new_stock,
     });
   }
 
