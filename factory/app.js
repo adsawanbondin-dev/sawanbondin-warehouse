@@ -963,9 +963,9 @@ async function validateForm(pg, skipLot = false) {
 
   // stock check for withdraw
   if (!skipLot && (action === 'withdraw') && item) {
-    const mi = masterDB.find(m => m.name===item);
+    const code = document.getElementById(pg+'-icode')?.value || '';
+    const mi = code ? masterDB.find(m => m.code===code) : masterDB.find(m => m.name===item);
     if (mi) {
-      // reload stock จาก DB ก่อนเช็ค
       const { data: fresh } = await sb.from('items').select('stock').eq('code', mi.code).single();
       if (fresh) mi.stock = fresh.stock;
       if (qty > mi.stock) errors.push(`สต็อกไม่พอ (มี ${mi.stock} เหลือ)`);
@@ -1568,6 +1568,7 @@ function renderForm(pg) {
         <input class="item-input" id="${pg}-idisplay" placeholder="พิมพ์เพื่อค้นหา"
           oninput="ddFilter('${pg}',this.value)" onfocus="ddShow('${pg}')"
           autocomplete="off">
+        <input type="hidden" id="${pg}-icode">
         <button class="item-btn" onclick="ddToggle('${pg}')">
           <i class="ti ti-chevron-down"></i>
         </button>
@@ -2119,7 +2120,9 @@ function selItem(pg, item, code) {
   const di=document.getElementById(pg+'-idisplay');
   const iv=document.getElementById(pg+'-ival');
   const dd=document.getElementById(pg+'-dd');
+  const ic=document.getElementById(pg+'-icode');
   if(di)di.value=item; if(iv)iv.value=item; if(dd)dd.style.display='none';
+  if(ic)ic.value=code||'';
   // ค้นหาด้วย code ก่อน (แม่นยำกว่า) แล้วค่อย fallback เป็นชื่อ+คลัง
   const m = code
     ? masterDB.find(x=>x.code===code)
