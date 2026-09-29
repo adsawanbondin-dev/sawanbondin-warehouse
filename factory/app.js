@@ -2390,6 +2390,16 @@ function renderBatchCard(pg){
   </div>`).join('');
 }
 async function submitBatch(pg){
+  if (window._batchSubmitting) return;
+  window._batchSubmitting = true;
+  try {
+    await _submitBatchCore(pg);
+  } finally {
+    window._batchSubmitting = false;
+  }
+}
+
+async function _submitBatchCore(pg){
   const rows=batchDB[pg];
   if(!rows.length){alert('ยังไม่มีรายการ');return;}
   const name=(document.getElementById(pg+'-name')?.value||'').trim();
