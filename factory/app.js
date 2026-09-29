@@ -1248,27 +1248,21 @@ async function deleteTx(id, pg) {
   const r = txState[pg].records.find(x=>x.id==id);
   if (!r) return;
 
-  // ลบ transaction ก่อน
+  // ลบ transaction — trigger จะ sync lot stock อัตโนมัติ
   const { error } = await sb.from('transactions').delete().eq('id', id);
   if (error) { showToast('ลบไม่สำเร็จ: '+error.message,'err'); return; }
 
-  // sync lot stock จาก lot_id ที่ถูกลบ
-  if (r.lotId) {
-    const delta = r.type==='receive'||r.type==='return_good'||r.type==='transform_in' ? -r.qty : r.qty;
-    const { data: lot } = await sb.from('lots').select('stock').eq('id', r.lotId).single();
-    if (lot) {
-      const newLotStock = Math.max(0, lot.stock + delta);
-      await sb.from('lots').update({ stock: newLotStock, updated_at: new Date().toISOString() }).eq('id', r.lotId);
-    }
-  }
-
-  // sync items.stock จาก sum(lots)
-  const mi = masterDB.find(m => m.code === r.code);
-  if (mi) {
+  // รอ trigger ทำงาน แล้ว reload lot และ sync items.stock
+  await new Promise(r => setTimeout(r, 300));
+  if (r.code) {
     const { data: lots } = await sb.from('lots').select('stock').eq('item_code', r.code);
-    const total = (lots||[]).reduce((s,l)=>s+l.stock,0);
-    mi.stock = total;
+    const total = (lots||[]).reduce((s,l)=>s+(l.stock||0),0);
     await sb.from('items').update({ stock: total, updated_at: new Date().toISOString() }).eq('code', r.code);
+    const mi = masterDB.find(m => m.code === r.code);
+    if (mi) mi.stock = total;
+    if (r.lotId && lotDB[r.code]) {
+      await dbLoadLotsForItem(r.code);
+    }
   }
 
   txState[pg].records = txState[pg].records.filter(x=>x.id!=id);
