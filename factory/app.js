@@ -5854,10 +5854,19 @@ async function renderPurchaseWorkflowPage(div) {
   });
   const existingPOList = Object.values(groups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
 
+  // ดึง suppliers ที่มี PO active อยู่แล้ว
+  const activePOSuppliers = new Set(
+    existingPOList
+      .filter(g => ['ordered','waiting','tracking'].includes(g.items[0]?.pay_status||'ordered'))
+      .map(g => g.supplier?.name)
+      .filter(Boolean)
+  );
+
   // ดึงรายการ belowMin ที่ยังไม่ได้บันทึก PO
   const belowMinBySup = {};
   masterDB.filter(m =>
     m.is_active !== false && m.min > 0 && m.stock <= m.min && m.supplier_name &&
+    !activePOSuppliers.has(m.supplier_name) &&
     !_pwSavedSuppliers.has(m.supplier_name)
   ).forEach(m => {
     if (!belowMinBySup[m.supplier_name]) belowMinBySup[m.supplier_name] = [];
@@ -6038,8 +6047,7 @@ function pwBuildGroupCard(g) {
       <button class="btn btn-sm" onclick="pwSavePrices('${groupId}')"><i class="ti ti-device-floppy"></i> บันทึกราคา</button>
       <button class="btn btn-sm" onclick="pwCopyPayment('${groupId}')"><i class="ti ti-copy"></i> คัดลอกใบเบิก</button>
       <div style="margin-left:auto;display:flex;gap:6px">
-        <button class="btn btn-sm" onclick="pwMoveStep('${groupId}','paid')"><i class="ti ti-check"></i> ชำระแล้ว</button>
-        <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','tracking')">→ ติดตามพัสดุ</button>
+        <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','tracking')"><i class="ti ti-check"></i> ชำระแล้ว → ติดตามพัสดุ</button>
       </div>`;
   } else if (status === 'paid') {
     actions = `
