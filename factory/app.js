@@ -5833,6 +5833,9 @@ function pwOpenNewOrder() {
   document.getElementById('pw-new-modal').style.display = 'flex';
 }
 
+// เก็บ supplier ที่บันทึก PO แล้วในรอบนี้
+let _pwSavedSuppliers = new Set();
+
 async function renderPurchaseWorkflowPage(div) {
   div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px;animation:spin 1s linear infinite"></i></div>`;
   await dbLoadPaymentSuppliers();
@@ -5851,10 +5854,11 @@ async function renderPurchaseWorkflowPage(div) {
   });
   const existingPOList = Object.values(poGroups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
 
-  // ดึงรายการจาก master ที่ stock <= min และมี supplier_name
+  // ดึงรายการจาก master ที่ stock <= min และมี supplier_name (ยกเว้นที่บันทึกไปแล้ว)
   const belowMinBySup = {};
   masterDB.filter(m =>
-    m.is_active !== false && m.min > 0 && m.stock <= m.min && m.supplier_name
+    m.is_active !== false && m.min > 0 && m.stock <= m.min && m.supplier_name &&
+    !_pwSavedSuppliers.has(m.supplier_name)
   ).forEach(m => {
     if (!belowMinBySup[m.supplier_name]) belowMinBySup[m.supplier_name] = [];
     belowMinBySup[m.supplier_name].push(m);
@@ -6134,9 +6138,8 @@ async function pwSaveFromCard(supName, supId, cardId) {
       created_at: new Date().toISOString(), updated_at: new Date().toISOString()
     })
   ));
-  document.getElementById(cardId)?.remove();
+  _pwSavedSuppliers.add(supName);
   showToast(`บันทึกคำสั่งซื้อ ${supName} แล้วค่ะ`);
-  // reload PO list แล้วเลื่อนไป tab จัดซื้อ
   const div = document.getElementById('page-alert-purchase');
   await renderPurchaseWorkflowPage(div);
   pwFilterStep('ordered');
