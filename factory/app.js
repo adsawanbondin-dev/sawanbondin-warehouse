@@ -6044,6 +6044,7 @@ function pwBuildGroupCard(g) {
       <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','waiting')"><i class="ti ti-check"></i> สั่งซื้อแล้ว → ส่งเบิก</button>`;
   } else if (status === 'waiting') {
     actions = `
+      <button class="btn btn-sm" onclick="pwAddExtraItem('${groupId}')"><i class="ti ti-plus"></i> เพิ่มรายการ</button>
       <button class="btn btn-sm" onclick="pwSavePrices('${groupId}')"><i class="ti ti-device-floppy"></i> บันทึกราคา</button>
       <button class="btn btn-sm" onclick="pwCopyPayment('${groupId}')"><i class="ti ti-copy"></i> คัดลอกใบเบิก</button>
       <div style="margin-left:auto;display:flex;gap:6px">
@@ -6231,14 +6232,46 @@ async function pwSavePrices(groupId) {
   await renderPurchaseWorkflowPage(div);
 }
 
+async function pwAddExtraItem(groupId) {
+  const name = prompt('ชื่อรายการเพิ่มเติม (เช่น ค่าขนส่ง):');
+  if (!name) return;
+  const qty = parseFloat(prompt('จำนวน:') || '1') || 1;
+  const price = parseFloat(prompt('ราคา/หน่วย (บาท):') || '0') || 0;
+  const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  const supId = items[0]?.supplier_id;
+  const poGroupId = items[0]?.po_group_id || groupId;
+  const { data } = await sb.from('purchase_orders').insert({
+    supplier_id: supId, po_group_id: poGroupId,
+    item_name: name, qty, price_per_unit: price, total_price: qty*price,
+    pay_status: 'waiting', is_active: true,
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+  }).select().single();
+  if (data) {
+    data.payment_suppliers = items[0]?.payment_suppliers;
+    pwOrders.push(data);
+    if (window._pwExistingPOList) {
+      const g = window._pwExistingPOList.find(g => g.key === groupId);
+      if (g) g.items.push(data);
+    }
+    pwFilterStep('waiting');
+    showToast(`เพิ่ม "${name}" แล้วค่ะ`);
+  }
+}
+
 async function pwMoveStep(groupId, newStatus) {
   const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
   await Promise.all(items.map(po =>
     sb.from('purchase_orders').update({ pay_status: newStatus, updated_at: new Date().toISOString() }).eq('id', po.id)
   ));
   items.forEach(po => po.pay_status = newStatus);
-  showToast(`อัปเดตสถานะเป็น "${PW_STATUS[newStatus]?.label}" แล้วค่ะ`);
-  pwFilterStep(_pwCurrentStep);
+  // update _pwExistingPOList
+  if (window._pwExistingPOList) {
+    const g = window._pwExistingPOList.find(g => g.key === groupId);
+    if (g) { g.status = newStatus; g.items.forEach(i => i.pay_status = newStatus); }
+  }
+  showToast(`อัปเดตสถานะแล้วค่ะ`);
+  // เปลี่ยนไป tab ของ status ใหม่
+  pwFilterStep(newStatus);
 }
 
 async function pwSaveTracking(groupId) {
