@@ -2355,7 +2355,7 @@ async function submitF(pg) {
 }
 
 /* ── BATCH ── */
-function addToBatch(pg) {
+async function addToBatch(pg) {
   const errors = await validateForm(pg, true);
   if (errors.length) { showValidationErrors(errors); return; }
   const cfg    = WAREHOUSE_CONFIG[pg];
