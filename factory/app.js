@@ -6000,30 +6000,30 @@ function pwBuildGroupCard(g) {
     ${i<steps.length-1?`<div style="flex:1;height:2px;background:${i<curIdx?PW_STATUS[steps[i]].color:'var(--line)'};margin-top:9px;max-width:24px"></div>`:''}`
   ).join('');
 
-  // รายการ + ช่องราคาตอน payment
+  // รายการ + ช่องราคาตอน waiting
+  const isWaiting = status === 'waiting';
   const itemRows = g.items.map((po,i) => {
-    const isPayment = status === 'payment';
-    return `<div style="display:grid;grid-template-columns:1fr 60px ${isPayment?'90px 80px':'70px 80px'};gap:6px;padding:6px 0;border-bottom:0.5px solid var(--line);font-size:12px;align-items:center" id="pw-po-row-${po.id}">
+    return `<div style="display:grid;grid-template-columns:1fr 55px 90px 85px;gap:6px;padding:6px 0;border-bottom:0.5px solid var(--line);font-size:12px;align-items:center" id="pw-po-row-${po.id}">
       <div style="font-weight:500">${po.item_name}</div>
-      <div style="text-align:right;color:var(--ink4)">${po.qty} ${po.unit||''}</div>
-      ${isPayment ? `<input class="fi" type="number" placeholder="ราคา/หน่วย" value="${po.price_per_unit||''}"
+      <div style="text-align:right;color:var(--ink4);font-size:11px">${po.qty} ${po.unit||''}</div>
+      ${isWaiting ? `<input class="fi" type="number" placeholder="ราคา/หน่วย" value="${po.price_per_unit||''}"
         style="font-size:11px;text-align:right" id="pw-price-${po.id}"
-        oninput="pwCalcTotal('${groupId}')">` : `<div style="text-align:right;color:var(--ink4)">${po.price_per_unit?po.price_per_unit.toLocaleString()+' ฿':'-'}</div>`}
-      <div style="text-align:right;font-weight:500" id="pw-total-${po.id}">${po.total_price?po.total_price.toLocaleString()+' ฿':'-'}</div>
+        oninput="pwCalcTotal('${groupId}')">` : `<div style="text-align:right;color:var(--ink4);font-size:11px">${po.price_per_unit?po.price_per_unit.toLocaleString()+' ฿':'-'}</div>`}
+      <div style="text-align:right;font-weight:500;font-size:11px" id="pw-total-${po.id}">${po.total_price?po.total_price.toLocaleString()+' ฿':'-'}</div>
     </div>`;
   }).join('');
 
   // ข้อมูลบัญชี
-  const bankInfo = (status === 'payment' || status === 'paid') && sup ? `
+  const bankInfo = (status === 'waiting' || status === 'paid') && sup ? `
     <div style="margin:8px 14px;padding:10px 12px;background:var(--s2);border-radius:8px;font-size:11px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <span style="color:var(--ink4)">ยอดรวมทั้งหมด</span>
-        <span style="font-size:14px;font-weight:600" id="pw-grand-total-${groupId}">${total?total.toLocaleString()+' ฿':'กรอกราคาเพื่อคำนวณ'}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="color:var(--ink4)">รวมยอดโอนทั้งหมด</span>
+        <span style="font-size:14px;font-weight:600;color:var(--ink)" id="pw-grand-total-${groupId}">${total?total.toLocaleString()+' ฿':'กรอกราคาเพื่อคำนวณ'}</span>
       </div>
-      <div style="border-top:0.5px solid var(--line);padding-top:8px;color:var(--ink3)">
-        <div>ช่องทางชำระ: <strong>${sup.pay_type||'-'}</strong></div>
-        <div>ธนาคาร: <strong>${sup.bank||'-'}</strong> · เลขที่: <strong>${sup.acc_num||'-'}</strong></div>
-        <div>ชื่อบัญชี: <strong>${sup.acc_name||'-'}</strong></div>
+      <div style="border-top:0.5px solid var(--line);padding-top:8px;line-height:1.8">
+        <div style="color:var(--ink3)">ธนาคาร <strong style="color:var(--ink)">${sup.bank||'-'}</strong></div>
+        <div style="color:var(--ink3)">เลขที่บัญชี <strong style="color:var(--ink)">${sup.acc_num||'-'}</strong></div>
+        <div style="color:var(--ink3)">ชื่อบัญชี <strong style="color:var(--ink)">${sup.acc_name||'-'}</strong></div>
       </div>
     </div>` : '';
 
@@ -6032,13 +6032,15 @@ function pwBuildGroupCard(g) {
   if (status === 'ordered') {
     actions = `
       <button class="btn btn-sm" onclick="pwCopyOrder('${groupId}')"><i class="ti ti-copy"></i> คัดลอกใบสั่งซื้อ</button>
-      <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','waiting')"><i class="ti ti-check"></i> สั่งซื้อแล้ว → บันทึกไปเบิกเงิน</button>`;
-  } else if (status === 'payment') {
+      <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','waiting')"><i class="ti ti-check"></i> สั่งซื้อแล้ว → ส่งเบิก</button>`;
+  } else if (status === 'waiting') {
     actions = `
       <button class="btn btn-sm" onclick="pwSavePrices('${groupId}')"><i class="ti ti-device-floppy"></i> บันทึกราคา</button>
       <button class="btn btn-sm" onclick="pwCopyPayment('${groupId}')"><i class="ti ti-copy"></i> คัดลอกใบเบิก</button>
-      <button class="btn btn-sm" onclick="pwMoveStep('${groupId}','paid')"><i class="ti ti-check"></i> ชำระแล้ว</button>
-      <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','tracking')">→ ติดตามพัสดุ</button>`;
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="pwMoveStep('${groupId}','paid')"><i class="ti ti-check"></i> ชำระแล้ว</button>
+        <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','tracking')">→ ติดตามพัสดุ</button>
+      </div>`;
   } else if (status === 'paid') {
     actions = `
       <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','tracking')">→ ติดตามพัสดุ</button>`;
@@ -6338,14 +6340,27 @@ function pwCopyPayment(groupId) {
   const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
   const sup = items[0]?.payment_suppliers;
   const total = items.reduce((s,i)=>s+(i.total_price||0),0);
+  // ดึงราคาจาก input ที่กรอกอยู่ (ถ้ามี)
+  const liveItems = items.map(po => {
+    const livePrice = parseFloat(document.getElementById(`pw-price-${po.id}`)?.value) || po.price_per_unit || 0;
+    const liveTotal = livePrice * po.qty;
+    return { ...po, price_per_unit: livePrice, total_price: liveTotal };
+  });
+  const liveTotal = liveItems.reduce((s,i)=>s+i.total_price,0);
+
   const lines = [
-    `เบิกค่าวัตถุดิบ ${sup?.name||''}`, '─'.repeat(30),
-    ...items.map((po,i)=>`${i+1}. ${po.item_name}  จำนวน ${po.qty} ${po.unit||''}  ราคา ${po.total_price?.toLocaleString()||'-'} บาท`),
-    '─'.repeat(30),
-    `รวมยอดโอนชำระทั้งหมด ${total.toLocaleString()} บาท`,
-    `ธนาคาร ${sup?.bank||'-'}  เลขที่บัญชี ${sup?.acc_num||'-'}  ชื่อบัญชี ${sup?.acc_name||'-'}`,
+    `เบิกค่าวัตถุดิบ`,
+    `${sup?.name||''}`,
+    '',
+    ...liveItems.map(po => `- ${po.item_name} จำนวน ${po.qty} ${po.unit||''}${po.price_per_unit?` ${po.price_per_unit.toLocaleString()} บาท`:''}`),
+    '',
+    `รวมยอดโอน ${liveTotal.toLocaleString()} บาท`,
+    '',
+    `ธนาคาร ${sup?.bank||'-'}`,
+    `เลขที่บัญชี ${sup?.acc_num||'-'}`,
+    `ชื่อบัญชี ${sup?.acc_name||'-'}`,
   ];
-  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกใบส่งเบิกแล้วค่ะ'));
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกใบเบิกแล้วค่ะ'));
 }
 
 async function pwDeleteGroup(groupId) {
