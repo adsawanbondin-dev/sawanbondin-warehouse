@@ -1990,17 +1990,18 @@ async function _submitTransformCore(pg) {
   });
 
   // บันทึก transform_in แยกตาม batch
+  let batchResult = result;
   for (const b of batches) {
     const newDateStr = new Date(b.date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
-    // สำหรับ batch ที่ 2 เป็นต้นไป ต้องเรียก RPC แยก
     if (batches.indexOf(b) > 0) {
-      await dbTransformStockLot(code, parseInt(fromLotId), 0, b.date, b.qty, b.note);
+      batchResult = await dbTransformStockLot(code, parseInt(fromLotId), 0, b.date, b.qty, b.note);
     }
     await dbInsertTransaction({
       code:code, item:name, pg, name:opName, dept:opDept, via:'manual',
       type:'transform_in', qty:b.qty,
-      lotSW:b.date, note:`${b.label} ← Lot ${fromDateStr}${b.note?' — '+b.note:''}`,
-      oldStock:result.old_stock, newStock:result.new_stock,
+      lotSW:b.date, lotId:batchResult.new_lot_id||null,
+      note:`${b.label} ← Lot ${fromDateStr}${b.note?' — '+b.note:''}`,
+      oldStock:batchResult.old_stock, newStock:batchResult.new_stock,
     });
   }
 
