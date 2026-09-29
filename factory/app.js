@@ -6134,9 +6134,12 @@ async function pwSaveFromCard(supName, supId, cardId) {
       created_at: new Date().toISOString(), updated_at: new Date().toISOString()
     })
   ));
+  document.getElementById(cardId)?.remove();
   showToast(`บันทึกคำสั่งซื้อ ${supName} แล้วค่ะ`);
+  // reload PO list แล้วเลื่อนไป tab จัดซื้อ
   const div = document.getElementById('page-alert-purchase');
   await renderPurchaseWorkflowPage(div);
+  pwFilterStep('ordered');
 }
 
 function pwCopyNeedOrder(supName) {
