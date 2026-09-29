@@ -947,7 +947,7 @@ function handleScanResult(raw, pg) {
 }
 
 
-function validateForm(pg, skipLot = false) {
+async function await validateForm(pg, skipLot = false) {
   const errors = [];
   const name = (document.getElementById(pg+'-name')?.value||'').trim();
   const item = document.getElementById(pg+'-ival')?.value || document.getElementById(pg+'-idisplay')?.value?.trim() || '';
@@ -964,7 +964,12 @@ function validateForm(pg, skipLot = false) {
   // stock check for withdraw
   if (!skipLot && (action === 'withdraw') && item) {
     const mi = masterDB.find(m => m.name===item);
-    if (mi && qty > mi.stock) errors.push(`สต็อกไม่พอ (มี ${mi.stock} เหลือ)`);
+    if (mi) {
+      // reload stock จาก DB ก่อนเช็ค
+      const { data: fresh } = await sb.from('items').select('stock').eq('code', mi.code).single();
+      if (fresh) mi.stock = fresh.stock;
+      if (qty > mi.stock) errors.push(`สต็อกไม่พอ (มี ${mi.stock} เหลือ)`);
+    }
   }
 
   // lot SW ไม่บังคับ — user เลือกเองได้
@@ -2240,7 +2245,7 @@ function pickLot(el,pg,lotSW,lotId){
 
 /* ── SUBMIT SINGLE ── */
 async function submitF(pg) {
-  const errors = validateForm(pg);
+  const errors = await validateForm(pg);
   if (errors.length) { showValidationErrors(errors); return; }
 
   const cfg    = WAREHOUSE_CONFIG[pg];
@@ -2351,7 +2356,7 @@ async function submitF(pg) {
 
 /* ── BATCH ── */
 function addToBatch(pg) {
-  const errors = validateForm(pg, true);
+  const errors = await validateForm(pg, true);
   if (errors.length) { showValidationErrors(errors); return; }
   const cfg    = WAREHOUSE_CONFIG[pg];
   const item   = document.getElementById(pg+'-ival')?.value||document.getElementById(pg+'-idisplay')?.value?.trim()||'';
