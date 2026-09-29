@@ -947,7 +947,7 @@ function handleScanResult(raw, pg) {
 }
 
 
-async function await validateForm(pg, skipLot = false) {
+async function validateForm(pg, skipLot = false) {
   const errors = [];
   const name = (document.getElementById(pg+'-name')?.value||'').trim();
   const item = document.getElementById(pg+'-ival')?.value || document.getElementById(pg+'-idisplay')?.value?.trim() || '';
