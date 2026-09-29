@@ -6263,14 +6263,10 @@ async function pwMoveStep(groupId, newStatus) {
   await Promise.all(items.map(po =>
     sb.from('purchase_orders').update({ pay_status: newStatus, updated_at: new Date().toISOString() }).eq('id', po.id)
   ));
-  items.forEach(po => po.pay_status = newStatus);
-  // update _pwExistingPOList
-  if (window._pwExistingPOList) {
-    const g = window._pwExistingPOList.find(g => g.key === groupId);
-    if (g) { g.status = newStatus; g.items.forEach(i => i.pay_status = newStatus); }
-  }
   showToast(`อัปเดตสถานะแล้วค่ะ`);
-  // เปลี่ยนไป tab ของ status ใหม่
+  // reload ทั้งหมดจาก DB
+  const div = document.getElementById('page-alert-purchase');
+  await renderPurchaseWorkflowPage(div);
   pwFilterStep(newStatus);
 }
 
