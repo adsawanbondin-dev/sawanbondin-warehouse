@@ -6110,8 +6110,6 @@ function pwFilterStep(step) {
   cards.innerHTML = list.length ? list.map(g => pwBuildGroupCard(g)).join('') :
     `<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-clipboard-off" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>ไม่มีรายการค่ะ</div>`;
 }
-}
-
 
 async function pwSaveFromCard(supName, supId, cardId) {
   if (!supId) { showToast('ไม่พบข้อมูลซัพพลายเออร์ค่ะ','err'); return; }
