@@ -5799,11 +5799,11 @@ switchPage = async function(p) {
 let pwOrders = []; // cache purchase orders
 
 const PW_STATUS = {
-  ordered:  { label: 'สั่งซื้อแล้ว',       color: '#5b8fe8', bg: '#eef3fc' },
-  waiting:  { label: 'ส่งเบิกแล้ว',        color: '#e28c3a', bg: '#fef6ec' },
-  paid:     { label: 'ชำระแล้ว',           color: '#2d9e6b', bg: '#edfaf4' },
-  tracking: { label: 'กำลังจัดส่ง',        color: '#9b59b6', bg: '#f5eefb' },
-  received: { label: 'รับเข้าคลังแล้ว',    color: '#7f8c8d', bg: '#f4f6f7' },
+  ordered:  { label: 'สั่งซื้อแล้ว',    color: '#5b8fe8', bg: '#eef3fc' },
+  waiting:  { label: 'รอชำระ',          color: '#e28c3a', bg: '#fef6ec' },
+  paid:     { label: 'ชำระแล้ว',        color: '#2d9e6b', bg: '#edfaf4' },
+  tracking: { label: 'กำลังจัดส่ง',     color: '#9b59b6', bg: '#f5eefb' },
+  received: { label: 'รับเข้าคลังแล้ว', color: '#7f8c8d', bg: '#f4f6f7' },
 };
 
 function pwItemRowHtml(idx) {
@@ -5997,7 +5997,7 @@ function pwBuildGroupCard(g) {
   const date = new Date(g.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 
   // Step indicator
-  const steps = ['ordered','payment','paid','tracking','received'];
+  const steps = ['ordered','waiting','paid','tracking','received'];
   const stepLabels = ['สั่งซื้อ','ส่งเบิก','ชำระแล้ว','จัดส่ง','รับแล้ว'];
   const curIdx = steps.indexOf(status);
   const stepBar = steps.map((s,i) => `
