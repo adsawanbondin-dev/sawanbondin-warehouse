@@ -2412,12 +2412,13 @@ async function _submitBatchCore(pg){
     if(mi){
       // ── RPC เดียว: items.stock + lots.stock พร้อมกัน ──
       if(r.action!=='return_bad'){
-        let lotId=null;
-        if((WAREHOUSE_CONFIG[pg]?.hasLot)&&r.lotSW&&(r.action==='withdraw'||r.action==='return_good')){
-          const cached=(lotDB[code]||[]).find(l=>l.lot_sw===r.lotSW);
-          if(cached)lotId=cached.id;
-        }
         const cfg_r = WAREHOUSE_CONFIG[pg];
+        let lotId=null;
+        if((cfg_r?.hasLot)&&r.lotSW&&(r.action==='withdraw'||r.action==='return_good')){
+          await dbLoadLotsForItem(code);
+          const fresh=(lotDB[code]||[]).find(l=>l.lot_sw===r.lotSW&&l.stock>0);
+          if(fresh) lotId=fresh.id;
+        }
         const res=await dbAdjustStockWithLot(code,r.action,r.qty,{
           lotId,
           lotSW:(cfg_r.hasLot && r.lotSW && r.lotSW!=='-') ? r.lotSW : null,
