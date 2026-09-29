@@ -292,8 +292,8 @@ async function dbLoadTransactionsRaw(pg, beforeDate) {
 function mapTxRow(r) {
   return {
     id: r.id,
-    time: new Date(r.created_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}),
-    timeDetail: new Date(r.created_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),
+    time: new Date(r.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}),
+    timeDetail: new Date(r.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),
     rawCreatedAt: r.created_at,
     type:r.action_type, typeLabel:ACTION_LABELS[r.action_type]||r.action_type,
     name:r.operator_name||'', dept:r.department||'',
@@ -732,7 +732,7 @@ function updatePkgPreview() {
         .sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
       if (lots.length) {
         const opts = lots.map(l => {
-          const sw = new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+          const sw = new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});
           return `<option value="${l.id}" data-sw="${l.lot_sw}" data-stock="${l.stock}">${sw} (เหลือ ${l.stock.toLocaleString()})</option>`;
         }).join('');
         lotCell = `<select class="fi pkg-lot-sel" data-code="${item.item_code}" data-idx="${idx}"
@@ -1112,13 +1112,13 @@ async function buildEditTxLotOptions(rec, pg) {
   const lots = (lotDB[rec.code]||[]).filter(l=>l.stock>0).slice().sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
   let opts = `<option value="">-- ไม่ระบุ Lot --</option>`;
   opts += lots.map(l=>{
-    const dateStr = new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const dateStr = new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});
     const sel_ = l.lot_sw===rec.lotSW ? 'selected':'';
     return `<option value="${l.lot_sw}" ${sel_}>${dateStr} — คงเหลือ ${l.stock.toLocaleString()}</option>`;
   }).join('');
   // ถ้า lot เดิมของรายการนี้ไม่อยู่ใน list (เช่น lot ถูกใช้หมดแล้ว) ให้เพิ่มเข้าไปด้วย
   if (rec.lotSW && rec.lotSW!=='-' && !lots.find(l=>l.lot_sw===rec.lotSW)) {
-    const dateStr = new Date(rec.lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const dateStr = new Date(rec.lotSW).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});
     opts += `<option value="${rec.lotSW}" selected>${dateStr} (Lot เดิม)</option>`;
   }
   sel.innerHTML = opts;
@@ -1225,8 +1225,8 @@ async function saveEditTx() {
     if (updatePayload.created_at) {
       r.rawCreatedAt = updatePayload.created_at;
       const d = new Date(updatePayload.created_at);
-      r.time = d.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'});
-      r.timeDetail = d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+      r.time = d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'});
+      r.timeDetail = d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
     }
   }
 
@@ -1311,7 +1311,7 @@ function renderAlertList(alerts) {
     const leadInfo = SUPPLIER_FIELDS === 'days' && m.lead_time_days
       ? 'Lead '+m.lead_time_days+' วัน'
       : SUPPLIER_FIELDS === 'date' && m.next_delivery_date
-      ? 'ส่งของ '+new Date(m.next_delivery_date).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'})
+      ? 'ส่งของ '+new Date(m.next_delivery_date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})
       : '';
     const supplierLine = (m.supplier_name || leadInfo)
       ? `<div style="font-size:10px;color:var(--ink3);margin-top:1px">${m.supplier_name ? 'ผจห. '+m.supplier_name : ''}${m.supplier_name && leadInfo ? ' · ' : ''}${leadInfo}</div>`
@@ -1883,7 +1883,7 @@ async function onTransformItemSelect(pg, code, name) {
   }
   sel.innerHTML = `<option value="">-- เลือก Lot --</option>` +
     lots.map(l=>{
-      const dateStr = new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+      const dateStr = new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});
       const supStr  = l.lot_supplier ? ` (${l.lot_supplier})` : '';
       return `<option value="${l.id}" data-stock="${l.stock}" data-sw="${l.lot_sw}">${dateStr}${supStr} — คงเหลือ ${l.stock.toLocaleString()}</option>`;
     }).join('');
@@ -1983,7 +1983,7 @@ async function _submitTransformCore(pg) {
   }
 
   const fromLotSW = fromOpt?.dataset?.sw || '';
-  const fromDateStr = fromLotSW ? new Date(fromLotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+  const fromDateStr = fromLotSW ? new Date(fromLotSW).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
   const baseTx = { item_code:code, item_name:name, pg, operator_name:opName, department:opDept, via:'manual' };
 
   // บันทึก transform_out ครั้งเดียว
@@ -2002,7 +2002,7 @@ async function _submitTransformCore(pg) {
   // บันทึก transform_in แยกตาม batch
   let batchResult = result;
   for (const b of batches) {
-    const newDateStr = new Date(b.date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const newDateStr = new Date(b.date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});
     if (batches.indexOf(b) > 0) {
       batchResult = await dbTransformStockLot(code, parseInt(fromLotId), 0, b.date, b.qty, b.note);
     }
@@ -2191,7 +2191,7 @@ function updateBagSummary(pg) {
     .map(el => parseFloat(el.value)||0).filter(w => w > 0);
   const total = weights.reduce((s,w) => s+w, 0);
   const avg = weights.length ? (total/weights.length) : 0;
-  const fmt = n => n.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmt = n => n.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
   const cntEl = document.getElementById(pg+'-bag-count');
   const totEl = document.getElementById(pg+'-bag-total');
   const avgEl = document.getElementById(pg+'-bag-avg');
@@ -2217,9 +2217,9 @@ async function buildLotPickerHtml(code, pg) {
     .sort((a,b) => new Date(a.lot_sw) - new Date(b.lot_sw));
   if(!lots.length) return '<div class="lot-empty">ไม่มี Lot ที่มีสต็อกเหลืออยู่</div>';
   return lots.map(l=>{
-    const sw = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '?';
-    const sp = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
-    const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+    const sw = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '?';
+    const sp = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+    const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
     const isExpired = l.expiry_date && new Date(l.expiry_date) < new Date();
     const bagInfo = l.bag_number ? `ถุง ${l.bag_number}/${l.bag_total}` : (l.note||'');
     const weightInfo = l.weight_kg && pg !== 'finish' ? `${l.weight_kg.toLocaleString()} กก.` : '';
@@ -2601,9 +2601,9 @@ function openCamera(pg){
         if(hasLotPg && lots.length){
           picker.style.display='block';
           document.getElementById('camLotPickerList').innerHTML = lots.map(l=>{
-            const sw = new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
-            const sp = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
-            const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+            const sw = new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});
+            const sp = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+            const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
             return `<div class="cam-lot-row" onclick="selectCamLot(this,'${l.lot_sw}')" data-lot="${l.lot_sw}">
               <div style="flex:1">
                 <div style="font-size:12px;font-weight:600;color:#fff">${sw}</div>
@@ -3249,9 +3249,9 @@ function renderMasterContent(){
     const lotSubHtml=allLots.length
       ?activeLots.length
         ?activeLots.map(l=>{
-            const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):' ?';
-            const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
-            const ex=l.expiry_date?new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
+            const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}):' ?';
+            const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
+            const ex=l.expiry_date?new Date(l.expiry_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
             const isExpired=l.expiry_date&&new Date(l.expiry_date)<new Date();
             const noteHtml=l.note?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">${l.note}</span>`:'';
             return`<div class="lot-sub-row">
@@ -3453,9 +3453,9 @@ function toggleLotSub(subId,code){
       const m=masterDB.find(x=>x.code===code);
       sub.innerHTML=lots.length
         ?lots.map(l=>{
-            const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'?';
-            const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
-            const ex=l.expiry_date?new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
+            const sw=l.lot_sw?new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}):'?';
+            const sp=l.lot_supplier?new Date(l.lot_supplier).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
+            const ex=l.expiry_date?new Date(l.expiry_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}):'';
             const isEmpty=l.stock<=0;
             const isExpired=l.expiry_date&&new Date(l.expiry_date)<new Date();
             const noteHtml=l.note?`<span style="font-size:10px;color:var(--ink3);margin-left:8px">${l.note}</span>`:'';
@@ -3529,7 +3529,7 @@ async function exportAllCsv() {
         ['วันที่','เวลา','ประเภท','ผู้ทำรายการ','แผนก','รายการ','รหัส','คลัง','จำนวน','Lot SW','Lot Supplier','สต็อกก่อน','สต็อกหลัง','หมายเหตุ','ช่องทาง'],
         ...data.map(r => {
           const dt = new Date(r.created_at);
-          return [dt.toLocaleDateString('th-TH'), dt.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),
+          return [dt.toLocaleDateString('en-GB'), dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),
             ACTION_LABELS[r.action_type]||r.action_type, r.operator_name||'', r.department||'',
             r.item_name||'', r.item_code||'', r.pg||'', r.quantity||0,
             r.lot_sw||'', r.lot_supplier||'', r.old_stock??'', r.new_stock??'', r.note||'', r.via||''];
@@ -3590,8 +3590,8 @@ async function exportTransactionsCsv(pg) {
     for (const r of data) {
       const dt = new Date(r.created_at);
       const row = [
-        dt.toLocaleDateString('th-TH'),
-        dt.toLocaleTimeString('th-TH', { hour:'2-digit', minute:'2-digit' }),
+        dt.toLocaleDateString('en-GB'),
+        dt.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }),
         ACTION_LABELS[r.action_type] || r.action_type,
         r.operator_name || '',
         r.department || '',
@@ -3810,9 +3810,9 @@ async function boot(){
       const zero   = lots.filter(l=>l.stock<=0);
       subEl.innerHTML = lots.length
         ? [...active,...zero].map(l=>{
-            const sw = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '?';
-            const sp = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
-            const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+            const sw = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}) : '?';
+            const sp = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+            const ex = l.expiry_date ? new Date(l.expiry_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
             const isEmpty = l.stock <= 0;
             const isExp   = l.expiry_date && new Date(l.expiry_date) < new Date();
             return`<div class="lot-sub-row" style="${isEmpty?'opacity:.45':''}${isExp?';background:#fdf2f2':''}">
@@ -3968,9 +3968,9 @@ async function renderStockCountPage() {
 
     // รายการที่มี lot — แสดงหัวแถว + แถว lot แต่ละ lot (ซ่อน lot stock=0)
     const lotRows = activeLots.map((l, li) => {
-      const sw     = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '?';
-      const sp     = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
-      const ex     = l.expiry_date  ? new Date(l.expiry_date).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+      const sw     = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '?';
+      const sp     = l.lot_supplier ? new Date(l.lot_supplier).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+      const ex     = l.expiry_date  ? new Date(l.expiry_date).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
       const isExp  = l.expiry_date && new Date(l.expiry_date) < new Date();
       const key    = m.code+'_lot_'+l.id;
       const actual = scData[key];
@@ -4055,7 +4055,7 @@ async function renderStockCountPage() {
       </table>
       <div class="sc-footer">
         <div style="font-size:11px;color:var(--ink4)">${counted>0?`นับแล้ว ${counted}/${filtered.length} · ไม่ตรง ${diffItems.length} รายการ`:'กรอกยอดจริงในช่องด้านบน · Tab หรือ Enter ไปรายการถัดไป'}</div>
-        <div style="font-size:11px;color:var(--ink4)">ผู้ตรวจ: ${window._operatorName||'—'} · ${new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'})}</div>
+        <div style="font-size:11px;color:var(--ink4)">ผู้ตรวจ: ${window._operatorName||'—'} · ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</div>
       </div>
     </div>`;
 }
@@ -4210,7 +4210,7 @@ async function scSave() {
         const sw = l.lot_sw || '';
         rows.push({
           item_code:    m.code,
-          item_name:    m.name + (sw ? ` [Lot ${new Date(sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'})}]` : ''),
+          item_name:    m.name + (sw ? ` [Lot ${new Date(sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'})}]` : ''),
           pg:           m.pg,
           system_stock: l.stock,
           actual_stock: scData[key],
@@ -4259,7 +4259,7 @@ async function scSave() {
     const qty = Math.abs(diff);
     const lotSW = l?.lot_sw || null;
     const lotId = l?.id || null;
-    const swStr = lotSW ? new Date(lotSW).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+    const swStr = lotSW ? new Date(lotSW).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
     const txNote = `ปรับจากตรวจนับ: ระบบ ${(l?l.stock:m.stock).toLocaleString()} → จริง ${actual.toLocaleString()}${note?' — '+note:''}`;
 
     // ปรับ lot stock
@@ -4384,7 +4384,7 @@ function renderScKpi() {
 function scExportCSV() {
   const items = masterDB.filter(m => m.pg === scPg);
   const cfg   = WAREHOUSE_CONFIG[scPg];
-  const date  = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const date  = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});
   const rows  = [['รหัส','ชื่อสินค้า','คลัง','ยอดในระบบ','ยอดจริง','ผลต่าง','สถานะ','หมายเหตุ','วันที่ตรวจ','ผู้ตรวจ']];
   items.forEach(m => {
     const actual = scData[m.code];
@@ -4602,15 +4602,15 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
   const exp30     = (expiryLots||[]).filter(l=>{const d=new Date(l.expiry_date);return d>=now&&d<=new Date(Date.now()+30*86400000);});
 
   const dateLabel = dateFrom===dateTo
-    ? new Date(dateFrom).toLocaleDateString('th-TH',{day:'numeric',month:'long',year:'numeric'})
-    : `${new Date(dateFrom).toLocaleDateString('th-TH',{day:'numeric',month:'short'})} – ${new Date(dateTo).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'})}`;
+    ? new Date(dateFrom).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})
+    : `${new Date(dateFrom).toLocaleDateString('en-GB',{day:'numeric',month:'short'})} – ${new Date(dateTo).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
 
   // ── mini bar chart (7 วัน) ──
   const days7 = Array.from({length:7},(_,i)=>new Date(Date.now()-(6-i)*86400000).toISOString().slice(0,10));
   const dayRec  = days7.map(d=>(tx30||[]).filter(t=>t.created_at.slice(0,10)===d&&t.action_type==='receive').reduce((s,t)=>s+t.quantity,0));
   const dayWith = days7.map(d=>(tx30||[]).filter(t=>t.created_at.slice(0,10)===d&&t.action_type==='withdraw').reduce((s,t)=>s+t.quantity,0));
   const maxBar  = Math.max(...dayRec,...dayWith,1);
-  const dayNames= days7.map(d=>new Date(d).toLocaleDateString('th-TH',{weekday:'short'}));
+  const dayNames= days7.map(d=>new Date(d).toLocaleDateString('en-GB',{weekday:'short'}));
   const barChart= days7.map((_,i)=>`
     <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1">
       <div style="display:flex;align-items:flex-end;gap:2px;height:56px">
@@ -4655,7 +4655,7 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
 
   // ── activity feed ──
   const recentTx = (txDay||[]).slice(0,12).map(t=>{
-    const time = new Date(t.created_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+    const time = new Date(t.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
     const isRec = t.action_type==='receive';
     const dotColor = isRec?'#7BAE95':'#D4A96A';
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f8f8f6">
@@ -4695,7 +4695,7 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
     const bg   = days<0?'#FDF2F2':days<=30?'#FEF5E7':'#EDF5EF';
     const col  = days<0?'#A33030':days<=30?'#92600A':'#3A7D52';
     const label= days<0?`หมดแล้ว`:days===0?'วันนี้':`${days} วัน`;
-    const sw   = l.lot_sw?new Date(l.lot_sw).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'}):'—';
+    const sw   = l.lot_sw?new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}):'—';
     return `<div style="padding:9px 14px;border-bottom:1px solid #f8f8f6;display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.item_name}</div>
@@ -4779,7 +4779,7 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:8px">
     <div>
       <div style="font-size:20px;font-weight:600;color:var(--ink);letter-spacing:-.4px">Dashboard</div>
-      <div style="font-size:12px;color:var(--ink4);margin-top:2px">${new Date().toLocaleDateString('th-TH',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+      <div style="font-size:12px;color:var(--ink4);margin-top:2px">${new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
     </div>
     <div style="display:flex;gap:7px">
       <button class="btn btn-sm" onclick="dbExportPNG()"><i class="ti ti-photo-down"></i> Export PNG</button>
@@ -4891,7 +4891,7 @@ async function renderDashboardPage(dbDateFrom, dbDateTo) {
       <tbody>${(scHistory||[]).slice(0,15).map(r=>{
         const diff=parseFloat(r.difference)||0;
         const col=diff>0?'#3A7D52':diff<0?'#A33030':'var(--ink4)';
-        const at=new Date(r.counted_at).toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'2-digit'});
+        const at=new Date(r.counted_at).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'});
         return `<tr style="border-bottom:1px solid #f8f8f6">
           <td style="padding:9px 13px;font-size:10px;color:var(--ink4);white-space:nowrap">${at}</td>
           <td style="padding:9px 13px;font-size:12px;font-weight:500;color:var(--ink);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.item_name}</td>
@@ -5168,7 +5168,7 @@ function updatePrPreview() {
   const accNum   = document.getElementById('prAccNum')?.value||'';
   const accName  = document.getElementById('prAccName')?.value||'';
   const total = prItems.reduce((s,it) => s + (parseFloat(it.price)||0), 0);
-  const fmt = n => n.toLocaleString('th-TH', {minimumFractionDigits:0, maximumFractionDigits:2});
+  const fmt = n => n.toLocaleString('en-GB', {minimumFractionDigits:0, maximumFractionDigits:2});
 
   const itemLines = prItems.filter(it=>it.desc||it.price)
     .map(it => `- ${it.desc||'รายการ'}${it.qty?' จำนวน '+it.qty:''} ราคา ${fmt(parseFloat(it.price)||0)} บาท`)
@@ -5522,7 +5522,7 @@ async function renderAlertGroupPage(group) {
   const allAlerts = masterDB.filter(m =>
     groupPgs.includes(m.pg) && m.min > 0 && m.stock <= m.min
   );
-  const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+  const today = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
   const totalZero = allAlerts.filter(m => m.stock <= 0).length;
 
   const sections = WD_GROUPS.map(({pg, label}) => {
@@ -5674,7 +5674,7 @@ async function dbExportPNG() {
         document.head.appendChild(s);
       });
     }
-    const date = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
+    const date = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
     const canvas = await window.html2canvas(div, {
       scale: 2,
       useCORS: true,
@@ -5715,7 +5715,7 @@ async function dbExportPDF() {
         document.head.appendChild(s);
       });
     }
-    const date = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
+    const date = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
     const canvas = await window.html2canvas(div, {
       scale: 1.5,
       useCORS: true,
@@ -5972,7 +5972,7 @@ function pwBuildGroupCard(g) {
   const st = PW_STATUS[status] || PW_STATUS.ordered;
   const total = g.items.reduce((s,i)=>s+(i.total_price||0),0);
   const groupId = g.key;
-  const date = new Date(g.created_at).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'numeric'});
+  const date = new Date(g.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 
   // Step indicator
   const steps = ['ordered','payment','paid','tracking','received'];
@@ -6130,7 +6130,7 @@ function pwCopyNeedOrder(supName) {
   const items = masterDB.filter(m =>
     m.is_active !== false && m.min > 0 && m.stock <= m.min && m.supplier_name === supName
   );
-  const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+  const today = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
   const lines = [`ใบสั่งซื้อ — ${supName}`, `วันที่ ${today}`, '─'.repeat(30)];
   items.forEach((m,i) => {
     const need = Math.max(0, (m.max||0) - m.stock);
@@ -6165,7 +6165,7 @@ function pwCopyOrderFromModal() {
   const sel = document.getElementById('pw-sup-sel');
   const supName = sel?.options[sel.selectedIndex]?.text || '';
   const rows = document.querySelectorAll('.pw-item-row');
-  const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+  const today = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
   const lines = [`ใบสั่งซื้อ — ${supName}`, `วันที่ ${today}`, '─'.repeat(30)];
   rows.forEach((row,i) => {
     const idx = row.id.replace('pw-item-row-','');
@@ -6312,7 +6312,7 @@ async function pwConfirmReceive(groupId) {
 function pwCopyOrder(groupId) {
   const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
   const sup = items[0]?.payment_suppliers;
-  const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+  const today = new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
   const lines = [`ใบสั่งซื้อ — ${sup?.name||''}`, `วันที่ ${today}`, '─'.repeat(30)];
   items.forEach((po,i) => lines.push(`${i+1}. ${po.item_name}  จำนวน ${po.qty} ${po.unit||''}`));
   navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกใบสั่งซื้อแล้วค่ะ'));
