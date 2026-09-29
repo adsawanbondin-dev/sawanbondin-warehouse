@@ -5845,16 +5845,16 @@ async function renderPurchaseWorkflowPage(div) {
     .order('created_at', { ascending: false });
   pwOrders = data || [];
 
-  // จัดกลุ่ม PO ที่มีอยู่ตาม po_group_id
-  const poGroups = {};
+  // จัดกลุ่ม PO ตาม po_group_id
+  const groups = {};
   pwOrders.forEach(po => {
     const key = po.po_group_id || `${po.supplier_id}_${po.created_at?.slice(0,10)}`;
-    if (!poGroups[key]) poGroups[key] = { key, supplier: po.payment_suppliers, items: [], status: po.pay_status||'ordered', created_at: po.created_at };
-    poGroups[key].items.push(po);
+    if (!groups[key]) groups[key] = { key, supplier: po.payment_suppliers, items: [], status: po.pay_status||'ordered', created_at: po.created_at };
+    groups[key].items.push(po);
   });
-  const existingPOList = Object.values(poGroups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  const existingPOList = Object.values(groups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
 
-  // ดึงรายการจาก master ที่ stock <= min และมี supplier_name (ยกเว้นที่บันทึกไปแล้ว)
+  // ดึงรายการ belowMin ที่ยังไม่ได้บันทึก PO
   const belowMinBySup = {};
   masterDB.filter(m =>
     m.is_active !== false && m.min > 0 && m.stock <= m.min && m.supplier_name &&
@@ -5864,34 +5864,27 @@ async function renderPurchaseWorkflowPage(div) {
     belowMinBySup[m.supplier_name].push(m);
   });
 
-  const stepBadge = (count, color) => count
-    ? `<span style="background:${color};color:#fff;font-size:10px;padding:1px 7px;border-radius:10px;margin-left:6px">${count}</span>` : '';
-
   const statusCounts = {};
   Object.keys(PW_STATUS).forEach(k => statusCounts[k] = existingPOList.filter(g=>(g.items[0]?.pay_status||'ordered')===k).length);
+  const pendingCount = Object.keys(belowMinBySup).length;
 
   div.innerHTML = `
     <div class="page-header">
-      <div><div class="page-title">รายการจัดซื้อ</div>
-        <div class="page-sub">จาก Master ที่ถึง Min</div></div>
+      <div><div class="page-title">รายการจัดซื้อ</div></div>
     </div>
 
-    <!-- รายการที่ต้องสั่งซื้อ (จาก master) -->
-    ${Object.keys(belowMinBySup).length ? `
-    <div style="font-size:12px;font-weight:500;margin-bottom:10px;color:var(--ink4);display:flex;align-items:center;gap:6px">
-      <i class="ti ti-alert-triangle" style="color:var(--acc)"></i> ต้องสั่งซื้อ
-    </div>
-    <div id="pw-need-order-cards" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">${Object.entries(belowMinBySup).map(([supName, items]) => pwBuildNeedOrderCard(supName, items)).join('')}</div>
-    ` : '<div style="padding:16px;text-align:center;font-size:12px;color:var(--ink4);background:var(--s2);border-radius:10px;margin-bottom:16px"><i class="ti ti-check" style="color:#2d9e6b"></i> ทุกรายการ stock ปกติค่ะ</div>'}
-
-    <!-- รายการจัดซื้อที่สร้างแล้ว -->
-    ${existingPOList.length ? `
-    <div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
+    <!-- Tab buttons -->
+    <div style="display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">
+      <button onclick="pwFilterStep('pending')" id="pw-tab-pending"
+        style="display:flex;align-items:center;gap:5px;padding:6px 14px;border-radius:20px;border:1px solid var(--line);font-size:11px;cursor:pointer;font-family:inherit;background:var(--surface);color:var(--ink3);white-space:nowrap;flex-shrink:0">
+        <i class="ti ti-clock" style="font-size:12px"></i> รอยืนยัน
+        ${pendingCount?`<span style="background:var(--acc);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px">${pendingCount}</span>`:''}
+      </button>
       ${[
-        {k:'ordered',  label:'จัดซื้อ',        icon:'ti-shopping-cart'},
-        {k:'waiting',  label:'รอชำระ',          icon:'ti-credit-card'},
-        {k:'tracking', label:'กำลังจัดส่ง',     icon:'ti-truck'},
-        {k:'received', label:'รับเข้า',         icon:'ti-package-import'},
+        {k:'ordered',  label:'จัดซื้อ',       icon:'ti-shopping-cart'},
+        {k:'waiting',  label:'รอชำระ',         icon:'ti-credit-card'},
+        {k:'tracking', label:'กำลังจัดส่ง',    icon:'ti-truck'},
+        {k:'received', label:'รับเข้า',        icon:'ti-package-import'},
       ].map(({k,label,icon}) => `
         <button onclick="pwFilterStep('${k}')" id="pw-tab-${k}"
           style="display:flex;align-items:center;gap:5px;padding:6px 14px;border-radius:20px;border:1px solid var(--line);font-size:11px;cursor:pointer;font-family:inherit;background:var(--surface);color:var(--ink3);white-space:nowrap;flex-shrink:0">
@@ -5899,10 +5892,11 @@ async function renderPurchaseWorkflowPage(div) {
           ${statusCounts[k]?`<span style="background:var(--acc);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px">${statusCounts[k]}</span>`:''}
         </button>`).join('')}
     </div>
-    <div id="pw-cards">${existingPOList.map(g => pwBuildGroupCard(g)).join('')}</div>
-    ` : ''}
 
-    <!-- Modal สร้างใบสั่งซื้อ -->
+    <!-- Cards area -->
+    <div id="pw-cards"></div>
+
+    <!-- Modal สร้างใบสั่งซื้อ (ยังเก็บไว้สำหรับสร้างแบบ manual) -->
     <div id="pw-new-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:600;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px">
       <div style="background:var(--surface);border-radius:14px;border:0.5px solid var(--line);padding:20px;width:500px;max-width:95vw;margin:auto">
         <div style="font-size:14px;font-weight:500;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
@@ -5921,23 +5915,25 @@ async function renderPurchaseWorkflowPage(div) {
             <span>รายการสั่งซื้อ</span>
             <button class="btn btn-sm" onclick="pwAddItemRow()"><i class="ti ti-plus"></i> เพิ่มรายการ</button>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 60px 70px 90px 28px;gap:4px;font-size:10px;color:var(--ink4);margin-bottom:4px;padding:0 2px">
-            <span>ชื่อรายการ</span><span style="text-align:right">จำนวน</span><span>หน่วย</span><span style="text-align:right">ราคา/หน่วย</span><span></span>
+          <div style="display:grid;grid-template-columns:1fr 60px 28px;gap:4px;font-size:10px;color:var(--ink4);margin-bottom:4px;padding:0 2px">
+            <span>ชื่อรายการ</span><span style="text-align:right">จำนวน</span><span></span>
           </div>
           <div id="pw-item-rows">${pwItemRowHtml(0)}</div>
         </div>
-        <div style="display:flex;gap:8px;justify-content:space-between;margin-top:16px;padding-top:12px;border-top:0.5px solid var(--line)">
-          <button class="btn btn-sm" onclick="pwCopyOrderFromModal()"><i class="ti ti-copy"></i> คัดลอก</button>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-sm" onclick="document.getElementById('pw-new-modal').style.display='none'">ยกเลิก</button>
-            <button class="btn btn-sm btn-primary" onclick="pwSaveNewOrder()"><i class="ti ti-device-floppy"></i> บันทึกคำสั่งซื้อ</button>
-          </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:0.5px solid var(--line)">
+          <button class="btn btn-sm" onclick="document.getElementById('pw-new-modal').style.display='none'">ยกเลิก</button>
+          <button class="btn btn-sm btn-primary" onclick="pwSaveNewOrder()"><i class="ti ti-device-floppy"></i> บันทึก</button>
         </div>
       </div>
     </div>`;
 
-  pwFilterStep('ordered');
+  // เก็บ belowMinBySup ไว้ใช้ตอน render
+  window._pwBelowMinBySup = belowMinBySup;
+  window._pwExistingPOList = existingPOList;
+
+  pwFilterStep('pending');
 }
+
 
 function pwBuildNeedOrderCard(supName, items) {
   const totalNeeded = items.length;
@@ -6083,10 +6079,10 @@ function pwBuildGroupCard(g) {
   </div>`;
 }
 
-let _pwCurrentStep = 'ordered';
+let _pwCurrentStep = 'pending';
 function pwFilterStep(step) {
   _pwCurrentStep = step;
-  ['ordered','waiting','tracking','received'].forEach(k => {
+  ['pending','ordered','waiting','tracking','received'].forEach(k => {
     const t = document.getElementById(`pw-tab-${k}`);
     if (!t) return;
     if (k === step) {
@@ -6099,18 +6095,21 @@ function pwFilterStep(step) {
       t.style.borderColor = 'var(--line)';
     }
   });
-  const groups = {};
-  pwOrders.forEach(po => {
-    const key = po.po_group_id || `${po.supplier_id}_${po.created_at?.slice(0,10)}`;
-    if (!groups[key]) groups[key] = { key, supplier: po.payment_suppliers, items: [], status: po.pay_status||'ordered', created_at: po.created_at };
-    groups[key].items.push(po);
-  });
-  let list = Object.values(groups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-  if (step !== 'all') list = list.filter(g => (g.items[0]?.pay_status||'ordered') === step);
+
   const cards = document.getElementById('pw-cards');
   if (!cards) return;
+
+  if (step === 'pending') {
+    const belowMinBySup = window._pwBelowMinBySup || {};
+    const html = Object.entries(belowMinBySup).map(([supName, items]) => pwBuildNeedOrderCard(supName, items)).join('');
+    cards.innerHTML = html || `<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-check" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25;color:#2d9e6b"></i>ทุกรายการ stock ปกติค่ะ</div>`;
+    return;
+  }
+
+  const list = (window._pwExistingPOList||[]).filter(g => (g.items[0]?.pay_status||'ordered') === step);
   cards.innerHTML = list.length ? list.map(g => pwBuildGroupCard(g)).join('') :
     `<div style="padding:40px;text-align:center;color:var(--ink4)"><i class="ti ti-clipboard-off" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>ไม่มีรายการค่ะ</div>`;
+}
 }
 
 
