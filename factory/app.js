@@ -5894,7 +5894,7 @@ async function renderPurchaseWorkflowPage(div) {
     </div>
 
     <!-- Cards area -->
-    <div id="pw-cards"></div>
+    <div id="pw-cards" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px"></div>
 
     <!-- Modal สร้างใบสั่งซื้อ (ยังเก็บไว้สำหรับสร้างแบบ manual) -->
     <div id="pw-new-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:600;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px">
