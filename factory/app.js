@@ -6048,16 +6048,22 @@ function pwBuildGroupCard(g) {
     ${i<steps.length-1?`<div style="flex:1;height:2px;background:${i<curIdx?PW_STATUS[steps[i]].color:'var(--line)'};margin-top:9px;max-width:24px"></div>`:''}`
   ).join('');
 
-  // รายการ + ช่องราคาตอน waiting
+  // รายการ + ช่องราคาตอน waiting เท่านั้น
   const isWaiting = status === 'waiting';
   const itemRows = g.items.map((po,i) => {
-    return `<div style="display:grid;grid-template-columns:1fr 55px 90px 85px;gap:6px;padding:6px 0;border-bottom:0.5px solid var(--line);font-size:12px;align-items:center" id="pw-po-row-${po.id}">
+    if (isWaiting) {
+      return `<div style="display:grid;grid-template-columns:1fr 55px 90px 85px;gap:6px;padding:6px 0;border-bottom:0.5px solid var(--line);font-size:12px;align-items:center" id="pw-po-row-${po.id}">
+        <div style="font-weight:500">${po.item_name}</div>
+        <div style="text-align:right;color:var(--ink4);font-size:11px">${po.qty} ${po.unit||''}</div>
+        <input class="fi" type="number" placeholder="ราคา/หน่วย" value="${po.price_per_unit||''}"
+          style="font-size:11px;text-align:right" id="pw-price-${po.id}"
+          oninput="pwCalcTotal('${groupId}')">
+        <div style="text-align:right;font-weight:500;font-size:11px" id="pw-total-${po.id}">${po.total_price?po.total_price.toLocaleString()+' ฿':'-'}</div>
+      </div>`;
+    }
+    return `<div style="display:grid;grid-template-columns:1fr 80px;gap:6px;padding:6px 0;border-bottom:0.5px solid var(--line);font-size:12px;align-items:center">
       <div style="font-weight:500">${po.item_name}</div>
       <div style="text-align:right;color:var(--ink4);font-size:11px">${po.qty} ${po.unit||''}</div>
-      ${isWaiting ? `<input class="fi" type="number" placeholder="ราคา/หน่วย" value="${po.price_per_unit||''}"
-        style="font-size:11px;text-align:right" id="pw-price-${po.id}"
-        oninput="pwCalcTotal('${groupId}')">` : `<div style="text-align:right;color:var(--ink4);font-size:11px">${po.price_per_unit?po.price_per_unit.toLocaleString()+' ฿':'-'}</div>`}
-      <div style="text-align:right;font-weight:500;font-size:11px" id="pw-total-${po.id}">${po.total_price?po.total_price.toLocaleString()+' ฿':'-'}</div>
     </div>`;
   }).join('');
 
@@ -6119,11 +6125,11 @@ function pwBuildGroupCard(g) {
       </div>
     </div>
     <div style="padding:8px 14px">
-      <div style="display:grid;grid-template-columns:1fr 60px 70px 80px;gap:6px;font-size:10px;color:var(--ink4);margin-bottom:4px">
-        <span>รายการ</span><span style="text-align:right">จำนวน</span><span style="text-align:right">ราคา/หน่วย</span><span style="text-align:right">รวม</span>
+      <div style="display:grid;grid-template-columns:${isWaiting?'1fr 55px 90px 85px':'1fr 80px'};gap:6px;font-size:10px;color:var(--ink4);margin-bottom:4px">
+        <span>รายการ</span><span style="text-align:right">จำนวน</span>${isWaiting?'<span style="text-align:right">ราคา/หน่วย</span><span style="text-align:right">รวม</span>':''}
       </div>
       ${itemRows}
-      ${total?`<div style="text-align:right;font-size:12px;font-weight:600;margin-top:6px">รวม ${total.toLocaleString()} ฿</div>`:''}
+      ${isWaiting&&total?`<div style="text-align:right;font-size:12px;font-weight:600;margin-top:6px">รวม ${total.toLocaleString()} ฿</div>`:''}
     </div>
     ${bankInfo}
     <div style="padding:9px 14px;border-top:0.5px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;align-items:center">
