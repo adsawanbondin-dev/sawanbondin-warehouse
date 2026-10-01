@@ -47,6 +47,36 @@ const WAREHOUSE_CONFIG = _CFG.WAREHOUSE_CONFIG || {
 };
 const WAREHOUSE_PAGES = Object.keys(WAREHOUSE_CONFIG);
 
+// เรียง lots ตามวันที่ → ขนาดถุง (ใหญ่ก่อน) → ลำดับใน note (X/Y)
+function sortLots(lots) {
+  return lots.slice().sort((a, b) => {
+    // 1. วันที่เก่าก่อน
+    const dateDiff = new Date(a.lot_sw) - new Date(b.lot_sw);
+    if (dateDiff !== 0) return dateDiff;
+
+    // parse note: "3/11 - ถุงบรรจุ 100 กรัม" → {seq:3, total:11, size:100}
+    const parseNote = (note) => {
+      if (!note) return { seq: 999, total: 999, size: 0 };
+      const m = note.match(/^(\d+)\/(\d+)/);
+      const s = note.match(/(\d+)\s*กรัม/);
+      return {
+        seq:   m ? parseInt(m[1]) : 999,
+        total: m ? parseInt(m[2]) : 999,
+        size:  s ? parseInt(s[1]) : 0,
+      };
+    };
+
+    const pa = parseNote(a.note);
+    const pb = parseNote(b.note);
+
+    // 2. ขนาดถุงใหญ่ก่อน (100 ก่อน 50)
+    if (pb.size !== pa.size) return pb.size - pa.size;
+
+    // 3. เลขลำดับน้อยก่อน
+    return pa.seq - pb.seq;
+  });
+}
+
 const ACTION_LABELS = { receive:'รับเข้า', withdraw:'เบิก', return_good:'คืนดี', return_bad:'คืนเสีย', transform_lot:'แปรรูป', transform_out:'แปรรูปออก', transform_in:'แปรรูปเข้า' };
 const ACTION_BADGE  = { receive:'badge-receive', withdraw:'badge-withdraw', return_good:'badge-return-good', return_bad:'badge-return-bad', transform_lot:'badge-transform', transform_out:'badge-transform', transform_in:'badge-transform' };
 const DEPT_PILL_CLS = { 'ผลิต':'dept-prod', 'คลัง':'dept-ware', 'บรรจุ':'dept-pack', 'Tea House':'dept-tea' };
@@ -728,8 +758,7 @@ function updatePkgPreview() {
 
     let lotCell = '';
     if (hasLot) {
-      const lots = (lotDB[item.item_code]||[]).filter(l=>l.stock>0)
-        .sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
+      const lots = sortLots((lotDB[item.item_code]||[]).filter(l=>l.stock>0));
       if (lots.length) {
         const opts = lots.map(l => {
           const sw = new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});
@@ -817,7 +846,7 @@ async function submitPackaging() {
         await dbAdjustStockWithLot(item.item_code, 'withdraw', needed, { lotId: lot.id, lotSW: sw });
       } else {
         // FIFO อัตโนมัติ
-        const lots = (lotDB[item.item_code]||[]).filter(l=>l.stock>0).sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
+        const lots = sortLots((lotDB[item.item_code]||[]).filter(l=>l.stock>0));
         let remaining = needed;
         for (const lot of lots) {
           if (remaining <= 0) break;
@@ -1114,7 +1143,7 @@ async function buildEditTxLotOptions(rec, pg) {
   const sel = document.getElementById('editTxLot');
   sel.innerHTML = `<option value="">กำลังโหลด...</option>`;
   await dbLoadLotsForItem(rec.code);
-  const lots = (lotDB[rec.code]||[]).filter(l=>l.stock>0).slice().sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
+  const lots = sortLots((lotDB[rec.code]||[]).filter(l=>l.stock>0));
   let opts = `<option value="">-- ไม่ระบุ Lot --</option>`;
   opts += lots.map(l=>{
     const dateStr = new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});
@@ -1876,7 +1905,7 @@ async function onTransformItemSelect(pg, code, name) {
   const sel = document.getElementById(pg+'-tf-fromlot');
   sel.innerHTML = `<option value="">กำลังโหลด Lot...</option>`;
   if (!lotDB[code]) await dbLoadLotsForItem(code);
-  const lots = (lotDB[code]||[]).filter(l=>l.stock>0).sort((a,b)=>a.lot_sw.localeCompare(b.lot_sw));
+  const lots = sortLots((lotDB[code]||[]).filter(l=>l.stock>0));
   if (!lots.length) {
     sel.innerHTML = `<option value="">-- ไม่มี Lot ที่มียอดคงเหลือ --</option>`;
     return;
@@ -2216,7 +2245,7 @@ async function buildLotPickerHtml(code, pg) {
   // ข้อ 3: เรียงเก่าก่อน (FIFO) · ข้อ 4: ซ่อน lot หมด
   const lots = (lotDB[code]||[])
     .filter(l => l.stock > 0)
-    .sort((a,b) => new Date(a.lot_sw) - new Date(b.lot_sw));
+    ;
   if(!lots.length) return '<div class="lot-empty">ไม่มี Lot ที่มีสต็อกเหลืออยู่</div>';
   return lots.map(l=>{
     const sw = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '?';
@@ -2609,7 +2638,7 @@ function openCamera(pg){
         const hasLotPg = !!WAREHOUSE_CONFIG[m.pg]?.hasLot;
         const lots = hasLotPg ? (lotDB[m.code]||[]).filter(l=>l.stock>0) : [];
         // เรียงเก่าก่อน (FIFO)
-        lots.sort((a,b)=>new Date(a.lot_sw)-new Date(b.lot_sw));
+        lots;
         const picker = document.getElementById('camLotPickerCam');
         if(hasLotPg && lots.length){
           picker.style.display='block';
