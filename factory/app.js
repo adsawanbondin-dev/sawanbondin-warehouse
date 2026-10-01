@@ -1925,7 +1925,7 @@ function updateTransformSummary(pg) {
 }
 
 async function submitTransform(pg) {
-  if (window._tfSubmitting) return;
+  if (window._tfSubmitting) { showToast('กำลังบันทึกอยู่ค่ะ...'); return; }
   window._tfSubmitting = true;
   try {
     await _submitTransformCore(pg);
@@ -4163,6 +4163,16 @@ function scAddLotModal(code) {
 }
 
 async function scConfirmAddLot(code) {
+  if (window._scLotSubmitting) return;
+  window._scLotSubmitting = true;
+  try {
+    await _scConfirmAddLotCore(code);
+  } finally {
+    window._scLotSubmitting = false;
+  }
+}
+
+async function _scConfirmAddLotCore(code) {
   const m       = masterDB.find(x=>x.code===code);
   const lotDate = document.getElementById('sc-lot-date')?.value;
   const stock   = parseFloat(document.getElementById('sc-lot-stock')?.value)||0;
@@ -5617,12 +5627,15 @@ function openAlertReceiveModal(code, group) {
 }
 
 async function submitAlertReceiveModal() {
-  if (window._arSubmitting) return;
+  if (window._arSubmitting) { showToast('กำลังบันทึกอยู่ค่ะ...'); return; }
   window._arSubmitting = true;
+  const btn = document.getElementById('arSubmitBtn');
+  if (btn) { btn.disabled = true; }
   try {
     await _submitAlertReceiveModalCore();
   } finally {
     window._arSubmitting = false;
+    if (btn) { btn.disabled = false; }
   }
 }
 
