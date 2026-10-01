@@ -2243,9 +2243,7 @@ function selRadio(el,gid){
 async function buildLotPickerHtml(code, pg) {
   await dbLoadLotsForItem(code);
   // ข้อ 3: เรียงเก่าก่อน (FIFO) · ข้อ 4: ซ่อน lot หมด
-  const lots = (lotDB[code]||[])
-    .filter(l => l.stock > 0)
-    ;
+  const lots = sortLots((lotDB[code]||[]).filter(l => l.stock > 0));
   if(!lots.length) return '<div class="lot-empty">ไม่มี Lot ที่มีสต็อกเหลืออยู่</div>';
   return lots.map(l=>{
     const sw = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '?';
@@ -2636,7 +2634,7 @@ function openCamera(pg){
         }
         // แสดง lot picker ถ้าคลังนี้มี lot และมี lots อยู่
         const hasLotPg = !!WAREHOUSE_CONFIG[m.pg]?.hasLot;
-        const lots = hasLotPg ? (lotDB[m.code]||[]).filter(l=>l.stock>0) : [];
+        const lots = hasLotPg ? sortLots((lotDB[m.code]||[]).filter(l=>l.stock>0)) : [];
         // เรียงเก่าก่อน (FIFO)
         lots;
         const picker = document.getElementById('camLotPickerCam');
@@ -3287,7 +3285,7 @@ function renderMasterContent(){
     const loc=locationDB[m.code]||'';
     const hasLotPg=(WAREHOUSE_CONFIG[m.pg]?.hasLot);
     const allLots=hasLotPg?(lotDB[m.code]||[]):[];
-    const activeLots=allLots.filter(l=>l.stock>0);
+    const activeLots=sortLots(allLots.filter(l=>l.stock>0));
     const lotSubHtml=allLots.length
       ?activeLots.length
         ?activeLots.map(l=>{
@@ -3491,7 +3489,7 @@ function toggleLotSub(subId,code){
   sub.style.display='block';
   sub.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด...</div>';
   dbLoadLotsForItem(code).then(()=>{
-      const lots=(lotDB[code]||[]).filter(l=>l.stock>0);
+      const lots=sortLots((lotDB[code]||[]).filter(l=>l.stock>0));
       const m=masterDB.find(x=>x.code===code);
       sub.innerHTML=lots.length
         ?lots.map(l=>{
@@ -3848,7 +3846,7 @@ async function boot(){
     const subEl = document.getElementById(`lot_sub_${code}`);
     if (subEl && subEl.style.display !== 'none') {
       const lots = (lotDB[code]||[]);
-      const active = lots.filter(l=>l.stock>0);
+      const active = sortLots(lots.filter(l=>l.stock>0));
       const zero   = lots.filter(l=>l.stock<=0);
       subEl.innerHTML = lots.length
         ? [...active,...zero].map(l=>{
@@ -3974,7 +3972,7 @@ async function renderStockCountPage() {
   // สร้าง table rows — แยก lot แต่ละแถว
   const tableRows = filtered.map((m,i) => {
     const lots = hasLotPg ? (lotDB[m.code]||[]) : [];
-    const activeLots = lots.filter(l => l.stock > 0);
+    const activeLots = sortLots(lots.filter(l => l.stock > 0));
     const hasLots = activeLots.length > 0;
 
     if (!hasLots) {
@@ -4254,7 +4252,7 @@ async function scSave() {
   const adjustments = []; // สำหรับปรับ stock
 
   items.forEach(m => {
-    const lots = hasLotPg ? (lotDB[m.code]||[]).filter(l => l.stock > 0) : [];
+    const lots = hasLotPg ? sortLots((lotDB[m.code]||[]).filter(l => l.stock > 0)) : [];
     if (lots.length) {
       lots.forEach(l => {
         const key = m.code + '_lot_' + l.id;
