@@ -5269,7 +5269,7 @@ function _progDots(pay, ship) {
 
 async function dbLoadPurchaseOrders() {
   const { data } = await sb.from('purchase_orders')
-    .select('*, payment_suppliers(name,pay_type,acc_num,acc_name,bank)')
+    .select('*, payment_suppliers(name,pay_type,acc_num,acc_name,bank,phone,line_id,email)')
     .eq('is_active', true)
     .order('created_at', { ascending: false });
   purchaseOrders = data || [];
@@ -5879,7 +5879,7 @@ async function renderPurchaseWorkflowPage(div) {
   div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px;animation:spin 1s linear infinite"></i></div>`;
   await dbLoadPaymentSuppliers();
   const { data } = await sb.from('purchase_orders')
-    .select('*, payment_suppliers(name,pay_type,acc_num,acc_name,bank)')
+    .select('*, payment_suppliers(name,pay_type,acc_num,acc_name,bank,phone,line_id,email)')
     .eq('is_active', true)
     .order('created_at', { ascending: false });
   pwOrders = data || [];
@@ -6117,7 +6117,12 @@ function pwBuildGroupCard(g) {
     <div style="padding:9px 14px;border-bottom:0.5px solid var(--line);display:flex;justify-content:space-between;align-items:center">
       <div>
         <div style="font-size:12px;font-weight:500">${sup?.name||'ไม่ระบุ'}</div>
-        <div style="font-size:10px;color:var(--ink4);margin-top:1px">${date} · ${g.items.length} รายการ${total?` · ${total.toLocaleString()} ฿`:''}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:2px;display:flex;flex-wrap:wrap;gap:8px">
+          ${sup?.phone?`<span><i class="ti ti-phone" style="font-size:10px"></i> ${sup.phone}</span>`:''}
+          ${sup?.line_id?`<span><i class="ti ti-brand-line" style="font-size:10px"></i> ${sup.line_id}</span>`:''}
+          ${sup?.email?`<span><i class="ti ti-mail" style="font-size:10px"></i> ${sup.email}</span>`:''}
+          <span style="color:var(--ink4)">${date} · ${g.items.length} รายการ${total&&isWaiting?` · ${total.toLocaleString()} ฿`:''}</span>
+        </div>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
         <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${st.color};color:#fff">${st.label}</span>
