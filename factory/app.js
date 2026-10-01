@@ -5847,11 +5847,10 @@ const PW_STATUS = {
 };
 
 function pwItemRowHtml(idx) {
-  return `<div class="pw-item-row" id="pw-item-row-${idx}" style="display:grid;grid-template-columns:1fr 60px 70px 90px 28px;gap:4px;margin-bottom:4px;align-items:center">
+  return `<div class="pw-item-row" id="pw-item-row-${idx}" style="display:grid;grid-template-columns:1fr 70px 60px 28px;gap:4px;margin-bottom:4px;align-items:center">
     <input class="fi" placeholder="ชื่อรายการ" style="font-size:11px" id="pw-name-${idx}">
     <input class="fi" type="number" placeholder="จำนวน" style="font-size:11px;text-align:right" id="pw-qty-${idx}">
     <input class="fi" placeholder="หน่วย" style="font-size:11px" id="pw-unit-${idx}">
-    <input class="fi" type="number" placeholder="ราคา/หน่วย" style="font-size:11px;text-align:right" id="pw-price-${idx}">
     <button style="background:none;border:none;cursor:pointer;color:#b03030;font-size:16px" onclick="document.getElementById('pw-item-row-${idx}')?.remove()"><i class="ti ti-x"></i></button>
   </div>`;
 }
@@ -6220,11 +6219,10 @@ function pwOpenFromMaster(supName) {
   _pwItemIdx = items.length;
   document.getElementById('pw-item-rows').innerHTML = items.map((m,i) => {
     const need = Math.max(1, (m.max||0) - m.stock);
-    return `<div class="pw-item-row" id="pw-item-row-${i}" style="display:grid;grid-template-columns:1fr 60px 70px 90px 28px;gap:4px;margin-bottom:4px;align-items:center">
+    return `<div class="pw-item-row" id="pw-item-row-${i}" style="display:grid;grid-template-columns:1fr 70px 60px 28px;gap:4px;margin-bottom:4px;align-items:center">
       <input class="fi" value="${m.name}" style="font-size:11px" id="pw-name-${i}">
       <input class="fi" type="number" value="${need}" style="font-size:11px;text-align:right" id="pw-qty-${i}">
       <input class="fi" value="${m.unit||''}" style="font-size:11px" id="pw-unit-${i}">
-      <input class="fi" type="number" value="${m.supplier_price||''}" placeholder="ราคา" style="font-size:11px;text-align:right" id="pw-price-${i}">
       <button style="background:none;border:none;cursor:pointer;color:#b03030;font-size:16px" onclick="document.getElementById('pw-item-row-${i}')?.remove()"><i class="ti ti-x"></i></button>
     </div>`;
   }).join('');
