@@ -6094,11 +6094,14 @@ function pwBuildGroupCard(g) {
     actions = `
       <button class="btn btn-sm btn-primary" onclick="pwMoveStep('${groupId}','tracking')">→ ติดตามพัสดุ</button>`;
   } else if (status === 'tracking') {
+    const trackUrl = g.items[0]?.tracking_url||'';
+    const isUrl = trackUrl.startsWith('http');
     actions = `
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;width:100%">
         <input class="fi" type="date" id="pw-arrive-${groupId}" value="${g.items[0]?.expected_arrival_date||''}" style="font-size:11px;width:140px">
-        <input class="fi" id="pw-track-${groupId}" value="${g.items[0]?.tracking_url||''}" style="font-size:11px;flex:1;min-width:120px" placeholder="Tracking URL/เลข">
+        <input class="fi" id="pw-track-${groupId}" value="${trackUrl}" style="font-size:11px;flex:1;min-width:120px" placeholder="Tracking URL/เลข">
         <button class="btn btn-sm" onclick="pwSaveTracking('${groupId}')"><i class="ti ti-device-floppy"></i></button>
+        ${trackUrl ? `<a href="${isUrl ? trackUrl : 'https://'+trackUrl}" target="_blank" rel="noopener" class="btn btn-sm"><i class="ti ti-external-link"></i></a>` : ''}
       </div>
       <button class="btn btn-sm btn-primary" style="margin-top:6px;width:100%" onclick="pwOpenReceive('${groupId}')"><i class="ti ti-package-import"></i> รับสินค้าเรียบร้อย</button>`;
   } else if (status === 'received') {
