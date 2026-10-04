@@ -49,30 +49,34 @@ const WAREHOUSE_PAGES = Object.keys(WAREHOUSE_CONFIG);
 
 // เรียง lots ตามวันที่ → ขนาดถุง (ใหญ่ก่อน) → ลำดับใน note (X/Y)
 function sortLots(lots) {
+  const parseNote = (note) => {
+    if (!note) return { seq: 999, total: 999, size: 0 };
+    const m = note.match(/^(\d+)\/(\d+)/);
+    // รองรับ "1,000 g.", "350 g.", "200 g.", "100 กรัม" ฯลฯ
+    const s = note.match(/([\d,]+(?:\.\d+)?)\s*(?:กรัม|g\.?)\b/i);
+    const sizeRaw = s ? s[1].replace(/,/g,'') : '0';
+    return {
+      seq:   m ? parseInt(m[1]) : 999,
+      total: m ? parseInt(m[2]) : 999,
+      size:  parseFloat(sizeRaw),
+    };
+  };
+
   return lots.slice().sort((a, b) => {
     // 1. วันที่เก่าก่อน
     const dateDiff = new Date(a.lot_sw) - new Date(b.lot_sw);
     if (dateDiff !== 0) return dateDiff;
 
-    // parse note: "3/11 - ถุงบรรจุ 100 กรัม" → {seq:3, total:11, size:100}
-    const parseNote = (note) => {
-      if (!note) return { seq: 999, total: 999, size: 0 };
-      const m = note.match(/^(\d+)\/(\d+)/);
-      const s = note.match(/(\d+)\s*กรัม/);
-      return {
-        seq:   m ? parseInt(m[1]) : 999,
-        total: m ? parseInt(m[2]) : 999,
-        size:  s ? parseInt(s[1]) : 0,
-      };
-    };
-
     const pa = parseNote(a.note);
     const pb = parseNote(b.note);
 
-    // 2. ขนาดถุงใหญ่ก่อน (100 ก่อน 50)
+    // 2. ขนาดถุงใหญ่ก่อน (1000 → 350 → 200)
     if (pb.size !== pa.size) return pb.size - pa.size;
 
-    // 3. เลขลำดับน้อยก่อน
+    // 3. กลุ่มที่มีถุงมากกว่าก่อน (3/3 ก่อน 2/2 ก่อน 1/1)
+    if (pb.total !== pa.total) return pb.total - pa.total;
+
+    // 4. เลขลำดับน้อยก่อน (1/3, 2/3, 3/3)
     return pa.seq - pb.seq;
   });
 }
@@ -5654,15 +5658,17 @@ function openAlertReceiveModal(code, group) {
 }
 
 async function submitAlertReceiveModal() {
-  if (window._arSubmitting) { showToast('กำลังบันทึกอยู่ค่ะ...'); return; }
-  window._arSubmitting = true;
   const btn = document.getElementById('arSubmitBtn');
-  if (btn) { btn.disabled = true; }
+  if (btn?.disabled) return;
+  if (window._arSubmitting) return;
+  // disable ปุ่มและ set flag ทันที ก่อน await ใดๆ
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+  window._arSubmitting = true;
   try {
     await _submitAlertReceiveModalCore();
   } finally {
     window._arSubmitting = false;
-    if (btn) { btn.disabled = false; }
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
   }
 }
 
