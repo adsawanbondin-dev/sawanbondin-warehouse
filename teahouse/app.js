@@ -4919,7 +4919,7 @@ async function renderPurchaseOrderPage() {
   });
   const existingPOList = Object.values(groups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
 
-  // ดึง belowMin ที่ยังไม่มี PO
+  // ดึง belowMin จาก equip_th (Stock Store 2) ที่ยังไม่มี PO
   const activePOSuppliers = new Set(
     existingPOList
       .filter(g => ['ordered','waiting','tracking'].includes(g.items[0]?.pay_status||'ordered'))
@@ -4928,6 +4928,7 @@ async function renderPurchaseOrderPage() {
   const belowMinBySup = {};
   masterDB.filter(m =>
     m.is_active !== false && m.min > 0 && m.stock <= m.min && m.supplier_name &&
+    m.pg === 'equip_th' &&
     !activePOSuppliers.has(m.supplier_name) && !_thPwSavedSuppliers.has(m.supplier_name)
   ).forEach(m => {
     if (!belowMinBySup[m.supplier_name]) belowMinBySup[m.supplier_name] = [];
