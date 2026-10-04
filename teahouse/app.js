@@ -4887,73 +4887,389 @@ function renderAlertGroupPage(group) {
   if (group === 'purchase') renderPurchaseOrderPage();
 }
 
+// ── Tea House Purchase Workflow (same as Factory) ──
+let thPwOrders = [];
+let _thPwSavedSuppliers = new Set();
+
+const TH_PW_STATUS = {
+  ordered:  { label: 'สั่งซื้อแล้ว',    color: '#5b8fe8', bg: '#eef3fc' },
+  waiting:  { label: 'รอชำระ',          color: '#e28c3a', bg: '#fef6ec' },
+  tracking: { label: 'กำลังจัดส่ง',     color: '#9b59b6', bg: '#f5eefb' },
+  received: { label: 'รับเข้าคลังแล้ว', color: '#7f8c8d', bg: '#f4f6f7' },
+};
+
 async function renderPurchaseOrderPage() {
   const div = document.getElementById('page-alert-purchase');
   if (!div) return;
-  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px"></i></div>`;
+  div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px;animation:spin 1s linear infinite"></i></div>`;
 
-  // โหลด suppliers จาก DB
-  const { data: supRows } = await sb.from('purchase_suppliers').select('name').eq('is_active', true).order('name');
-  const dbSuppliers   = (supRows||[]).map(s=>s.name);
-  const itemSuppliers = [...new Set(masterDB.filter(m=>m.pg==='teahouse'&&m.supplier_name&&m.is_active!==false).map(m=>m.supplier_name))];
-  const allSuppliers  = [...new Set([...dbSuppliers, ...itemSuppliers])].sort((a,b)=>a.localeCompare(b,'th'));
+  // โหลด purchase_orders
+  const { data } = await sb.from('purchase_orders')
+    .select('*, purchase_suppliers(name,pay_type,acc_num,acc_name,bank,phone,line_id)')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false });
+  thPwOrders = data || [];
 
-  // สร้าง poGroups — เก็บ state ไว้ระหว่าง session
-  allSuppliers.forEach(sup => { if (!poGroups[sup]) poGroups[sup] = []; });
+  // จัดกลุ่ม PO
+  const groups = {};
+  thPwOrders.forEach(po => {
+    const key = po.po_group_id || `${po.supplier_id}_${po.created_at?.slice(0,10)}`;
+    if (!groups[key]) groups[key] = { key, supplier: po.purchase_suppliers, items: [], status: po.pay_status||'ordered', created_at: po.created_at };
+    groups[key].items.push(po);
+  });
+  const existingPOList = Object.values(groups).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
 
-  const existingCodes = new Set(Object.values(poGroups).flat().map(i=>i.code));
-
-  // โหลดจาก teahouse items
+  // ดึง belowMin ที่ยังไม่มี PO
+  const activePOSuppliers = new Set(
+    existingPOList
+      .filter(g => ['ordered','waiting','tracking'].includes(g.items[0]?.pay_status||'ordered'))
+      .map(g => g.supplier?.name).filter(Boolean)
+  );
+  const belowMinBySup = {};
   masterDB.filter(m =>
-    m.pg === 'teahouse' && m.is_active !== false &&
-    !PO_EXCLUDE_SUBCATS.includes(m.subcat||'')
+    m.is_active !== false && m.min > 0 && m.stock <= m.min && m.supplier_name &&
+    !activePOSuppliers.has(m.supplier_name) && !_thPwSavedSuppliers.has(m.supplier_name)
   ).forEach(m => {
-    if (existingCodes.has(m.code)) return;
-    const eq = masterDB.find(x=>x.pg==='equip_th' && x.name===m.name);
-    const useStock = eq ? eq.stock : m.stock;
-    const useMin   = eq ? (eq.min||0) : (m.min||0);
-    const useMax   = eq ? (eq.max||0) : (m.max||0);
-    const belowMin = useStock <= useMin;
-    const qty = Math.max(0, useMax - useStock);
-    if (!belowMin) return;
-    const key = m.supplier_name || '__noSup__';
-    if (!poGroups[key]) poGroups[key] = [];
-    poGroups[key].push({
-      code: m.code, name: m.name, subcat: m.subcat||'', unit: m.unit||'',
-      stock: useStock, min: useMin, max: useMax, qty, belowMin
-    });
+    if (!belowMinBySup[m.supplier_name]) belowMinBySup[m.supplier_name] = [];
+    belowMinBySup[m.supplier_name].push(m);
   });
 
-  // โหลดจาก equip_th items ที่มี supplier_name (เช่น ice cream)
-  masterDB.filter(m =>
-    m.pg === 'equip_th' && m.is_active !== false && m.supplier_name &&
-    !masterDB.find(t=>t.pg==='teahouse' && t.name===m.name) // ไม่ซ้ำกับ teahouse
-  ).forEach(m => {
-    if (existingCodes.has(m.code)) return;
-    const useStock = m.stock;
-    const useMin   = m.min||0;
-    const useMax   = m.max||0;
-    const belowMin = useStock <= useMin;
-    const qty = Math.max(0, useMax - useStock);
-    if (!belowMin) return;
-    const key = m.supplier_name;
-    if (!poGroups[key]) poGroups[key] = [];
-    poGroups[key].push({
-      code: m.code, name: m.name, subcat: m.subcat||'', unit: m.unit||'',
-      stock: useStock, min: useMin, max: useMax, qty, belowMin
-    });
-  });
+  const statusCounts = {};
+  Object.keys(TH_PW_STATUS).forEach(k => statusCounts[k] = existingPOList.filter(g=>(g.items[0]?.pay_status||'ordered')===k).length);
+  const pendingCount = Object.keys(belowMinBySup).length;
 
-  // merge poManualItems
-  Object.entries(poManualItems).forEach(([key, items]) => {
-    if (!poGroups[key]) poGroups[key] = [];
-    items.forEach(item => {
-      if (!poGroups[key].find(i=>i.code===item.code)) poGroups[key].push(item);
-    });
-  });
+  div.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">รายการจัดซื้อ</div></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">
+      <button onclick="thPwFilterStep('pending')" id="th-pw-tab-pending"
+        style="display:flex;align-items:center;gap:5px;padding:6px 14px;border-radius:20px;border:1px solid var(--line);font-size:11px;cursor:pointer;font-family:inherit;background:var(--surface);color:var(--ink3);white-space:nowrap;flex-shrink:0">
+        <i class="ti ti-clock" style="font-size:12px"></i> รอยืนยัน
+        ${pendingCount?`<span style="background:var(--acc);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px">${pendingCount}</span>`:''}
+      </button>
+      ${Object.entries(TH_PW_STATUS).map(([k,v]) => `
+        <button onclick="thPwFilterStep('${k}')" id="th-pw-tab-${k}"
+          style="display:flex;align-items:center;gap:5px;padding:6px 14px;border-radius:20px;border:1px solid var(--line);font-size:11px;cursor:pointer;font-family:inherit;background:var(--surface);color:var(--ink3);white-space:nowrap;flex-shrink:0">
+          ${v.label}
+          ${statusCounts[k]?`<span style="background:var(--acc);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px">${statusCounts[k]}</span>`:''}
+        </button>`).join('')}
+    </div>
+    <div id="th-pw-cards" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px"></div>`;
 
-  poRenderCards(div);
+  window._thPwBelowMinBySup = belowMinBySup;
+  window._thPwExistingPOList = existingPOList;
+  thPwFilterStep('pending');
 }
+
+let _thPwCurrentStep = 'pending';
+function thPwFilterStep(step) {
+  _thPwCurrentStep = step;
+  ['pending','ordered','waiting','tracking','received'].forEach(k => {
+    const t = document.getElementById(`th-pw-tab-${k}`);
+    if (!t) return;
+    if (k === step) { t.style.background='var(--ink)'; t.style.color='var(--surface)'; t.style.borderColor='var(--ink)'; }
+    else { t.style.background='var(--surface)'; t.style.color='var(--ink3)'; t.style.borderColor='var(--line)'; }
+  });
+  const cards = document.getElementById('th-pw-cards');
+  if (!cards) return;
+  if (step === 'pending') {
+    const belowMinBySup = window._thPwBelowMinBySup || {};
+    cards.innerHTML = Object.entries(belowMinBySup).map(([supName, items]) => thPwBuildNeedOrderCard(supName, items)).join('') ||
+      `<div style="padding:40px;text-align:center;color:var(--ink4);grid-column:1/-1"><i class="ti ti-check" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25;color:#2d9e6b"></i>ทุกรายการ stock ปกติค่ะ</div>`;
+    return;
+  }
+  const list = (window._thPwExistingPOList||[]).filter(g => (g.items[0]?.pay_status||'ordered') === step);
+  cards.innerHTML = list.length ? list.map(g => thPwBuildGroupCard(g)).join('') :
+    `<div style="padding:40px;text-align:center;color:var(--ink4);grid-column:1/-1"><i class="ti ti-clipboard-off" style="font-size:32px;display:block;margin-bottom:8px;opacity:.25"></i>ไม่มีรายการค่ะ</div>`;
+}
+
+function thPwBuildNeedOrderCard(supName, items) {
+  const ek = supName.replace(/'/g,"\\'");
+  const cardId = 'th-pw-need-' + supName.replace(/[^a-zA-Z0-9]/g,'_');
+  const sup = paymentSuppliersDB?.find(s=>s.name===supName) || {};
+  const supId = sup?.id || '';
+
+  const rows = items.map((m,i) => {
+    const need = Math.max(0, (m.max||0) - m.stock);
+    const sc = m.stock <= 0 ? 'var(--red)' : 'var(--acc)';
+    const rowId = `${cardId}-row-${i}`;
+    return `<div style="padding:6px 12px;border-bottom:0.5px solid var(--line)">
+      <div class="ir-name">${m.name}</div>
+      <div class="ir-meta" style="margin-bottom:4px">
+        <span class="ir-stock"><strong style="color:${sc}">${m.stock}</strong></span>
+        <span class="ir-minmax">Min ${m.min} · Max ${m.max}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 70px 60px 28px;gap:4px;align-items:center">
+        <input class="fi" id="${rowId}-name" value="${m.name}" style="font-size:11px">
+        <input class="fi" type="number" id="${rowId}-qty" value="${need}" style="font-size:11px;text-align:right">
+        <input class="fi" id="${rowId}-unit" value="${m.unit||''}" style="font-size:11px">
+        <button style="background:none;border:none;cursor:pointer;color:#b03030;font-size:14px;padding:0" onclick="this.closest('[style*=padding]')?.remove()"><i class="ti ti-x"></i></button>
+      </div>
+      <input type="hidden" id="${rowId}-unit-val" value="${m.unit||''}">
+    </div>`;
+  }).join('');
+
+  return `<div style="border:0.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)" id="${cardId}">
+    <div style="padding:7px 12px;border-bottom:0.5px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div class="ir-name">${supName}</div>
+        ${sup.phone||sup.line_id?`<div style="font-size:10px;color:var(--ink4);margin-top:2px">${sup.phone?`📞 ${sup.phone} `:''} ${sup.line_id?`LINE: ${sup.line_id}`:''}</div>`:''}
+      </div>
+      <button class="btn btn-sm" onclick="thPwCopyNeedOrder('${ek}')" style="font-size:10px"><i class="ti ti-copy"></i></button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 70px 60px 28px;gap:4px;padding:3px 12px;font-size:10px;color:var(--ink4);background:var(--s2)">
+      <span>ชื่อรายการ</span><span style="text-align:right">จำนวน</span><span>หน่วย</span><span></span>
+    </div>
+    ${rows}
+    <div style="padding:8px 12px;background:var(--s2);border-top:0.5px solid var(--line);display:flex;justify-content:flex-end">
+      <button class="btn btn-sm btn-primary" onclick="thPwSaveFromCard('${ek}','${supId}','${cardId}')">
+        <i class="ti ti-device-floppy"></i> บันทึกคำสั่งซื้อ
+      </button>
+    </div>
+  </div>`;
+}
+
+function thPwCopyNeedOrder(supName) {
+  const items = masterDB.filter(m=>m.is_active!==false&&m.min>0&&m.stock<=m.min&&m.supplier_name===supName);
+  const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+  const lines = [`ใบสั่งซื้อ — ${supName}`, `วันที่ ${today}`, '─'.repeat(30)];
+  items.forEach((m,i) => {
+    const need = Math.max(0,(m.max||0)-m.stock);
+    lines.push(`${i+1}. ${m.name}  จำนวน ${need} ${m.unit||''}`);
+  });
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกแล้วค่ะ'));
+}
+
+async function thPwSaveFromCard(supName, supId, cardId) {
+  if (!supId) { showToast('ไม่พบข้อมูลซัพพลายเออร์ค่ะ','err'); return; }
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const nameInputs = card.querySelectorAll('[id$="-name"]');
+  const items = [];
+  nameInputs.forEach(inp => {
+    const rowId = inp.id.replace('-name','');
+    const name = inp.value.trim();
+    const qty = parseFloat(document.getElementById(`${rowId}-qty`)?.value)||0;
+    const unit = document.getElementById(`${rowId}-unit`)?.value||'';
+    if (name && qty > 0) items.push({ item_name:name, qty, unit });
+  });
+  if (!items.length) { showToast('กรุณาระบุรายการและจำนวนค่ะ','err'); return; }
+  const groupId = `grp_${Date.now()}`;
+  await Promise.all(items.map(item =>
+    sb.from('purchase_orders').insert({
+      supplier_id: parseInt(supId), supplier_name: supName, po_group_id: groupId,
+      item_name: item.item_name, qty: item.qty, unit: item.unit,
+      pay_status: 'ordered', is_active: true,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+    })
+  ));
+  _thPwSavedSuppliers.add(supName);
+  showToast(`บันทึกคำสั่งซื้อ ${supName} แล้วค่ะ`);
+  await renderPurchaseOrderPage();
+  thPwFilterStep('ordered');
+}
+
+function thPwBuildGroupCard(g) {
+  const sup = g.supplier;
+  const status = g.items[0]?.pay_status || 'ordered';
+  const st = TH_PW_STATUS[status] || TH_PW_STATUS.ordered;
+  const total = g.items.reduce((s,i)=>s+(i.total_price||0),0);
+  const groupId = g.key;
+  const date = new Date(g.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+  const isWaiting = status === 'waiting';
+
+  const itemRows = g.items.map(po => {
+    if (isWaiting) return `<div style="display:grid;grid-template-columns:1fr 55px 90px 85px;gap:6px;padding:6px 0;border-bottom:0.5px solid var(--line);font-size:12px;align-items:center" id="th-pw-row-${po.id}">
+      <div style="font-weight:500">${po.item_name}</div>
+      <div style="text-align:right;color:var(--ink4);font-size:11px">${po.qty} ${po.unit||''}</div>
+      <input class="fi" type="number" placeholder="ราคา/หน่วย" value="${po.price_per_unit||''}" style="font-size:11px;text-align:right" id="th-pw-price-${po.id}" oninput="thPwCalcTotal('${groupId}')">
+      <div style="text-align:right;font-weight:500;font-size:11px" id="th-pw-total-${po.id}">${po.total_price?po.total_price.toLocaleString()+' ฿':'-'}</div>
+    </div>`;
+    return `<div style="display:grid;grid-template-columns:1fr 80px;gap:6px;padding:6px 0;border-bottom:0.5px solid var(--line);font-size:12px;align-items:center">
+      <div style="font-weight:500">${po.item_name}</div>
+      <div style="text-align:right;color:var(--ink4);font-size:11px">${po.qty} ${po.unit||''}</div>
+    </div>`;
+  }).join('');
+
+  const bankInfo = isWaiting && sup ? `
+    <div style="margin:8px 14px;padding:10px 12px;background:var(--s2);border-radius:8px;font-size:11px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="color:var(--ink4)">รวมยอดโอนทั้งหมด</span>
+        <span style="font-size:14px;font-weight:600" id="th-pw-grand-total-${groupId}">${total?total.toLocaleString()+' ฿':'กรอกราคาเพื่อคำนวณ'}</span>
+      </div>
+      <div style="border-top:0.5px solid var(--line);padding-top:8px;line-height:1.8">
+        <div style="color:var(--ink3)">ธนาคาร <strong>${sup.bank||'-'}</strong></div>
+        <div style="color:var(--ink3)">เลขที่บัญชี <strong>${sup.acc_num||'-'}</strong></div>
+        <div style="color:var(--ink3)">ชื่อบัญชี <strong>${sup.acc_name||'-'}</strong></div>
+      </div>
+    </div>` : '';
+
+  let actions = '';
+  if (status === 'ordered') {
+    actions = `
+      <button class="btn btn-sm" onclick="thPwCopyOrder('${groupId}')"><i class="ti ti-copy"></i> คัดลอก</button>
+      <button class="btn btn-sm btn-primary" onclick="thPwMoveStep('${groupId}','waiting')"><i class="ti ti-check"></i> สั่งซื้อแล้ว → ส่งเบิก</button>`;
+  } else if (status === 'waiting') {
+    actions = `
+      <button class="btn btn-sm" onclick="thPwAddExtraItem('${groupId}')"><i class="ti ti-plus"></i> เพิ่มรายการ</button>
+      <button class="btn btn-sm" onclick="thPwSavePrices('${groupId}')"><i class="ti ti-device-floppy"></i> บันทึกราคา</button>
+      <button class="btn btn-sm" onclick="thPwCopyPayment('${groupId}')"><i class="ti ti-copy"></i> คัดลอกใบเบิก</button>
+      <div style="margin-left:auto">
+        <button class="btn btn-sm btn-primary" onclick="thPwMoveStep('${groupId}','tracking')"><i class="ti ti-check"></i> ชำระแล้ว → ติดตาม</button>
+      </div>`;
+  } else if (status === 'tracking') {
+    const trackUrl = g.items[0]?.tracking_url||'';
+    const isUrl = trackUrl.startsWith('http');
+    actions = `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;width:100%">
+        <input class="fi" type="date" id="th-pw-arrive-${groupId}" value="${g.items[0]?.expected_arrival_date||''}" style="font-size:11px;width:140px">
+        <input class="fi" id="th-pw-track-${groupId}" value="${trackUrl}" style="font-size:11px;flex:1;min-width:120px" placeholder="Tracking URL/เลข">
+        <button class="btn btn-sm" onclick="thPwSaveTracking('${groupId}')"><i class="ti ti-device-floppy"></i></button>
+        ${trackUrl?`<a href="${isUrl?trackUrl:'https://'+trackUrl}" target="_blank" class="btn btn-sm"><i class="ti ti-external-link"></i></a>`:''}
+      </div>
+      <button class="btn btn-sm btn-primary" style="margin-top:6px;width:100%" onclick="thPwMoveStep('${groupId}','received')"><i class="ti ti-package-import"></i> รับสินค้าเรียบร้อย</button>`;
+  } else if (status === 'received') {
+    actions = `<span style="font-size:11px;color:#2d9e6b"><i class="ti ti-check"></i> รับเข้าคลังแล้ว</span>`;
+  }
+
+  return `<div style="border:0.5px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)">
+    <div style="padding:9px 14px;border-bottom:0.5px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:12px;font-weight:500">${sup?.name||'ไม่ระบุ'}</div>
+        <div style="font-size:10px;color:var(--ink4);margin-top:2px;display:flex;flex-wrap:wrap;gap:8px">
+          ${sup?.phone?`<span>📞 ${sup.phone}</span>`:''}
+          ${sup?.line_id?`<span>LINE: ${sup.line_id}</span>`:''}
+          <span>${date} · ${g.items.length} รายการ</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${st.color};color:#fff">${st.label}</span>
+        <button style="background:none;border:none;cursor:pointer;color:var(--ink4);font-size:14px" onclick="thPwDeleteGroup('${groupId}')"><i class="ti ti-trash"></i></button>
+      </div>
+    </div>
+    <div style="padding:8px 14px">
+      <div style="display:grid;grid-template-columns:${isWaiting?'1fr 55px 90px 85px':'1fr 80px'};gap:6px;font-size:10px;color:var(--ink4);margin-bottom:4px">
+        <span>รายการ</span><span style="text-align:right">จำนวน</span>${isWaiting?'<span style="text-align:right">ราคา/หน่วย</span><span style="text-align:right">รวม</span>':''}
+      </div>
+      ${itemRows}
+    </div>
+    ${bankInfo}
+    <div style="padding:9px 14px;border-top:0.5px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      ${actions}
+    </div>
+  </div>`;
+}
+
+function thPwCalcTotal(groupId) {
+  const items = thPwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  let grand = 0;
+  items.forEach(po => {
+    const price = parseFloat(document.getElementById(`th-pw-price-${po.id}`)?.value)||0;
+    const total = price * po.qty;
+    const el = document.getElementById(`th-pw-total-${po.id}`);
+    if (el) el.textContent = total ? total.toLocaleString()+' ฿' : '-';
+    grand += total;
+  });
+  const grandEl = document.getElementById(`th-pw-grand-total-${groupId}`);
+  if (grandEl) grandEl.textContent = grand ? grand.toLocaleString()+' ฿' : 'กรอกราคาเพื่อคำนวณ';
+}
+
+async function thPwSavePrices(groupId) {
+  const items = thPwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  await Promise.all(items.map(po => {
+    const price = parseFloat(document.getElementById(`th-pw-price-${po.id}`)?.value)||0;
+    const total = price * po.qty;
+    po.price_per_unit = price; po.total_price = total;
+    return sb.from('purchase_orders').update({ price_per_unit:price, total_price:total, updated_at:new Date().toISOString() }).eq('id', po.id);
+  }));
+  showToast('บันทึกราคาแล้วค่ะ');
+  await renderPurchaseOrderPage();
+  thPwFilterStep('waiting');
+}
+
+async function thPwAddExtraItem(groupId) {
+  const name = prompt('ชื่อรายการเพิ่มเติม:');
+  if (!name) return;
+  const qty = parseFloat(prompt('จำนวน:')||'1')||1;
+  const unit = prompt('หน่วย:')||'';
+  const items = thPwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  const supId = items[0]?.supplier_id;
+  const poGroupId = items[0]?.po_group_id || groupId;
+  await sb.from('purchase_orders').insert({
+    supplier_id: supId, po_group_id: poGroupId,
+    item_name: name, qty, unit, pay_status: 'waiting', is_active: true,
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+  });
+  showToast(`เพิ่ม "${name}" แล้วค่ะ`);
+  await renderPurchaseOrderPage();
+  thPwFilterStep('waiting');
+}
+
+async function thPwMoveStep(groupId, newStatus) {
+  const items = thPwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  await Promise.all(items.map(po =>
+    sb.from('purchase_orders').update({ pay_status:newStatus, updated_at:new Date().toISOString() }).eq('id', po.id)
+  ));
+  showToast('อัปเดตสถานะแล้วค่ะ');
+  await renderPurchaseOrderPage();
+  thPwFilterStep(newStatus);
+}
+
+async function thPwSaveTracking(groupId) {
+  const date = document.getElementById(`th-pw-arrive-${groupId}`)?.value||null;
+  const url = document.getElementById(`th-pw-track-${groupId}`)?.value.trim()||null;
+  const items = thPwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  await Promise.all(items.map(po =>
+    sb.from('purchase_orders').update({ expected_arrival_date:date, tracking_url:url, updated_at:new Date().toISOString() }).eq('id', po.id)
+  ));
+  showToast('บันทึก tracking แล้วค่ะ');
+}
+
+async function thPwDeleteGroup(groupId) {
+  if (!confirm('ลบรายการจัดซื้อนี้?')) return;
+  const items = thPwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  await Promise.all(items.map(po => sb.from('purchase_orders').update({ is_active:false }).eq('id', po.id)));
+  showToast('ลบแล้วค่ะ');
+  await renderPurchaseOrderPage();
+  thPwFilterStep(_thPwCurrentStep);
+}
+
+function thPwCopyOrder(groupId) {
+  const items = thPwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  const sup = items[0]?.purchase_suppliers;
+  const today = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+  const lines = [`ใบสั่งซื้อ — ${sup?.name||''}`, `วันที่ ${today}`, '─'.repeat(30)];
+  items.forEach((po,i) => lines.push(`${i+1}. ${po.item_name}  จำนวน ${po.qty} ${po.unit||''}`));
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกแล้วค่ะ'));
+}
+
+function thPwCopyPayment(groupId) {
+  const items = thPwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+  const sup = items[0]?.purchase_suppliers;
+  const liveItems = items.map(po => {
+    const price = parseFloat(document.getElementById(`th-pw-price-${po.id}`)?.value)||po.price_per_unit||0;
+    return {...po, price_per_unit:price, total_price:price*po.qty};
+  });
+  const total = liveItems.reduce((s,i)=>s+i.total_price,0);
+  const lines = [
+    'เบิกค่าวัตถุดิบ', `${sup?.name||''}`, '',
+    ...liveItems.map(po=>`- ${po.item_name} จำนวน ${po.qty} ${po.unit||''}${po.price_per_unit?' '+po.price_per_unit.toLocaleString()+' บาท':''}`),
+    '', `รวมยอดโอน ${total.toLocaleString()} บาท`, '',
+    `ธนาคาร ${sup?.bank||'-'}`,
+    `เลขที่บัญชี ${sup?.acc_num||'-'}`,
+    `ชื่อบัญชี ${sup?.acc_name||'-'}`,
+  ];
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast('คัดลอกใบเบิกแล้วค่ะ'));
+}
+
+// โหลด purchase_suppliers สำหรับ Tea House
+let paymentSuppliersDB = [];
+async function loadThPaymentSuppliers() {
+  const { data } = await sb.from('purchase_suppliers').select('*').eq('is_active', true).order('name');
+  paymentSuppliersDB = data || [];
+}
+
 
 function poRenderCards(div) {
   const dbSupKeys = Object.keys(poGroups).filter(k=>k!=='__noSup__');
