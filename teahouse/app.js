@@ -2370,7 +2370,7 @@ async function addMasterItem(){
 /* ── EDIT ── */
 function editStock(code){ const m=masterDB.find(x=>x.code===code);if(!m)return;document.getElementById('editStockId').value=code;document.getElementById('editStockName').textContent=m.name;document.getElementById('editStockVal').value=m.stock;document.getElementById('editStockModal').classList.add('show'); }
 async function saveEditStock(){ const code=document.getElementById('editStockId').value;const val=parseFloat(document.getElementById('editStockVal').value);if(isNaN(val)||val<0){showToast('ค่าไม่ถูกต้อง','err');return;}const m=masterDB.find(x=>x.code===code);if(m){m.stock=val;await dbUpsertItem(m);}checkAlerts();closeModal('editStockModal');renderMasterContent(); }
-function editMinMax(code){
+async function editMinMax(code){
   const m=masterDB.find(x=>x.code===code);if(!m)return;
   document.getElementById('editMMId').value=code;
   document.getElementById('editMMName').textContent=m.name;
@@ -2379,7 +2379,13 @@ function editMinMax(code){
   const sf=document.getElementById('editMMSupplierFields');
   if(sf){
     sf.style.display=SUPPLIER_FIELDS?'grid':'none';
-    document.getElementById('editMMSupplier').value=m.supplier_name||'';
+    // โหลด purchase_suppliers เข้า dropdown
+    const supSel = document.getElementById('editMMSupplier');
+    if (supSel) {
+      if (paymentSuppliersDB.length === 0) await loadThPaymentSuppliers();
+      supSel.innerHTML = '<option value="">— เลือกผู้จำหน่าย —</option>' +
+        paymentSuppliersDB.map(s=>`<option value="${s.name}"${m.supplier_name===s.name?' selected':''}>${s.name}</option>`).join('');
+    }
     const leadLabel=document.getElementById('editMMLeadTimeLabel');
     const leadInput=document.getElementById('editMMLeadTime');
     if(SUPPLIER_FIELDS==='date'){
@@ -3092,6 +3098,9 @@ async function boot(){
   banner.style.cssText='position:fixed;bottom:16px;right:16px;background:#1a1a1c;color:#fff;padding:9px 15px;border-radius:8px;font-size:12px;z-index:999;display:flex;align-items:center;gap:7px';
   banner.innerHTML='<i class="ti ti-loader" style="animation:spin 1s linear infinite"></i> กำลังโหลดข้อมูล...';
   document.body.appendChild(banner);
+
+  // โหลด payment suppliers
+  await loadThPaymentSuppliers();
 
   // Load items
   const ok=await dbLoadItems();
