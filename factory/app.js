@@ -6182,6 +6182,13 @@ function pwFilterStep(step) {
 }
 
 async function pwSaveFromCard(supName, supId, cardId) {
+  if (window._pwSaving) return;
+  window._pwSaving = true;
+  try { await _pwSaveFromCardCore(supName, supId, cardId); }
+  finally { window._pwSaving = false; }
+}
+
+async function _pwSaveFromCardCore(supName, supId, cardId) {
   if (!supId) { showToast('ไม่พบข้อมูลซัพพลายเออร์ค่ะ','err'); return; }
   const card = document.getElementById(cardId);
   if (!card) return;
@@ -6278,6 +6285,9 @@ function pwCalcTotal(groupId) {
 }
 
 async function pwSavePrices(groupId) {
+  if (window._pwPricing) return;
+  window._pwPricing = true;
+  setTimeout(() => window._pwPricing = false, 3000);
   const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
   await Promise.all(items.map(po => {
     const price = parseFloat(document.getElementById(`pw-price-${po.id}`)?.value)||0;
@@ -6317,15 +6327,20 @@ async function pwAddExtraItem(groupId) {
 }
 
 async function pwMoveStep(groupId, newStatus) {
-  const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
-  await Promise.all(items.map(po =>
-    sb.from('purchase_orders').update({ pay_status: newStatus, updated_at: new Date().toISOString() }).eq('id', po.id)
-  ));
-  showToast(`อัปเดตสถานะแล้วค่ะ`);
-  // reload ทั้งหมดจาก DB
-  const div = document.getElementById('page-alert-purchase');
-  await renderPurchaseWorkflowPage(div);
-  pwFilterStep(newStatus);
+  if (window._pwMoving) return;
+  window._pwMoving = true;
+  try {
+    const items = pwOrders.filter(po => (po.po_group_id||`${po.supplier_id}_${po.created_at?.slice(0,10)}`) === groupId);
+    await Promise.all(items.map(po =>
+      sb.from('purchase_orders').update({ pay_status: newStatus, updated_at: new Date().toISOString() }).eq('id', po.id)
+    ));
+    showToast(`อัปเดตสถานะแล้วค่ะ`);
+    const div = document.getElementById('page-alert-purchase');
+    await renderPurchaseWorkflowPage(div);
+    pwFilterStep(newStatus);
+  } finally {
+    window._pwMoving = false;
+  }
 }
 
 async function pwSaveTracking(groupId) {
