@@ -5058,6 +5058,13 @@ function thPwCopyNeedOrder(supName) {
 }
 
 async function thPwSaveFromCard(supName, supId, cardId) {
+  if (window._thPwSaving) return;
+  window._thPwSaving = true;
+  try { await _thPwSaveFromCardCore(supName, supId, cardId); }
+  finally { window._thPwSaving = false; }
+}
+
+async function _thPwSaveFromCardCore(supName, supId, cardId) {
   if (!supId) { showToast('ไม่พบข้อมูลซัพพลายเออร์ค่ะ','err'); return; }
   const card = document.getElementById(cardId);
   if (!card) return;
