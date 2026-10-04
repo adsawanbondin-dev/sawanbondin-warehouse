@@ -4913,11 +4913,17 @@ async function renderPurchaseOrderPage() {
   div.innerHTML = `<div style="padding:24px;text-align:center;color:var(--ink4)"><i class="ti ti-loader" style="font-size:24px;animation:spin 1s linear infinite"></i></div>`;
 
   // โหลด purchase_orders
-  const { data } = await sb.from('purchase_orders')
-    .select('*, purchase_suppliers(name,pay_type,acc_num,acc_name,bank,phone,line_id)')
+  const { data: poData } = await sb.from('purchase_orders')
+    .select('*')
     .eq('is_active', true)
     .order('created_at', { ascending: false });
-  thPwOrders = data || [];
+  thPwOrders = poData || [];
+
+  // โหลด purchase_suppliers แยก แล้ว join ใน JS
+  if (paymentSuppliersDB.length === 0) await loadThPaymentSuppliers();
+  thPwOrders.forEach(po => {
+    po.purchase_suppliers = paymentSuppliersDB.find(s => s.id === po.supplier_id) || null;
+  });
 
   // จัดกลุ่ม PO
   const groups = {};
