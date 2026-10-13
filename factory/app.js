@@ -1441,7 +1441,7 @@ function switchPage(p) {
   document.querySelector(`[data-page="${p}"]`)?.classList.add('active');
   // รวมทุกหน้าเพื่อให้ซ่อนครบ
   const alertGroupPages = ALERT_GROUPS ? Object.keys(ALERT_GROUPS).map(g=>'alert-'+g) : [];
-  ['master', ...WAREHOUSE_PAGES, 'stockcount', 'dashboard', 'suppliers', ...alertGroupPages].forEach(pg => {
+  ['master', ...WAREHOUSE_PAGES, 'stockcount', 'dashboard', 'suppliers', 'reconcile', ...alertGroupPages].forEach(pg => {
     const el = document.getElementById('page-'+pg);
     if (el) el.className = pg===p ? 'page-visible' : 'page-hidden';
   });
@@ -1452,6 +1452,8 @@ function switchPage(p) {
     renderBomPage();
   } else if (p==='suppliers') {
     renderSupplierPage();
+  } else if (p==='reconcile') {
+    renderReconcilePage();
   } else if (p.startsWith('alert-')) {
     renderAlertGroupPage(p.replace('alert-',''));
   } else {
@@ -3788,6 +3790,26 @@ async function boot(){
     window._operatorRole = profile?.role || 'staff';
     const el = document.getElementById('topbarUser');
     if (el) el.textContent = `${displayName}${dept?' · '+dept:''}`;
+  }
+
+  // สร้าง page-reconcile ถ้ายังไม่มีใน HTML
+  if (!document.getElementById('page-reconcile')) {
+    const recDiv = document.createElement('div');
+    recDiv.id = 'page-reconcile';
+    recDiv.className = 'page-hidden';
+    document.getElementById('page-master')?.parentElement?.appendChild(recDiv);
+  }
+  // เพิ่ม nav button reconcile ถ้ายังไม่มี
+  if (!document.querySelector('[data-page="reconcile"]')) {
+    const suppNav = document.querySelector('[data-page="suppliers"]');
+    if (suppNav) {
+      const recNav = document.createElement('div');
+      recNav.className = 'nav-item';
+      recNav.dataset.page = 'reconcile';
+      recNav.setAttribute('onclick', "navigateTo('reconcile')");
+      recNav.innerHTML = '<i class="ti ti-adjustments-check"></i><span>ตรวจสต็อก</span>';
+      suppNav.parentElement?.insertBefore(recNav, suppNav.nextSibling);
+    }
   }
 
   checkAlerts();
@@ -6520,3 +6542,126 @@ async function pwDeleteGroup(groupId) {
   pwFilterStep(_pwCurrentStep);
 }
 
+
+/* ═══════════════════════════════════════════
+   RECONCILE PAGE — ตรวจสอบ stock vs transaction
+═══════════════════════════════════════════ */
+async function renderReconcilePage() {
+  const div = document.getElementById('page-reconcile');
+  if (!div) return;
+  div.innerHTML = `
+    <div style="max-width:900px;margin:0 auto;padding:16px">
+      <h2 style="font-size:1.2rem;font-weight:700;margin-bottom:4px">ตรวจสอบยอดสต็อก</h2>
+      <p style="color:var(--c-sub);font-size:.85rem;margin-bottom:16px">เปรียบเทียบ stock ปัจจุบันกับยอดรวมจาก transaction — lot ที่ต่างกันจะแสดงไว้ให้แก้ไข</p>
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <select id="reconcilePg" onchange="loadReconcileData()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--c-border);background:var(--c-card);color:var(--c-text);font-size:.9rem">
+          <option value="">— เลือกคลัง —</option>
+          ${Object.entries(WAREHOUSE_CONFIG).filter(([k,v])=>v.hasLot).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('')}
+        </select>
+        <button onclick="loadReconcileData()" style="padding:6px 14px;border-radius:8px;background:var(--c-accent);color:#fff;border:none;cursor:pointer;font-size:.9rem">โหลดข้อมูล</button>
+      </div>
+      <div id="reconcileResult"></div>
+    </div>`;
+}
+
+async function loadReconcileData() {
+  const pg = document.getElementById('reconcilePg')?.value;
+  const out = document.getElementById('reconcileResult');
+  if (!pg || !out) return;
+  out.innerHTML = `<div style="color:var(--c-sub);padding:16px">กำลังโหลด...</div>`;
+
+  // โหลด lots ของคลังนี้
+  const { data: lots, error: lotErr } = await sb.from('lots')
+    .select('id,item_code,lot_sw,stock,note')
+    .in('item_code', masterDB.filter(m=>m.pg===pg).map(m=>m.code))
+    .order('item_code').order('lot_sw');
+  if (lotErr) { out.innerHTML = `<div style="color:var(--c-danger)">Error: ${lotErr.message}</div>`; return; }
+
+  // โหลด transaction sum ต่อ lot_id
+  const { data: txSums, error: txErr } = await sb.rpc('calc_lot_stock_from_tx', {});
+  // fallback: query manual ถ้าไม่มี RPC
+  let txMap = {};
+  if (txErr || !txSums) {
+    // คำนวณเองจาก transactions
+    const lotIds = (lots||[]).map(l=>l.id);
+    if (lotIds.length > 0) {
+      const { data: txData } = await sb.from('transactions')
+        .select('lot_id,action_type,quantity')
+        .in('lot_id', lotIds);
+      (txData||[]).forEach(t => {
+        if (!txMap[t.lot_id]) txMap[t.lot_id] = 0;
+        if (t.action_type === 'receive') txMap[t.lot_id] += parseFloat(t.quantity)||0;
+        else if (t.action_type === 'withdraw' || t.action_type === 'return_bad') txMap[t.lot_id] -= parseFloat(t.quantity)||0;
+      });
+    }
+  } else {
+    (txSums||[]).forEach(r => { txMap[r.lot_id] = r.calc_stock; });
+  }
+
+  // หา lot ที่ stock ต่างจาก calc
+  const diffs = (lots||[]).map(l => {
+    const calc = txMap[l.id] ?? null;
+    const diff = calc !== null ? l.stock - calc : null;
+    return { ...l, calc, diff };
+  }).filter(l => l.diff === null || Math.abs(l.diff) > 0.001);
+
+  if (diffs.length === 0) {
+    out.innerHTML = `<div style="padding:24px;text-align:center;color:var(--c-sub)">✅ ยอดสต็อกตรงกับ transaction ทั้งหมดค่ะ</div>`;
+    return;
+  }
+
+  const rows = diffs.map(l => {
+    const m = masterDB.find(x=>x.code===l.item_code);
+    const calcDisplay = l.calc === null ? '<span style="color:var(--c-sub)">ไม่มี tx</span>' : l.calc.toLocaleString();
+    const diffDisplay = l.diff === null
+      ? `<span style="color:var(--c-warn)">stock=${l.stock} / ไม่มี transaction</span>`
+      : `<span style="color:${Math.abs(l.diff)>0?'var(--c-danger)':'var(--c-sub)'}">${l.diff>0?'+':''}${l.diff.toLocaleString()}</span>`;
+    const canSync = l.calc !== null && l.calc >= 0;
+    return `<tr>
+      <td style="padding:8px;font-size:.82rem;color:var(--c-sub)">${l.item_code}</td>
+      <td style="padding:8px;font-size:.88rem">${m?.name||l.item_code}</td>
+      <td style="padding:8px;font-size:.85rem">${l.lot_sw}${l.note?` <span style="color:var(--c-sub)">(${l.note})</span>`:''}</td>
+      <td style="padding:8px;text-align:right">${l.stock.toLocaleString()}</td>
+      <td style="padding:8px;text-align:right">${calcDisplay}</td>
+      <td style="padding:8px;text-align:right">${diffDisplay}</td>
+      <td style="padding:8px;text-align:center">
+        ${canSync
+          ? `<button onclick="syncLotStock(${l.id},${l.calc},'${l.lot_sw}')" style="padding:4px 10px;border-radius:6px;background:var(--c-accent);color:#fff;border:none;cursor:pointer;font-size:.8rem">Sync</button>`
+          : `<span style="color:var(--c-sub);font-size:.8rem">ตรวจสอบ</span>`}
+      </td>
+    </tr>`;
+  }).join('');
+
+  out.innerHTML = `
+    <div style="margin-bottom:8px;font-size:.85rem;color:var(--c-sub)">พบ ${diffs.length} lot ที่ยอดไม่ตรง</div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:.88rem">
+      <thead>
+        <tr style="border-bottom:2px solid var(--c-border);text-align:left">
+          <th style="padding:8px;font-weight:600;color:var(--c-sub)">รหัส</th>
+          <th style="padding:8px;font-weight:600">ชื่อสินค้า</th>
+          <th style="padding:8px;font-weight:600">Lot</th>
+          <th style="padding:8px;font-weight:600;text-align:right">Stock ปัจจุบัน</th>
+          <th style="padding:8px;font-weight:600;text-align:right">คำนวณจาก TX</th>
+          <th style="padding:8px;font-weight:600;text-align:right">ต่าง</th>
+          <th style="padding:8px;font-weight:600;text-align:center">แก้ไข</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    </div>
+    <div style="margin-top:12px;font-size:.8rem;color:var(--c-sub)">
+      ⚠️ กด Sync เฉพาะ lot ที่มั่นใจว่า transaction ครบถ้วนค่ะ — lot ที่ "ไม่มี tx" ให้ตรวจสอบก่อน
+    </div>`;
+}
+
+async function syncLotStock(lotId, calcStock, lotSw) {
+  if (!confirm(`Sync lot ${lotSw} → stock = ${calcStock} ?`)) return;
+  const { error } = await sb.from('lots').update({ stock: calcStock }).eq('id', lotId);
+  if (error) { showToast('Error: ' + error.message, 'err'); return; }
+
+  // sync items.stock ด้วย (โหลด lots ใหม่แล้วรวม)
+  const lotRow = document.querySelector(`button[onclick*="syncLotStock(${lotId},"]`);
+  showToast(`Sync lot ${lotSw} เรียบร้อยค่ะ`);
+  loadReconcileData(); // reload table
+}
