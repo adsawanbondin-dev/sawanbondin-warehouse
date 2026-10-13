@@ -2808,20 +2808,56 @@ async function doQRScan(){
   if(!code){res.className='qr-result err';res.textContent='กรุณาสแกนหรือพิมพ์รหัส';setTimeout(()=>res.className='qr-result',2500);return;}
   const m=masterDB.find(x=>x.code.toLowerCase()===code.toLowerCase());
   if(!m){res.className='qr-result err';res.textContent=`ไม่พบรหัส "${code}"`;setTimeout(()=>res.className='qr-result',3000);return;}
-  if(action==='withdraw'&&qty>m.stock){res.className='qr-result err';res.textContent=`สต็อกไม่พอ (มี ${m.stock} เหลือ)`;setTimeout(()=>res.className='qr-result',3000);return;}
-  if(action==='receive'||action==='return_good') m.stock+=qty;
-  else if(action==='withdraw') m.stock=Math.max(0,m.stock-qty);
-  const rpcRes=await dbAdjustStockWithLot(m.code,action,qty,{name:m.name});
+
+  const pg=m.pg;
+  const hasLotPg=!!WAREHOUSE_CONFIG[pg]?.hasLot;
+
+  // สำหรับ items ที่มี lot — โหลด lots สดจาก DB ก่อนทุกครั้ง
+  let lotId=null;
+  let lotSW='-';
+  if(hasLotPg && (action==='withdraw'||action==='return_good')){
+    // force reload lots จาก DB (ไม่ใช้ cache เก่า)
+    delete lotDB[m.code];
+    await dbLoadLotsForItem(m.code);
+    const lots=(lotDB[m.code]||[]).filter(l=>l.stock>0);
+    if(lots.length===0){
+      res.className='qr-result err';
+      res.textContent=`ไม่มี lot ที่มีสต็อก สำหรับ "${m.name}"`;
+      setTimeout(()=>res.className='qr-result',3500);
+      return;
+    }
+    // FEFO: เลือก lot แรกที่มีสต็อกพอ
+    const chosen=lots.find(l=>l.stock>=qty) || lots[0];
+    lotId=chosen.id;
+    lotSW=chosen.lot_sw||'-';
+  }
+
+  // ตรวจสต็อกจาก DB (ไม่ใช้ m.stock ที่อาจ stale)
+  if(action==='withdraw'&&qty>m.stock){
+    res.className='qr-result err';
+    res.textContent=`สต็อกไม่พอ (มี ${m.stock} เหลือ)`;
+    setTimeout(()=>res.className='qr-result',3000);
+    return;
+  }
+
+  // ส่ง RPC — ไม่แก้ m.stock ใน memory ก่อน ใช้ผลจาก RPC
+  const rpcRes=await dbAdjustStockWithLot(m.code,action,qty,{lotId,name:m.name});
   if(!rpcRes.ok){res.className='qr-result err';res.textContent=rpcRes.error||'เกิดข้อผิดพลาด';setTimeout(()=>res.className='qr-result',3000);return;}
   if(rpcRes.new_stock!==undefined) m.stock=rpcRes.new_stock;
+
+  // sync lot cache ถ้ามี
+  if(rpcRes.lot_id && lotDB[m.code]){
+    const lot=lotDB[m.code].find(l=>l.id===rpcRes.lot_id);
+    if(lot && rpcRes.new_lot_stock!==undefined) lot.stock=rpcRes.new_lot_stock;
+  }
+
   await dbUpsertItem(m);
-  const pg=m.pg;
-  const rec={time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],name:'(QR)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],item:m.name,code:m.code,qty,lotSW:'-',pg,via:'scan'};
+  const rec={time:timeNow(),type:action,typeLabel:ACTION_LABELS[action],name:'(QR)',dept:(WAREHOUSE_CONFIG[pg]?.depts||[''])[0],item:m.name,code:m.code,qty,lotSW,pg,via:'scan'};
   txState[pg].records.unshift(rec);
   rec.id = await dbInsertTransaction(rec);
   checkAlerts();if(currentQRPage===pg)renderHistory(pg,1);
   res.className='qr-result ok';
-  res.textContent=`${ACTION_LABELS[action]} "${m.name}" ${qty} · สต็อก ${m.stock}`;
+  res.textContent=`${ACTION_LABELS[action]} "${m.name}" ${qty}${hasLotPg?` (lot ${lotSW})`:''} · สต็อก ${m.stock}`;
   document.getElementById('qr-scan-input').value='';document.getElementById('qr-scan-qty').value='1';
   buildQRList(pg);setTimeout(()=>res.className='qr-result',4000);
 }
