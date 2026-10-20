@@ -47,6 +47,21 @@ const WAREHOUSE_CONFIG = _CFG.WAREHOUSE_CONFIG || {
 };
 const WAREHOUSE_PAGES = Object.keys(WAREHOUSE_CONFIG);
 
+/**
+ * itemHasLot(m) — ตรวจว่า item นี้ควรมี lot หรือไม่
+ * ถ้า pg config มี lotSubcats → ต้องตรงกับ subcat ของ item ถึงจะมี lot
+ * ถ้าไม่มี lotSubcats → ใช้ hasLot ของ pg ตามปกติ
+ */
+function itemHasLot(m) {
+  const cfg = WAREHOUSE_CONFIG[m?.pg];
+  if (!cfg) return false;
+  if (!cfg.hasLot) return false;
+  if (cfg.lotSubcats && cfg.lotSubcats.length > 0) {
+    return cfg.lotSubcats.includes(m.subcat);
+  }
+  return true;
+}
+
 // เรียง lots ตามวันที่ → ขนาดถุง (ใหญ่ก่อน) → ลำดับใน note (X/Y)
 function sortLots(lots) {
   const parseNote = (note) => {
@@ -758,7 +773,7 @@ function updatePkgPreview() {
     const avail = m?.stock||0;
     const ok = avail >= needed;
     const cfg = WAREHOUSE_CONFIG[item.pg];
-    const hasLot = cfg?.hasLot;
+    const hasLot = itemHasLot(m||{pg:item.pg, subcat:item.subcat||''});
 
     let lotCell = '';
     if (hasLot) {
@@ -831,7 +846,7 @@ async function submitPackaging() {
     if (!m) continue;
 
     const cfg = WAREHOUSE_CONFIG[item.pg];
-    const hasLot = cfg?.hasLot;
+    const hasLot = itemHasLot(m);
 
     if (hasLot) {
       const lotSelEl = document.querySelector(`.pkg-lot-sel[data-code="${item.item_code}"]`);
@@ -956,7 +971,7 @@ function handleScanResult(raw, pg) {
     if (sw) sw.value = parsed.lotSW;
     // autofill lot picker
     const pickerList = document.getElementById(pg+'-lot-picker-list');
-    if (pickerList && (WAREHOUSE_CONFIG[pg]?.hasLot)) {
+    if (pickerList && itemHasLot(m)) {
       buildLotPickerHtml(m.code, pg).then(html => {
         pickerList.innerHTML = html;
         const action = txState[pg]?.action;
@@ -2080,11 +2095,11 @@ function switchAction(pg, action) {
     });
   }
   // ── ถ้ามีรายการที่เลือกอยู่แล้ว และ action เป็นเบิก/คืน → โหลด Lot picker + auto-select ──
-  if (sv.ival && (WAREHOUSE_CONFIG[pg]?.hasLot)) {
+  if (sv.ival) {
     const m = masterDB.find(x=>x.code===sv.ival || x.name===sv.idisp);
     const pickerList = document.getElementById(pg+'-lot-picker-list');
     const hiddenEl = document.getElementById(pg+'-lot-id-hidden');
-    if (m && pickerList && (action==='withdraw'||action==='return_good'||action==='return_bad')) {
+    if (m && itemHasLot(m) && pickerList && (action==='withdraw'||action==='return_good'||action==='return_bad')) {
       buildLotPickerHtml(m.code, pg).then(html => {
         pickerList.innerHTML = html;
         const first = pickerList.querySelector('.lot-select-item');
@@ -2171,7 +2186,7 @@ function selItem(pg, item, code) {
   // clear lot selection เมื่อเปลี่ยน item
   const hiddenClear = document.getElementById(pg+'-lot-id-hidden');
   if (hiddenClear) hiddenClear.value = '';
-  if(m&&pickerList&&(WAREHOUSE_CONFIG[pg]?.hasLot)) {
+  if(m&&pickerList&&itemHasLot(m)) {
     pickerList.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด Lot...</div>';
     buildLotPickerHtml(m.code,pg).then(html=>{
       pickerList.innerHTML=html;
@@ -2288,15 +2303,20 @@ async function submitF(pg) {
   const name   = document.getElementById(pg+'-name').value.trim();
   const itemName = document.getElementById(pg+'-ival')?.value||document.getElementById(pg+'-idisplay')?.value?.trim()||'';
   const qty    = parseFloat(document.getElementById(pg+'-qty').value);
-  const lotSW  = cfg.hasLot ? (document.getElementById(pg+'-lotsw')?.value||'') : '';
+  const action = txState[pg].action;
+  const dept   = window._operatorDept||'';
+
+  // ── หา mi ก่อน เพื่อใช้ itemHasLot ──
+  const mi   = masterDB.find(m=>m.name===itemName && m.pg===pg);
+  const _hasLot = itemHasLot(mi||{pg, subcat:''});
+
+  const lotSW  = _hasLot ? (document.getElementById(pg+'-lotsw')?.value||'') : '';
   const lotSP  = cfg.lotSupplier ? (document.getElementById(pg+'-lotsp')?.value||'') : '';
   const expiry = cfg.hasExpiry ? (document.getElementById(pg+'-expiry')?.value||'') : '';
   const note   = document.getElementById(pg+'-note')?.value||document.getElementById(pg+'-improve')?.value||'';
   const locSelectVal = (document.getElementById(pg+'-loc-select')?.value||'').trim();
   const locInputVal  = (document.getElementById(pg+'-loc')?.value||'').trim();
   const loc = locSelectVal || locInputVal;
-  const action = txState[pg].action;
-  const dept   = window._operatorDept||'';
 
   // ── ถุง ──
   const bagContainer = document.getElementById(pg+'-bag-rows');
@@ -2304,10 +2324,9 @@ async function submitF(pg) {
     ? [...bagContainer.querySelectorAll('.bag-weight-input')]
         .map(el => parseFloat(el.value)||0).filter(w => w > 0)
     : [];
-  const hasBags = bagWeights.length > 0 && action === 'receive' && cfg.hasLot;
+  const hasBags = bagWeights.length > 0 && action === 'receive' && _hasLot;
 
   setLoading(pg+'-submit-btn', true);
-  const mi   = masterDB.find(m=>m.name===itemName && m.pg===pg);
   const item = itemName;
   const code = mi ? mi.code : '-';
 
@@ -2343,12 +2362,12 @@ async function submitF(pg) {
         const hiddenLotId = document.getElementById(pg+'-lot-id-hidden')?.value;
         if (hiddenLotId) {
           lotId = parseInt(hiddenLotId);
-        } else if ((WAREHOUSE_CONFIG[pg]?.hasLot) && lotSW && (action==='withdraw'||action==='return_good')) {
+        } else if (_hasLot && lotSW && (action==='withdraw'||action==='return_good')) {
           const cached = (lotDB[code]||[]).find(l=>l.lot_sw===lotSW);
           if (cached) lotId = cached.id;
         }
         // สำหรับ finish: สร้าง lot ตามปกติตอนรับเข้า
-        const effectiveLotSW = (cfg.hasLot && lotSW && lotSW.length > 0) ? lotSW : null;
+        const effectiveLotSW = (_hasLot && lotSW && lotSW.length > 0) ? lotSW : null;
         rpcResult = await dbAdjustStockWithLot(code, action, qty, {
           lotId,
           lotSW: effectiveLotSW,
@@ -2397,16 +2416,17 @@ async function addToBatch(pg) {
   const cfg    = WAREHOUSE_CONFIG[pg];
   const item   = document.getElementById(pg+'-ival')?.value||document.getElementById(pg+'-idisplay')?.value?.trim()||'';
   const qty    = parseFloat(document.getElementById(pg+'-qty').value);
-  const lotSW  = cfg.hasLot?(document.getElementById(pg+'-lotsw')?.value||''):'';
+  const action = txState[pg].action;
+  // ค้นหาด้วย pg + ชื่อ ให้ตรงคลัง
+  const mi     = masterDB.find(m=>m.name===item && m.pg===pg);
+  const _hasLot = itemHasLot(mi||{pg, subcat:''});
+  const lotSW  = _hasLot?(document.getElementById(pg+'-lotsw')?.value||''):'';
   const lotSP  = cfg.lotSupplier?(document.getElementById(pg+'-lotsp')?.value||''):'';
   const note   = document.getElementById(pg+'-note')?.value||document.getElementById(pg+'-improve')?.value||'';
   // ข้อ 1: ดึง loc จาก select ก่อน ถ้าไม่มีค่อยดึงจาก free-text input
   const locSelectVal = (document.getElementById(pg+'-loc-select')?.value||'').trim();
   const locInputVal  = (document.getElementById(pg+'-loc')?.value||'').trim();
   const loc = locSelectVal || locInputVal;
-  const action = txState[pg].action;
-  // ค้นหาด้วย pg + ชื่อ ให้ตรงคลัง
-  const mi     = masterDB.find(m=>m.name===item && m.pg===pg);
   batchDB[pg].push({item,code:mi?mi.code:'-',qty,lotSW,lotSP,note,loc,action,typeLabel:ACTION_LABELS[action]});
   saveBatchLS(); renderBatchCard(pg);
   const di=document.getElementById(pg+'-idisplay');if(di)di.value='';
@@ -2638,8 +2658,8 @@ function openCamera(pg){
           document.getElementById('camLotSW').style.display='none';
           document.getElementById('camLotHidden').value='';
         }
-        // แสดง lot picker ถ้าคลังนี้มี lot และมี lots อยู่
-        const hasLotPg = !!WAREHOUSE_CONFIG[m.pg]?.hasLot;
+        // แสดง lot picker ถ้า item นี้มี lot และมี lots อยู่
+        const hasLotPg = itemHasLot(m);
         const lots = hasLotPg ? sortLots((lotDB[m.code]||[]).filter(l=>l.stock>0)) : [];
         // เรียงเก่าก่อน (FIFO)
         lots;
@@ -2696,7 +2716,7 @@ async function confirmCamScan(){
   const m=masterDB.find(x=>x.code===parsed.itemCode);
   if(!m){alert('ไม่พบรหัสในระบบ');return;}
   const pg=m.pg;
-  const hasLotPg=!!WAREHOUSE_CONFIG[pg]?.hasLot;
+  const hasLotPg=itemHasLot(m);
 
   if(action!=='return_bad'){
     // ดึง lot SW จากทุกแหล่ง — picker > hidden > input > QR
@@ -2812,7 +2832,7 @@ async function doQRScan(){
   if(!m){res.className='qr-result err';res.textContent=`ไม่พบรหัส "${code}"`;setTimeout(()=>res.className='qr-result',3000);return;}
 
   const pg=m.pg;
-  const hasLotPg=!!WAREHOUSE_CONFIG[pg]?.hasLot;
+  const hasLotPg=itemHasLot(m);
 
   // สำหรับ items ที่มี lot — โหลด lots สดจาก DB ก่อนทุกครั้ง
   let lotId=null;
@@ -3325,7 +3345,7 @@ function renderMasterContent(){
     const sI=st==='out'?'ti-circle-x':st==='low'?'ti-alert-triangle':'ti-check';
     const cls=st==='out'?'out-stock':st==='low'?'low-stock':'';
     const loc=locationDB[m.code]||'';
-    const hasLotPg=(WAREHOUSE_CONFIG[m.pg]?.hasLot);
+    const hasLotPg=itemHasLot(m);
     const allLots=hasLotPg?(lotDB[m.code]||[]):[];
     const activeLots=sortLots(allLots.filter(l=>l.stock>0));
     const lotSubHtml=allLots.length
