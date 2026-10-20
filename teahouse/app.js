@@ -45,6 +45,19 @@ const WAREHOUSE_CONFIG = _CFG.WAREHOUSE_CONFIG || {
 };
 const WAREHOUSE_PAGES = Object.keys(WAREHOUSE_CONFIG);
 
+// ── itemHasLot ──
+// ตรวจว่า item นี้มี lot หรือไม่
+// รองรับ lotSubcats: ถ้า pg มี lotSubcats จะ check subcat ของ item ด้วย
+function itemHasLot(m) {
+  const cfg = WAREHOUSE_CONFIG[m?.pg];
+  if (!cfg) return false;
+  if (!cfg.hasLot) return false;
+  if (cfg.lotSubcats && cfg.lotSubcats.length > 0) {
+    return cfg.lotSubcats.includes(m.subcat);
+  }
+  return true;
+}
+
 const ACTION_LABELS = { receive:'รับเข้า', withdraw:'เบิก', return_good:'คืนดี', return_bad:'คืนเสีย', transform_lot:'แปรรูป' };
 const ACTION_BADGE  = { receive:'badge-receive', withdraw:'badge-withdraw', return_good:'badge-return-good', return_bad:'badge-return-bad', transform_lot:'badge-transform' };
 const DEPT_PILL_CLS = { 'ผลิต':'dept-prod', 'คลัง':'dept-ware', 'บรรจุ':'dept-pack', 'Tea House':'dept-tea' };
@@ -1196,6 +1209,9 @@ function renderForm(pg) {
   // Lot fields
   if (cfg.hasLot) {
     h += '<div class="divider"></div>';
+    // ถ้ามี lotSubcats: ซ่อน lot section ไว้ก่อน รอ selItem() toggle
+    const lotSectionStyle = cfg.lotSubcats?.length ? 'display:none' : '';
+    h += `<div id="${pg}-lot-section" style="${lotSectionStyle}">`;
     if (!isRecv && (WAREHOUSE_CONFIG[pg]?.hasLot)) {
       // เบิก/คืน raw, finish และ matcha: แสดง lot picker
       h += `<div class="fg">
@@ -1241,6 +1257,11 @@ function renderForm(pg) {
           <input class="fi" id="${pg}-lotsw" type="date">
         </div>
       </div>`;
+    }
+    h += '</div>'; // end #pg-lot-section
+    // placeholder สำหรับแสดง stock เมื่อ item ไม่มี lot (เฉพาะ pg ที่มี lotSubcats)
+    if (cfg.lotSubcats?.length) {
+      h += `<div id="${pg}-no-lot-stock" style="display:none;margin-top:10px"></div>`;
     }
   }
 
@@ -1535,16 +1556,37 @@ function switchAction(pg, action) {
       if (o.textContent.trim()===sv.dept) o.classList.add('sel');
     });
   }
-  // ── ถ้ามีรายการที่เลือกอยู่แล้ว และ action เป็นเบิก/คืน → โหลด Lot picker + auto-select ──
-  if (sv.ival && (WAREHOUSE_CONFIG[pg]?.hasLot)) {
+  // ── ถ้ามีรายการที่เลือกอยู่แล้ว → toggle lot section + โหลด Lot picker + auto-select ──
+  if (sv.ival) {
     const m = masterDB.find(x=>x.code===sv.ival || x.name===sv.idisp);
+    // toggle lot section ตาม itemHasLot
+    const lotSection = document.getElementById(pg+'-lot-section');
+    if (lotSection) lotSection.style.display = (m && itemHasLot(m)) ? '' : 'none';
+
     const pickerList = document.getElementById(pg+'-lot-picker-list');
-    if (m && pickerList && (action==='withdraw'||action==='return_good'||action==='return_bad')) {
+    if (m && pickerList && itemHasLot(m) && (action==='withdraw'||action==='return_good'||action==='return_bad')) {
       buildLotPickerHtml(m.code, pg).then(html => {
         pickerList.innerHTML = html;
         const first = pickerList.querySelector('.lot-select-item');
         if (first) pickLot(first, pg, first.dataset.lot);
       });
+    }
+
+    // แสดง stock ปัจจุบันเมื่อ item ไม่มี lot
+    const noLotStockEl = document.getElementById(pg+'-no-lot-stock');
+    if (noLotStockEl && m) {
+      const isWithdraw = action==='withdraw'||action==='return_good'||action==='return_bad';
+      if (!itemHasLot(m) && isWithdraw) {
+        const stockColor = m.stock <= 0 ? 'var(--red)' : m.min > 0 && m.stock <= m.min ? 'var(--warn)' : 'var(--green,#16a34a)';
+        noLotStockEl.innerHTML = `<div style="background:var(--s2);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;color:var(--ink3)"><i class="ti ti-package" style="margin-right:4px"></i>ยอดคงเหลือปัจจุบัน</span>
+          <span style="font-size:16px;font-weight:700;color:${stockColor}">${m.stock.toLocaleString()} ${m.unit||''}</span>
+        </div>`;
+        noLotStockEl.style.display = '';
+      } else {
+        noLotStockEl.style.display = 'none';
+        noLotStockEl.innerHTML = '';
+      }
     }
   }
 }
@@ -1601,8 +1643,12 @@ function selItem(pg, item, code) {
     const sel=document.getElementById(pg+'-loc-select');
     if(sel){const opt=[...sel.options].find(o=>o.value===locationDB[m.code]);sel.value=opt?locationDB[m.code]:'';}
   }
+  // toggle lot section ตาม itemHasLot
+  const lotSection = document.getElementById(pg+'-lot-section');
+  if (lotSection) lotSection.style.display = (m && itemHasLot(m)) ? '' : 'none';
+
   const pickerList=document.getElementById(pg+'-lot-picker-list');
-  if(m&&pickerList&&(WAREHOUSE_CONFIG[pg]?.hasLot)) {
+  if(m && pickerList && itemHasLot(m)) {
     pickerList.innerHTML='<div class="lot-empty"><i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> โหลด Lot...</div>';
     buildLotPickerHtml(m.code,pg).then(html=>{
       pickerList.innerHTML=html;
@@ -1613,6 +1659,24 @@ function selItem(pg, item, code) {
         if (first) pickLot(first, pg, first.dataset.lot);
       }
     });
+  }
+
+  // แสดง stock ปัจจุบันสำหรับ item ที่ไม่มี lot (เฉพาะ action เบิก/คืน)
+  const noLotStockEl = document.getElementById(pg+'-no-lot-stock');
+  if (noLotStockEl) {
+    const action = txState[pg]?.action;
+    const isWithdraw = action==='withdraw'||action==='return_good'||action==='return_bad';
+    if (m && !itemHasLot(m) && isWithdraw) {
+      const stockColor = m.stock <= 0 ? 'var(--red)' : m.min > 0 && m.stock <= m.min ? 'var(--warn)' : 'var(--green,#16a34a)';
+      noLotStockEl.innerHTML = `<div style="background:var(--s2);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;color:var(--ink3)"><i class="ti ti-package" style="margin-right:4px"></i>ยอดคงเหลือปัจจุบัน</span>
+        <span style="font-size:16px;font-weight:700;color:${stockColor}">${m.stock.toLocaleString()} ${m.unit||''}</span>
+      </div>`;
+      noLotStockEl.style.display = '';
+    } else {
+      noLotStockEl.style.display = 'none';
+      noLotStockEl.innerHTML = '';
+    }
   }
 }
 document.addEventListener('click', e => {
