@@ -1639,6 +1639,11 @@ function renderForm(pg) {
     </div>
   </div>`;
 
+  // No-lot stock bar — แสดงยอดคงเหลือสำหรับ item ที่ไม่มี lot (selItem จะ toggle)
+  if (cfg.hasLot && cfg.lotSubcats?.length) {
+    h += `<div id="${pg}-no-lot-stock" style="display:none;margin-top:10px"></div>`;
+  }
+
   // Lot fields — wrapper ซ่อน/แสดงผ่าน selItem เมื่อรู้ subcat ของ item
   if (cfg.hasLot) {
     // ถ้า pg มี lotSubcats = ซ่อนไว้ก่อน รอให้ selItem toggle
@@ -2098,9 +2103,27 @@ function switchAction(pg, action) {
       if (o.textContent.trim()===sv.dept) o.classList.add('sel');
     });
   }
-  // ── ถ้ามีรายการที่เลือกอยู่แล้ว และ action เป็นเบิก/คืน → โหลด Lot picker + auto-select ──
+  // ── ถ้ามีรายการที่เลือกอยู่แล้ว → toggle lot section + no-lot stock bar ──
   if (sv.ival) {
     const m = masterDB.find(x=>x.code===sv.ival || x.name===sv.idisp);
+    // toggle lot section
+    const lotSection = document.getElementById(pg+'-lot-section');
+    if (lotSection) lotSection.style.display = (m && itemHasLot(m)) ? '' : 'none';
+    // toggle no-lot stock bar
+    const noLotStockEl = document.getElementById(pg+'-no-lot-stock');
+    if (noLotStockEl && m && !itemHasLot(m)) {
+      const isWithdraw = action==='withdraw'||action==='return_good'||action==='return_bad';
+      if (isWithdraw) {
+        const stockColor = m.stock <= 0 ? 'var(--red)' : m.min > 0 && m.stock <= m.min ? 'var(--warn)' : 'var(--green,#16a34a)';
+        noLotStockEl.innerHTML = `<div style="background:var(--s2);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;color:var(--ink3)"><i class="ti ti-package" style="margin-right:4px"></i>ยอดคงเหลือปัจจุบัน</span>
+          <span style="font-size:16px;font-weight:700;color:${stockColor}">${m.stock.toLocaleString()} ${m.unit||''}</span>
+        </div>`;
+        noLotStockEl.style.display = '';
+      } else {
+        noLotStockEl.style.display = 'none';
+      }
+    }
     const pickerList = document.getElementById(pg+'-lot-picker-list');
     const hiddenEl = document.getElementById(pg+'-lot-id-hidden');
     if (m && itemHasLot(m) && pickerList && (action==='withdraw'||action==='return_good'||action==='return_bad')) {
@@ -2141,8 +2164,7 @@ function buildDDList(pg, filter, isTransform=false) {
     if (grp!=='-') h += `<div class="dd-grp-label">${grp}</div>`;
     grpItems.forEach(m => {
       const es = m.name.replace(/'/g,"\\'");
-      const cfg = WAREHOUSE_CONFIG[pg];
-      const showStock = !cfg?.hasLot;
+      const showStock = !itemHasLot(m);
       const stockColor = m.stock <= 0 ? 'var(--red)' : m.min > 0 && m.stock <= m.min ? 'var(--warn)' : 'var(--ink4)';
       const stockBadge = showStock ? `<span style="font-size:10px;color:${stockColor};margin-left:auto;padding-left:8px;flex-shrink:0">คงเหลือ ${m.stock.toLocaleString()}</span>` : '';
       h += `<div class="dd-item" onclick="${isTransform?`selTransformItem('${pg}','${es}','${m.code}')`:`selItem('${pg}','${es}','${m.code}')`}" style="display:flex;align-items:center;gap:6px">
@@ -2207,6 +2229,24 @@ function selItem(pg, item, code) {
         if (first && (!hiddenEl || !hiddenEl.value)) pickLot(first, pg, first.dataset.lot, first.dataset.lotId);
       }
     });
+  }
+
+  // ── แสดงยอดคงเหลือสำหรับ item ที่ไม่มี lot (เบิก/คืน) ──
+  const noLotStockEl = document.getElementById(pg+'-no-lot-stock');
+  if (noLotStockEl) {
+    const action = txState[pg]?.action;
+    const isWithdraw = action==='withdraw'||action==='return_good'||action==='return_bad';
+    if (m && !itemHasLot(m) && isWithdraw) {
+      const stockColor = m.stock <= 0 ? 'var(--red)' : m.min > 0 && m.stock <= m.min ? 'var(--warn)' : 'var(--green,#16a34a)';
+      noLotStockEl.innerHTML = `<div style="background:var(--s2);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:12px;color:var(--ink3)"><i class="ti ti-package" style="margin-right:4px"></i>ยอดคงเหลือปัจจุบัน</span>
+        <span style="font-size:16px;font-weight:700;color:${stockColor}">${m.stock.toLocaleString()} ${m.unit||''}</span>
+      </div>`;
+      noLotStockEl.style.display = '';
+    } else {
+      noLotStockEl.style.display = 'none';
+      noLotStockEl.innerHTML = '';
+    }
   }
 }
 document.addEventListener('click', e => {
