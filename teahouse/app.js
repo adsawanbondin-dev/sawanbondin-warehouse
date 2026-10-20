@@ -4142,8 +4142,9 @@ function dwRenderContent() {
 
     if (mode==='pending') {
       const isFinish = item.pg==='finish';
-      const lots = isFinish ? (dwFactoryLots[item.item_code]||[]) : [];
-      const lotSel = isFinish && lots.length
+      // แสดง lot dropdown เฉพาะ item ที่มี lot (ตรวจ lotSubcats ด้วย)
+      const lots = (isFinish && m && itemHasLot(m)) ? (dwFactoryLots[item.item_code]||[]) : [];
+      const lotSel = (isFinish && m && itemHasLot(m) && lots.length)
         ? `<select onchange="dwSetLot(${item.id},this.value,this.options[this.selectedIndex].dataset.sw)"
             style="width:100%;margin-top:3px;padding:3px 6px;border:0.5px solid var(--line);border-radius:5px;font-size:10px;font-family:inherit;background:var(--surface);color:var(--ink)">
             <option value="">— Lot —</option>
