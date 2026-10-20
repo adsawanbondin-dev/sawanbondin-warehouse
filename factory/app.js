@@ -1639,8 +1639,11 @@ function renderForm(pg) {
     </div>
   </div>`;
 
-  // Lot fields
+  // Lot fields — wrapper ซ่อน/แสดงผ่าน selItem เมื่อรู้ subcat ของ item
   if (cfg.hasLot) {
+    // ถ้า pg มี lotSubcats = ซ่อนไว้ก่อน รอให้ selItem toggle
+    const lotSectionStyle = cfg.lotSubcats?.length ? 'display:none' : '';
+    h += `<div id="${pg}-lot-section" style="${lotSectionStyle}">`;
     h += '<div class="divider"></div>';
     if (!isRecv && (WAREHOUSE_CONFIG[pg]?.hasLot)) {
       // เบิก/คืน raw, finish และ matcha: แสดง lot picker
@@ -1723,6 +1726,7 @@ function renderForm(pg) {
         setTimeout(() => { const br=document.getElementById(pg+'-bag-rows'); if(br&&!br.children?.length) addBagRow(pg); }, 100);
       }
     }
+    h += '</div>'; // end #pg-lot-section
   }
 
   if (isRecv && cfg.rawFields) {
@@ -2182,6 +2186,10 @@ function selItem(pg, item, code) {
     const sel=document.getElementById(pg+'-loc-select');
     if(sel){const opt=[...sel.options].find(o=>o.value===locationDB[m.code]);sel.value=opt?locationDB[m.code]:'';}
   }
+  // ซ่อน/แสดง lot section ตาม subcat ของ item
+  const lotSection = document.getElementById(pg+'-lot-section');
+  if (lotSection) lotSection.style.display = (m && itemHasLot(m)) ? '' : 'none';
+
   const pickerList=document.getElementById(pg+'-lot-picker-list');
   // clear lot selection เมื่อเปลี่ยน item
   const hiddenClear = document.getElementById(pg+'-lot-id-hidden');
