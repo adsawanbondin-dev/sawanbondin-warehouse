@@ -39,7 +39,6 @@ const WAREHOUSE_CONFIG = _CFG.WAREHOUSE_CONFIG || {
   packaging: { label:'บรรจุภัณฑ์ภายนอก',  prefix:'PA', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
   equip:     { label:'อุปกรณ์',           prefix:'EQ', hasLot:false, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'], hasSpec:true },
   finish:    { label:'สินค้าสำเร็จรูป',  prefix:'FG', hasLot:true,  lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง','บรรจุ','Tea House'] },
-  oem:       { label:'OEM',               prefix:'OEM',hasLot:true,  lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง'], hasSpec:true },
   oem:       { label:'OEM',               prefix:'OEM', hasLot:true, lotSupplier:false, rawFields:false, depts:['ผลิต','คลัง'], hasSpec:true },
   sample:    { label:'ชาตัวอย่าง',          prefix:'SA', hasLot:true,  lotSupplier:true,  rawFields:false, hasExpiry:true, depts:['ผลิต','คลัง','Tea House'],
                subcats:['OEM','RD','ชาประกวด'],
@@ -4710,16 +4709,91 @@ async function thCutStock(thId, itemCode, itemName, qty) {
   // หา item ใน Factory
   const fItem = masterDB.find(x => x.code===itemCode || x.name===itemName);
   if (!fItem) {
-    showToast(`ไม่พบ "${itemName}" ใน Factory ค่ะ`, 'err');
+    showToast(`ไม่พบ "${itemName}" ใน Factory`, 'err');
     return;
   }
-  if (!confirm(`ยืนยันตัดสต็อก "${itemName}" จำนวน ${qty} จาก Factory?`)) return;
 
-  // หัก stock Factory
-  const newStock = Math.max(0, fItem.stock - qty);
-  const { error: fErr } = await sb.from('items').update({ stock: newStock }).eq('code', fItem.code);
-  if (fErr) { showToast('ตัดสต็อก Factory ไม่สำเร็จ: '+fErr.message,'err'); return; }
-  fItem.stock = newStock;
+  // ถ้า item นี้มี lot → ต้องให้เลือก lot ก่อน
+  if (itemHasLot(fItem)) {
+    await thCutStockWithLotPicker(thId, fItem, qty);
+    return;
+  }
+
+  // ไม่มี lot → ตัดตรงๆ
+  if (!confirm(`ยืนยันตัดสต็อก "${itemName}" จำนวน ${qty}?`)) return;
+  await _thDoWithdraw(thId, fItem, qty, null);
+}
+
+async function thCutStockWithLotPicker(thId, fItem, qty) {
+  // โหลด lots
+  delete lotDB[fItem.code];
+  await dbLoadLotsForItem(fItem.code);
+  const lots = (lotDB[fItem.code]||[]).filter(l=>l.stock>0);
+
+  // สร้าง modal เลือก lot
+  let modal = document.getElementById('th-lot-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'th-lot-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    document.body.appendChild(modal);
+  }
+
+  const lotsHtml = lots.length
+    ? lots.map(l => {
+        const sw = l.lot_sw ? new Date(l.lot_sw).toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}) : '-';
+        const enough = l.stock >= qty;
+        return `<label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;border:1px solid var(--line);margin-bottom:6px;cursor:pointer;background:var(--surface)">
+          <input type="radio" name="th-lot-pick" value="${l.id}" data-sw="${l.lot_sw||''}" ${enough?'':'style="opacity:.4"'}>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:500">Lot ${sw}</div>
+            <div style="font-size:11px;color:${enough?'var(--ink3)':'var(--red)'}">คงเหลือ ${l.stock.toLocaleString()}${!enough?' (ไม่พอ)':''}</div>
+          </div>
+        </label>`;
+      }).join('')
+    : `<div style="text-align:center;padding:20px;color:var(--ink4)">ไม่มี Lot ที่มียอดคงเหลือ</div>`;
+
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:14px;padding:20px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px">เลือก Lot</div>
+      <div style="font-size:11px;color:var(--ink3);margin-bottom:14px">${fItem.name} · ตัดสต็อก ${qty}</div>
+      <div id="th-lot-list">${lotsHtml}</div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button onclick="document.getElementById('th-lot-modal').style.display='none'"
+          style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-family:inherit;font-size:12px">
+          ยกเลิก
+        </button>
+        <button id="th-lot-confirm-btn"
+          style="flex:2;padding:9px;border-radius:8px;border:none;background:var(--ink);color:var(--surface);cursor:pointer;font-family:inherit;font-size:12px;font-weight:500">
+          ยืนยันตัดสต็อก
+        </button>
+      </div>
+    </div>`;
+  modal.style.display = 'flex';
+
+  document.getElementById('th-lot-confirm-btn').onclick = async () => {
+    const picked = modal.querySelector('input[name="th-lot-pick"]:checked');
+    if (!picked) { showToast('กรุณาเลือก Lot ก่อน','err'); return; }
+    const lotId = parseInt(picked.value);
+    const lotSW = picked.dataset.sw;
+    modal.style.display = 'none';
+    await _thDoWithdraw(thId, fItem, qty, { lotId, lotSW });
+  };
+}
+
+async function _thDoWithdraw(thId, fItem, qty, lotOpts) {
+  // บันทึก transaction + หัก stock/lots ผ่าน RPC
+  const rpcResult = await dbAdjustStockWithLot(fItem.code, 'withdraw', qty, {
+    lotId: lotOpts?.lotId || null,
+    lotSW: lotOpts?.lotSW || null,
+    name: fItem.name,
+    note: 'เบิก Tea House',
+  });
+  if (!rpcResult.ok) {
+    showToast('ตัดสต็อกไม่สำเร็จ: '+(rpcResult.error||''), 'err');
+    return;
+  }
+  fItem.stock = rpcResult.new_stock;
 
   // อัปเดตสถานะใน Tea House → shipping
   await sbTH.from('daily_withdrawals').update({
@@ -4727,18 +4801,39 @@ async function thCutStock(thId, itemCode, itemName, qty) {
     updated_at: new Date().toISOString()
   }).eq('id', thId);
 
-  showToast(`ตัดสต็อก "${itemName}" ${qty} เรียบร้อย → สถานะ "กำลังจัดส่ง"ค่ะ`);
+  showToast(`ตัดสต็อก "${fItem.name}" ${qty} เรียบร้อย`);
   await renderThWithdrawPage();
 }
 
 async function thCutAll() {
-  const div = document.getElementById('page-th-withdraw');
   const { data: items } = await sbTH.from('daily_withdrawals')
     .select('*').eq('pg','finish').eq('factory_withdraw_status','pending');
   if (!items?.length) { showToast('ไม่มีรายการที่รอตัดสต็อก','err'); return; }
-  if (!confirm(`ยืนยันตัดสต็อกทั้งหมด ${items.length} รายการ?`)) return;
-  for (const item of items) {
-    await thCutStock(item.id, item.item_code, item.item_name, item.suggested_qty||0);
+
+  // แยกรายการ: มี lot vs ไม่มี lot
+  const noLotItems = items.filter(x => {
+    const fItem = masterDB.find(m => m.code===x.item_code || m.name===x.item_name);
+    return fItem && !itemHasLot(fItem);
+  });
+  const hasLotItems = items.filter(x => {
+    const fItem = masterDB.find(m => m.code===x.item_code || m.name===x.item_name);
+    return fItem && itemHasLot(fItem);
+  });
+
+  const msg = hasLotItems.length
+    ? `ตัดสต็อกทั้งหมด ${noLotItems.length} รายการ (${hasLotItems.length} รายการต้องเลือก Lot แยก)?`
+    : `ยืนยันตัดสต็อกทั้งหมด ${items.length} รายการ?`;
+  if (!confirm(msg)) return;
+
+  // ตัดรายการที่ไม่มี lot ทั้งหมดทีเดียว
+  for (const item of noLotItems) {
+    const fItem = masterDB.find(m => m.code===item.item_code || m.name===item.item_name);
+    if (fItem) await _thDoWithdraw(item.id, fItem, item.suggested_qty||0, null);
+  }
+  // รายการที่มี lot → ให้ไปกดทีละรายการ
+  if (hasLotItems.length) {
+    showToast(`เหลือ ${hasLotItems.length} รายการที่ต้องเลือก Lot — กรุณากดทีละรายการ`, 'warn');
+    await renderThWithdrawPage();
   }
 }
 
