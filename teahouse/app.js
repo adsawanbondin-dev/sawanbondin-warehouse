@@ -5299,6 +5299,22 @@ async function thPwMoveStep(groupId, newStatus) {
   await Promise.all(items.map(po =>
     sb.from('purchase_orders').update({ pay_status:newStatus, updated_at:new Date().toISOString() }).eq('id', po.id)
   ));
+
+  // บวก stock ให้ equip_th เมื่อรับสินค้าเรียบร้อย
+  if (newStatus === 'received') {
+    for (const po of items) {
+      if (!po.item_name || !po.qty) continue;
+      const recvQty = parseFloat(po.qty) || 0;
+      if (recvQty <= 0) continue;
+      const eqItem = masterDB.find(x => x.pg === 'equip_th' && x.name === po.item_name);
+      if (eqItem) {
+        const ns = eqItem.stock + recvQty;
+        await sb.from('items').update({ stock: ns, updated_at: new Date().toISOString() }).eq('code', eqItem.code);
+        eqItem.stock = ns;
+      }
+    }
+  }
+
   showToast('อัปเดตสถานะแล้วค่ะ');
   await renderPurchaseOrderPage();
   thPwFilterStep(newStatus);
