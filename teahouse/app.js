@@ -3967,18 +3967,42 @@ async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
       // หา factory_code จาก item_factory_map
       const { data: mapRow } = await sb.from('item_factory_map').select('factory_code').eq('th_code', item.item_code).single();
       const factoryCode = mapRow?.factory_code;
+      const todayTH = new Date().toLocaleDateString('th-TH',{day:'2-digit',month:'long',year:'numeric'});
+      const dwNote = `เบิกประจำวัน Tea House วันที่ ${todayTH}`;
       if (lotId && factoryCode) {
         const { data: lot } = await sbFactory.from('lots').select('id,stock,item_code').eq('id', lotId).single();
         if (lot) {
           const newLotStock = Math.max(0, lot.stock - recvQty);
           await sbFactory.from('lots').update({ stock: newLotStock }).eq('id', lotId);
-          const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', factoryCode).single();
-          if (fItem) await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', factoryCode);
+          const { data: fItem } = await sbFactory.from('items').select('code,stock,name,unit').eq('code', factoryCode).single();
+          if (fItem) {
+            const newFactoryStock = Math.max(0, fItem.stock - recvQty);
+            await sbFactory.from('items').update({ stock: newFactoryStock }).eq('code', factoryCode);
+            await sbFactory.from('transactions').insert({
+              item_code: factoryCode, item_name: fItem.name, pg: 'finish',
+              action_type: 'withdraw', quantity: recvQty,
+              old_stock: fItem.stock, new_stock: newFactoryStock,
+              operator_name: 'Tea House', department: 'Tea House',
+              note: dwNote, via: 'batch', lot_id: lotId,
+              created_at: new Date().toISOString()
+            });
+          }
         }
       } else if (factoryCode && !lotId) {
         // ไม่มี lot แต่มี mapping — หัก Factory stock ตรงๆ
-        const { data: fItem } = await sbFactory.from('items').select('code,stock').eq('code', factoryCode).single();
-        if (fItem) await sbFactory.from('items').update({ stock: Math.max(0, fItem.stock - recvQty) }).eq('code', factoryCode);
+        const { data: fItem } = await sbFactory.from('items').select('code,stock,name,unit').eq('code', factoryCode).single();
+        if (fItem) {
+          const newFactoryStock = Math.max(0, fItem.stock - recvQty);
+          await sbFactory.from('items').update({ stock: newFactoryStock }).eq('code', factoryCode);
+          await sbFactory.from('transactions').insert({
+            item_code: factoryCode, item_name: fItem.name, pg: 'finish',
+            action_type: 'withdraw', quantity: recvQty,
+            old_stock: fItem.stock, new_stock: newFactoryStock,
+            operator_name: 'Tea House', department: 'Tea House',
+            note: dwNote, via: 'batch',
+            created_at: new Date().toISOString()
+          });
+        }
       }
       const m = masterDB.find(x=>x.code===item.item_code);
       if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
