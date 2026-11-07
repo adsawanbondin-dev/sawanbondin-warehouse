@@ -4004,8 +4004,15 @@ async function dwDoReceive(id, item, recvQty, lotId, lotSw) {
           });
         }
       }
+      // ใช้ RPC เพื่ออัปเดตทั้ง items.stock และสร้าง/อัปเดต lot
+      const recvDate = new Date().toISOString().slice(0,10); // YYYY-MM-DD
+      const rpcRes = await dbAdjustStockWithLot(item.item_code, 'receive', recvQty, {
+        lotSW: recvDate,
+        name: item.item_name || item.item_code
+      });
+      if (!rpcRes.ok) console.error('dwDoReceive RPC error:', rpcRes.error);
       const m = masterDB.find(x=>x.code===item.item_code);
-      if (m) { const ns = m.stock + recvQty; await sb.from('items').update({ stock: ns }).eq('code', item.item_code); m.stock = ns; }
+      if (m) m.stock = (m.stock||0) + recvQty;
 
     } else if (item.pg === 'teahouse') {
       const eqItem = masterDB.find(x=>x.pg==='equip_th' && x.name===masterDB.find(m=>m.code===item.item_code)?.name);
