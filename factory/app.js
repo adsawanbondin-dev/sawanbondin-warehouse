@@ -1658,6 +1658,10 @@ function renderForm(pg) {
         <div class="fhint">เลือก Lot ที่ต้องการเบิก/คืน</div>
       </div>
       <input type="hidden" id="${pg}-lot-id-hidden">
+      <div id="${pg}-total-stock-bar" style="display:none;background:var(--s2);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:none;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:12px;color:var(--ink3)"><i class="ti ti-package" style="margin-right:4px"></i>ยอดคงเหลือรวมทุก Lot</span>
+        <span id="${pg}-total-stock-val" style="font-size:16px;font-weight:700"></span>
+      </div>
       <div class="lot-select-wrap" id="${pg}-lot-picker">
         <div class="lot-select-label">
           <i class="ti ti-stack" style="font-size:10px"></i> Lot ที่มีอยู่
@@ -2129,6 +2133,16 @@ function switchAction(pg, action) {
     if (m && itemHasLot(m) && pickerList && (action==='withdraw'||action==='return_good'||action==='return_bad')) {
       buildLotPickerHtml(m.code, pg).then(html => {
         pickerList.innerHTML = html;
+        // แสดง total stock รวมทุก lot
+        const totalBar = document.getElementById(pg+'-total-stock-bar');
+        const totalVal = document.getElementById(pg+'-total-stock-val');
+        if (totalBar && totalVal && m) {
+          const totalStock = (lotDB[m.code]||[]).reduce((s,l)=>s+(l.stock||0),0);
+          const stockColor = totalStock <= 0 ? 'var(--red)' : m.min > 0 && totalStock <= m.min ? 'var(--warn)' : 'var(--green,#16a34a)';
+          totalVal.textContent = totalStock.toLocaleString() + (m.unit ? ' '+m.unit : '');
+          totalVal.style.color = stockColor;
+          totalBar.style.display = 'flex';
+        }
         const first = pickerList.querySelector('.lot-select-item');
         // auto-select เฉพาะเมื่อ user ยังไม่ได้เลือก lot
         if (first && (!hiddenEl || !hiddenEl.value)) {
