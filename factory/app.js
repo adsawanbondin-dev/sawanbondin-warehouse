@@ -1020,7 +1020,15 @@ async function validateForm(pg, skipLot = false) {
     }
   }
 
-  // lot SW ไม่บังคับ — user เลือกเองได้
+  // บังคับเลือก lot เมื่อ withdraw/return_good finish items
+  if (!skipLot && (action === 'withdraw' || action === 'return_good') && item) {
+    const code2 = document.getElementById(pg+'-icode')?.value || '';
+    const mi2 = code2 ? masterDB.find(m => m.code===code2) : masterDB.find(m => m.name===item && m.pg===pg);
+    if (mi2 && itemHasLot(mi2)) {
+      const hiddenLotId = document.getElementById(pg+'-lot-id-hidden')?.value;
+      if (!hiddenLotId) errors.push('กรุณาเลือก Lot ก่อนเบิกออก');
+    }
+  }
 
   return errors;
 }
@@ -2429,7 +2437,11 @@ async function submitF(pg) {
           if (cached) lotId = cached.id;
         }
         // สำหรับ finish: สร้าง lot ตามปกติตอนรับเข้า
-        const effectiveLotSW = (_hasLot && lotSW && lotSW.length > 0) ? lotSW : null;
+        // ถ้าไม่กรอก lot date → ใช้วันปัจจุบัน (ป้องกัน merge เข้า lot เก่า)
+        const todayISO = new Date().toISOString().slice(0,10);
+        const effectiveLotSW = (_hasLot && action === 'receive') 
+          ? (lotSW && lotSW.length > 0 ? lotSW : todayISO)
+          : null;
         rpcResult = await dbAdjustStockWithLot(code, action, qty, {
           lotId,
           lotSW: effectiveLotSW,
