@@ -1020,13 +1020,16 @@ async function validateForm(pg, skipLot = false) {
     }
   }
 
-  // บังคับเลือก lot เมื่อ withdraw/return_good finish items
+  // บังคับเลือก lot เมื่อ withdraw/return_good finish items ที่มี lot ใน DB จริง
   if (!skipLot && (action === 'withdraw' || action === 'return_good') && item) {
     const code2 = document.getElementById(pg+'-icode')?.value || '';
     const mi2 = code2 ? masterDB.find(m => m.code===code2) : masterDB.find(m => m.name===item && m.pg===pg);
     if (mi2 && itemHasLot(mi2)) {
-      const hiddenLotId = document.getElementById(pg+'-lot-id-hidden')?.value;
-      if (!hiddenLotId) errors.push('กรุณาเลือก Lot ก่อนเบิกออก');
+      const hasLotsInDB = lotDB[mi2.code] && lotDB[mi2.code].length > 0;
+      if (hasLotsInDB) {
+        const hiddenLotId = document.getElementById(pg+'-lot-id-hidden')?.value;
+        if (!hiddenLotId) errors.push('กรุณาเลือก Lot ก่อนเบิกออก');
+      }
     }
   }
 
