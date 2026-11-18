@@ -2574,7 +2574,7 @@ async function _submitBatchCore(pg){
       if(r.action==='receive'&&r.loc)locationDB[code]=r.loc;
       await dbUpsertItem(mi);
     }
-    const rec={time:dateToday(),timeDetail:timeNow(),type:r.action,typeLabel:r.typeLabel,name,dept,item:r.item,code,qty:r.qty,lotSW:r.lotSW||'-',lotSP:r.lotSP||'',note:r.note||'',pg,via:'batch'};
+    const rec={time:dateToday(),timeDetail:timeNow(),type:r.action,typeLabel:r.typeLabel,name,dept,item:r.item,code,qty:r.qty,lotSW:r.lotSW||'-',lotSP:r.lotSP||'',note:r.note||'',pg,via:'batch',oldStock:r.oldStock??null,newStock:r.newStock??null,lotId:r.lotId||null};
     txState[pg].records.unshift(rec);
     rec.id = await dbInsertTransaction(rec);
   }
