@@ -2557,9 +2557,13 @@ async function _submitBatchCore(pg){
           const fresh=(lotDB[code]||[]).find(l=>l.lot_sw===r.lotSW&&l.stock>0);
           if(fresh) lotId=fresh.id;
         }
+        const _batchTodayISO = new Date().toISOString().slice(0,10);
+        const _batchEffectiveLotSW = (cfg_r.hasLot && r.action==='receive')
+          ? (r.lotSW && r.lotSW!=='-' ? r.lotSW : _batchTodayISO)
+          : (cfg_r.hasLot && r.lotSW && r.lotSW!=='-' ? r.lotSW : null);
         const res=await dbAdjustStockWithLot(code,r.action,r.qty,{
           lotId,
-          lotSW:(cfg_r.hasLot && r.lotSW && r.lotSW!=='-') ? r.lotSW : null,
+          lotSW: _batchEffectiveLotSW,
           lotSP:(r.lotSP && r.lotSP.length > 0) ? r.lotSP : null,
           name:r.item,
           note: (pg==='raw' && r.action==='receive') ? (r.note||null) : null,
